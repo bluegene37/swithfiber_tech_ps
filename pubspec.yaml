@@ -1,0 +1,94 @@
+name: swithfiber_tech_ps
+description: "Native mobile application for Switch Fiber Field Technicians (PowerSync Architecture)."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Icons & Styling
+  cupertino_icons: ^1.0.8
+  intl: ^0.20.2
+
+  # State Management
+  signals_flutter: ^7.1.0
+
+  # PowerSync & Offline-First Sync
+  powersync: ^2.4.0
+
+  # Local Database (Drift SQLite)
+  drift: ^2.24.2
+  sqlite3_flutter_libs: ^0.6.0+eol
+  path_provider: ^2.1.5
+  path: ^1.9.0
+
+  # Networking & Secure Storage
+  dio: ^5.8.0+1
+  crypto: ^3.0.7
+  flutter_secure_storage: ^11.0.0
+  uuid: ^4.5.1
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
+  flutter_map_cache: ^2.1.0
+  http_cache_drift_store: ^7.0.1
+  url_launcher: ^6.3.2
+  image_picker: ^1.2.3
+  mobile_scanner: ^7.4.0
+  geolocator: ^14.0.3
+  exif: ^3.3.0
+  geocoding: ^5.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_driver:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  drift_dev: ^2.24.2
+  build_runner: ^2.4.15
+  flutter_launcher_icons: ^0.14.4
+
+# App icons. Android already ships a hand-made adaptive icon under
+# android/app/src/main/res, so only the iOS set is generated here, from the
+# same logo, with the alpha channel flattened onto white as App Store Connect
+# requires. Regenerate with: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: false
+  ios: true
+  image_path: "assets/images/logo.png"
+  remove_alpha_ios: true
+  background_color_ios: "#FFFFFF"
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+
+  # Calm Utility type (DESIGN.md). Bundled, never fetched: the app runs
+  # offline. All three families are SIL Open Font License (assets/fonts/OFL-Barlow.txt).
+  fonts:
+    - family: Barlow
+      fonts:
+        - asset: assets/fonts/Barlow-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Barlow-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Barlow-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Barlow-Bold.ttf
+          weight: 700
+    - family: Barlow Semi Condensed
+      fonts:
+        - asset: assets/fonts/BarlowSemiCondensed-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/BarlowSemiCondensed-SemiBold.ttf
+          weight: 600
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Variable.ttf

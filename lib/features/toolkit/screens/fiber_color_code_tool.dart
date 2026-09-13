@@ -1,0 +1,391 @@
+import 'package:flutter/material.dart';
+import '../../../core/theme/app_text.dart';
+import '../../../core/theme/app_theme.dart';
+import '../models/fiber_color_code.dart';
+
+/// Interactive Fiber Color Code Calculator & Reference Chart (TIA-598-C Standard).
+class FiberColorCodeTool extends StatefulWidget {
+  const FiberColorCodeTool({super.key});
+
+  @override
+  State<FiberColorCodeTool> createState() => _FiberColorCodeToolState();
+}
+
+class _FiberColorCodeToolState extends State<FiberColorCodeTool> {
+  final TextEditingController _coreController =
+      TextEditingController(text: '1');
+  int _selectedCore = 1;
+  int _fibersPerTube = 12;
+
+  @override
+  void dispose() {
+    _coreController.dispose();
+    super.dispose();
+  }
+
+  void _updateCore(int value) {
+    if (value < 1) value = 1;
+    if (value > 288) value = 288;
+    setState(() {
+      _selectedCore = value;
+      _coreController.text = value.toString();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final result = FiberColorCalculator.calculate(
+      _selectedCore,
+      fibersPerTube: _fibersPerTube,
+    );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Fiber Color Code'),
+      ),
+      body: ListView(
+        // Clears the phone's navigation bar under the last card.
+        padding: EdgeInsets.fromLTRB(
+            16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom),
+        children: [
+          // 1. Core Calculator Card
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.colorize_rounded,
+                          size: 18, color: AppTheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Core Number to Color Lookup',
+                          style: context.text.titleMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Core number input & Fibers per tube selector
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextField(
+                          controller: _coreController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Fiber Core #',
+                            hintText: '1 - 288',
+                            prefixIcon: Icon(Icons.tag_rounded, size: 20),
+                          ),
+                          onChanged: (val) {
+                            final parsed = int.tryParse(val);
+                            if (parsed != null && parsed >= 1) {
+                              setState(() => _selectedCore = parsed);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: DropdownButtonFormField<int>(
+                          initialValue: _fibersPerTube,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Fibers/Tube',
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 6, child: Text('6F Tube')),
+                            DropdownMenuItem(
+                                value: 12, child: Text('12F Tube')),
+                            DropdownMenuItem(
+                                value: 24, child: Text('24F Tube')),
+                          ],
+                          onChanged: (v) {
+                            if (v != null) setState(() => _fibersPerTube = v);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Quick +/- stepper buttons
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _buildQuickChip(context, '-12',
+                          () => _updateCore(_selectedCore - 12)),
+                      _buildQuickChip(
+                          context, '-1', () => _updateCore(_selectedCore - 1)),
+                      _buildQuickChip(
+                          context, '+1', () => _updateCore(_selectedCore + 1)),
+                      _buildQuickChip(context, '+12',
+                          () => _updateCore(_selectedCore + 12)),
+                      _buildQuickChip(context, 'Core 1', () => _updateCore(1)),
+                      _buildQuickChip(
+                          context, 'Core 24', () => _updateCore(24)),
+                      _buildQuickChip(
+                          context, 'Core 48', () => _updateCore(48)),
+                      _buildQuickChip(
+                          context, 'Core 96', () => _updateCore(96)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // 2. Calculation Visual Result Card
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isDark
+                    ? [const Color(0xFF2B3035), const Color(0xFF25292E)]
+                    : [Colors.white, AppTheme.primarySubtleBg],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color:
+                    isDark ? AppTheme.borderDark : AppTheme.primarySubtleBorder,
+                width: 1.5,
+              ),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  'FIBER CORE #$_selectedCore IDENTIFICATION',
+                  style: context.text.labelSmall,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    // Tube Result Block
+                    Expanded(
+                      child: _buildResultBlock(
+                        context: context,
+                        title: 'TUBE #${result.tubeNumber}',
+                        colorName: result.tubeColor.name,
+                        color: result.tubeColor.color,
+                        textColor: result.tubeColor.textColor,
+                        extraInfo:
+                            result.hasTubeStripe ? 'With Stripe' : 'Solid Tube',
+                        isDark: isDark,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Fiber Result Block
+                    Expanded(
+                      child: _buildResultBlock(
+                        context: context,
+                        title: 'FIBER #${result.fiberIndexInTube}',
+                        colorName: result.fiberColor.name,
+                        color: result.fiberColor.color,
+                        textColor: result.fiberColor.textColor,
+                        extraInfo: 'Pos ${result.fiberColor.position} in Tube',
+                        isDark: isDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // 3. Complete Standard 12-Color Reference Chart
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.palette_rounded,
+                          size: 18, color: AppTheme.primary),
+                      const SizedBox(width: 8),
+                      // Wraps instead of overflowing (2.8px on a phone).
+                      Expanded(
+                        child: Text(
+                          'TIA-598 Standard 12-Color Sequence',
+                          style: context.text.titleMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Memory Mnemonic: "BL-OR-GR-BR-SL-WH-RD-BK-YE-VI-RO-AQ"',
+                    style: context.text.labelSmall!
+                        .copyWith(fontStyle: FontStyle.italic),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 12 Colors Grid
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 8,
+                      childAspectRatio: 3.2,
+                    ),
+                    itemCount: FiberColor.standard12.length,
+                    itemBuilder: (context, index) {
+                      final item = FiberColor.standard12[index];
+                      final isCurrentFiber =
+                          result.fiberColor.position == item.position;
+
+                      return InkWell(
+                        onTap: () => _updateCore(item.position),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color:
+                                isDark ? AppTheme.darkInput : AppTheme.lightBg,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isCurrentFiber
+                                  ? AppTheme.primary
+                                  : (isDark
+                                      ? AppTheme.borderDark
+                                      : AppTheme.borderLight),
+                              width: isCurrentFiber ? 2 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 22,
+                                height: 22,
+                                decoration: BoxDecoration(
+                                  color: item.color,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: item.name == 'White'
+                                        ? const Color(0xFFADB5BD)
+                                        : Colors.transparent,
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '${item.position}',
+                                    style: context.text.labelSmall!
+                                        .copyWith(color: item.textColor),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '#${item.position} ${item.name}',
+                                      style: context.text.labelMedium!.copyWith(
+                                        fontWeight: isCurrentFiber
+                                            ? FontWeight.w800
+                                            : FontWeight.w600,
+                                        color: isCurrentFiber
+                                            ? AppTheme.brandInkOf(context)
+                                            : null,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultBlock({
+    required BuildContext context,
+    required String title,
+    required String colorName,
+    required Color color,
+    required Color textColor,
+    required String extraInfo,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkInput : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+        ),
+      ),
+      child: Column(
+        children: [
+          Text(title, style: context.text.labelSmall),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: colorName == 'White'
+                    ? const Color(0xFFADB5BD)
+                    : Colors.transparent,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.35),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Text(
+              colorName,
+              style: context.text.titleSmall!.copyWith(color: textColor),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(extraInfo, style: context.text.labelSmall),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickChip(
+      BuildContext context, String label, VoidCallback onTap) {
+    return ActionChip(
+      label: Text(label, style: context.text.labelMedium),
+      onPressed: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+    );
+  }
+}

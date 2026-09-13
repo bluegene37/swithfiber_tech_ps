@@ -1,0 +1,142 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# Environment and Secret Files
+*.env
+*.env.*
+*.envrc
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.json
+
+# IntelliJ / Android Studio related
+*.iml
+*.ipr
+*.iws
+.idea/
+.kotlin/
+*.suo
+*.user
+
+# VS Code related
+.vscode/
+
+# Flutter / Dart / Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.flutter-plugins
+.packages
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Code Generation files (uncomment if you do not wish to track generated files)
+# *.g.dart
+# *.freezed.dart
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio and Gradle artifacts
+/android/app/debug
+/android/app/profile
+/android/app/release
+.gradle/
+build/
+captures/
+local.properties
+GeneratedPluginRegistrant.java
+.cxx/
+
+# Android Keystores & Credentials
+key.properties
+*.keystore
+*.jks
+google-services.json
+
+# iOS / Xcode Credentials & Build outputs
+GoogleService-Info.plist
+**/Pods/
+**/.symlinks/
+*.xcworkspace/xcuserdata/
+*.xcuserdatad/
+*.mobileprovision
+*.cer
+*.cert
+*.p8
+AuthKey_*.p8
+
+# Widget Preview related
+.widget_preview/
+
+# Documentation and AI tool files: never committed.
+*.md
+# Project documentation that belongs on GitHub.
+!/README.md
+!/CHANGELOG.md
+!/docs/RELEASE.md
+
+# AI Tool Directories, Caches & Transcripts
+.agents/
+.agent/
+.claude/
+.gemini/
+.superpowers/
+.gstack/
+.cursor/
+.windsurf/
+.antigravity/
+.cmem-projects/
+agent-transcripts/
+docs/superpowers/
+
+# AI Instruction & Rule Files
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+COPILOT.md
+.cursorrules
+.windsurfrules
+
+# AI Plans, Specs & Artifacts
+plan.md
+implementation_plan.md
+walkthrough.md
+task.md
+
+# Secrets and sample data: nothing that looks like a credential ships, real
+# or dummy. A demo password in a public repo is a real password to a scanner.
+*.pem
+*.key
+*.jks
+*.keystore
+*.p12
+key.properties
+secrets.*
+credentials.*
+service-account*.json
+google-services.json
+GoogleService-Info.plist
+**/*sample*.json
+**/*seed*.json
+**/*demo*.json
+**/*fixture*.json
