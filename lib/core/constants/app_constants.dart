@@ -24,6 +24,11 @@ class AppConstants {
   static const String keyUserSession = 'user_session';
   static const String keyApiBaseUrl = 'api_base_url';
   static const String keyDarkMode = 'dark_mode_enabled';
+  static const String keyPowerSyncToken = 'powersync_token';
+
+  // PowerSync Cloud Config
+  static const String defaultPowerSyncEndpoint =
+      'https://6aa61885a77ca1231d27bb58.powersync.journeyapps.com';
 
   // Optical Power dBm Standards (GPON standard)
   static const double opticalMinOptimal = -24.0;
