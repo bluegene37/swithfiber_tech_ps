@@ -8,6 +8,7 @@ import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/server_display.dart';
 import '../../../core/widgets/adaptive_dialogs.dart';
+import '../../../core/sync/powersync_service.dart';
 import '../../auth/signals/auth_signals.dart';
 import '../signals/settings_signals.dart';
 import '../../diagnostics/screens/sync_error_log_screen.dart';
@@ -316,95 +317,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// Force Full Sync: pushes pending edits, then replaces the local cache
-  /// with the server's copy.
-  ///
-  /// That second step discards any edit the server refused, so the
-  /// technician proves who they are first. The password is checked against
-  /// the API, not a cached copy.
-  Future<void> _forceFullSync(BuildContext context, int pending) async {
-    final auth = widget.authSignals;
-    final user = auth.currentUser.value;
-    if (user == null) return;
-
-    final password = await _askPassword(context, pending);
-    if (password == null || !context.mounted) return;
-
-    final ok = await auth.login(username: user.username, password: password);
-    if (!context.mounted) return;
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(auth.authError.value ?? 'Password not accepted.'),
-          backgroundColor: AppTheme.danger,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    final res = await widget.jobsSignals.forceRefresh();
-    if (!context.mounted) return;
-    final lost = res.failedCount;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(lost == 0
-            ? 'Synced and refreshed from the server.'
-            : '$lost pending update(s) were refused by the server and have '
-                'been replaced by the server copy. See Sync Error Log.'),
-        backgroundColor: lost == 0 ? AppTheme.success : AppTheme.warning,
-        behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: lost == 0 ? 4 : 10),
-      ),
-    );
-  }
-
-  Future<String?> _askPassword(BuildContext context, int pending) {
-    final controller = TextEditingController();
-    return showAdaptiveDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog.adaptive(
-        title: const Text('Force Full Sync'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              pending == 0
-                  ? 'The local cache will be replaced with the server copy. '
-                      'Enter your password to continue.'
-                  : '$pending pending update(s) will be pushed first. Any '
-                      'the server refuses will be lost and replaced by the '
-                      'server copy. Enter your password to continue.',
-            ),
-            const SizedBox(height: 12),
-            adaptiveDialogTextField(
-              ctx,
-              controller: controller,
-              obscureText: true,
-              autofocus: true,
-              placeholder: 'Password',
-              onSubmitted: (v) => Navigator.of(ctx).pop(v),
-            ),
-          ],
-        ),
-        actions: [
-          adaptiveDialogAction(
-            ctx,
-            label: 'Cancel',
-            isDefault: true,
-            onPressed: () => Navigator.of(ctx).pop(),
-          ),
-          adaptiveDialogAction(
-            ctx,
-            label: 'Sync',
-            isDestructive: true,
-            onPressed: () => Navigator.of(ctx).pop(controller.text),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildIosSettingRow({
     required IconData icon,
     required Color iconBg,
@@ -654,6 +566,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   final total = jobs.totalCount.value;
                   final pending = syncWorker.pendingCount.value;
                   final isSyncing = syncWorker.isSyncing.value;
+                  final cloud = PowerSyncService.instance.isConnected;
 
                   return Column(
                     children: [
@@ -671,41 +584,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             pending > 0 ? AppTheme.warning : AppTheme.success,
                       ),
                       const SizedBox(height: 8),
+                      // Honest about the cloud side: every table is local
+                      // only until the PowerSync service replicates the
+                      // backend, so pushes still go through the REST API.
                       _buildMetricRow(
                         'PowerSync Engine Status',
                         isSyncing
-                            ? 'Synchronizing...'
-                            : 'Reactive Stream Active',
+                            ? 'Pushing to API...'
+                            : cloud
+                                ? 'Cloud sync connected'
+                                : 'Local only',
                         CupertinoIcons.layers_alt,
-                        badgeColor:
-                            isSyncing ? AppTheme.primary : AppTheme.success,
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Force Sync Button
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: isSyncing
-                              ? null
-                              : () => _forceFullSync(context, pending),
-                          icon: isSyncing
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(CupertinoIcons.arrow_2_circlepath,
-                                  size: 24),
-                          label: Text(
-                            isSyncing
-                                ? 'Synchronizing...'
-                                : 'Force Full Sync (Local ↔ API)',
-                          ),
-                        ),
+                        badgeColor: isSyncing
+                            ? AppTheme.primary
+                            : cloud
+                                ? AppTheme.success
+                                : null,
                       ),
                     ],
                   );
