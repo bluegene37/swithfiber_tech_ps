@@ -8,6 +8,7 @@ import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../lcp_nap/models/lcp_nap_model.dart';
+import '../../lcp_nap/services/map_clustering.dart';
 import '../../lcp_nap/services/map_tiles.dart';
 import '../../lcp_nap/signals/lcp_nap_signals.dart';
 import '../models/job_order_model.dart';
@@ -57,7 +58,12 @@ class _JobsMapViewState extends State<JobsMapView> {
 
   bool _satellite = false;
   bool _showNaps = true;
+
+  /// Camera zoom the NAP clustering was last computed for.
+  double _zoom = 14.5;
   bool _didInitialFit = false;
+  bool _mapReady = false;
+  VoidCallback? _pendingFit;
 
   @override
   void initState() {
@@ -178,6 +184,17 @@ class _JobsMapViewState extends State<JobsMapView> {
     );
   }
 
+  /// Zoom to a cluster's NAP boxes so they separate into individual pins.
+  void _zoomIntoCluster(MapCluster cluster) {
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(
+            cluster.sites.map((s) => s.latLng!).toList()),
+        padding: const EdgeInsets.all(64),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -189,11 +206,19 @@ class _JobsMapViewState extends State<JobsMapView> {
     final nearestNapInfo =
         selectedJobPos != null ? _findNearestNap(selectedJobPos, naps) : null;
 
+    // First fit waits for onMapReady: a camera fit issued in the very first
+    // frame moves the camera but never triggers a tile load, so the map
+    // opened as pins on a blank background until the technician panned.
     if (!_didInitialFit && jobs.isNotEmpty) {
-      _didInitialFit = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _fitAllJobs(jobs, naps);
-      });
+      if (_mapReady) {
+        _didInitialFit = true;
+        _pendingFit = null;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _fitAllJobs(jobs, naps);
+        });
+      } else {
+        _pendingFit = () => _fitAllJobs(jobs, naps);
+      }
     }
 
     return Stack(
@@ -205,6 +230,23 @@ class _JobsMapViewState extends State<JobsMapView> {
             initialZoom: 14.5,
             minZoom: 4,
             maxZoom: 19,
+            onPositionChanged: (camera, _) {
+              // Re-cluster the NAP boxes as the technician zooms.
+              if ((camera.zoom - _zoom).abs() >= 0.5) {
+                setState(() => _zoom = camera.zoom);
+              }
+            },
+            onMapReady: () {
+              _mapReady = true;
+              final pending = _pendingFit;
+              if (pending != null && !_didInitialFit) {
+                _didInitialFit = true;
+                _pendingFit = null;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) pending();
+                });
+              }
+            },
             onTap: (_, __) {
               setState(() {
                 _selectedJob = null;
@@ -256,69 +298,112 @@ class _JobsMapViewState extends State<JobsMapView> {
             if ((_showNaps || _selectedJob != null) && naps.isNotEmpty)
               MarkerLayer(
                 markers: [
-                  for (final nap in naps)
-                    if (nap.latLng != null &&
-                        (_showNaps || nap.id == nearestNapInfo?.nap.id))
+                  // 1,500 NAP boxes drawn one by one buried the map under a
+                  // wall of pins; merge the ones that would overlap at this
+                  // zoom, the way the Plant map does. A cluster holding the
+                  // selected job's nearest NAP stays expanded so that pin
+                  // keeps its label.
+                  for (final cluster in clusterSites(naps, zoom: _zoom))
+                    if (cluster.isCluster &&
+                        _showNaps &&
+                        !cluster.sites
+                            .any((n) => n.id == nearestNapInfo?.nap.id))
                       Marker(
-                        point: nap.latLng!,
-                        width: nap.id == nearestNapInfo?.nap.id ? 140 : 30,
-                        height: nap.id == nearestNapInfo?.nap.id ? 56 : 30,
-                        alignment: nap.id == nearestNapInfo?.nap.id
-                            ? Alignment.bottomCenter
-                            : Alignment.center,
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _selectedNap = nap;
-                              _selectedJob = null;
-                            });
-                          },
-                          child: nap.id == nearestNapInfo?.nap.id &&
-                                  nearestNapInfo != null
-                              ? Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
+                        point: cluster.center,
+                        width: 36,
+                        height: 36,
+                        child: _NapClusterPin(
+                          count: cluster.count,
+                          onTap: () => _zoomIntoCluster(cluster),
+                        ),
+                      )
+                    else
+                      for (final nap in cluster.sites)
+                        if (nap.latLng != null &&
+                            (_showNaps || nap.id == nearestNapInfo?.nap.id))
+                          Marker(
+                            point: nap.latLng!,
+                            width: nap.id == nearestNapInfo?.nap.id ? 140 : 30,
+                            height: nap.id == nearestNapInfo?.nap.id ? 56 : 30,
+                            alignment: nap.id == nearestNapInfo?.nap.id
+                                ? Alignment.bottomCenter
+                                : Alignment.center,
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _selectedNap = nap;
+                                  _selectedJob = null;
+                                });
+                              },
+                              child: nap.id == nearestNapInfo?.nap.id &&
+                                      nearestNapInfo != null
+                                  ? Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF10B981),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            boxShadow: const [
+                                              BoxShadow(
+                                                color: Colors.black26,
+                                                blurRadius: 4,
+                                                offset: Offset(0, 1),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Text(
+                                            'Nearest NAP • ${LocationService.instance.formatDistance(nearestNapInfo.distanceMeters)}',
+                                            // Map furniture: fixed-size marker
+                                            // box, cannot grow with the type
+                                            // scale.
+                                            textScaler: TextScaler.noScaling,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 9, // map furniture
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Container(
+                                          width: 30,
+                                          height: 30,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF10B981),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                                color: Colors.white, width: 2),
+                                            boxShadow: const [
+                                              BoxShadow(
+                                                color: Color(0x6610B981),
+                                                blurRadius: 8,
+                                                spreadRadius: 2,
+                                              ),
+                                            ],
+                                          ),
+                                          child: const Icon(
+                                            Icons.hub_rounded,
+                                            color: Colors.white,
+                                            size: 16, // map furniture
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : Container(
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF10B981),
-                                        borderRadius: BorderRadius.circular(10),
+                                        color: const Color(0xFF0284C7),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                            color: Colors.white, width: 1.5),
                                         boxShadow: const [
                                           BoxShadow(
                                             color: Colors.black26,
                                             blurRadius: 4,
-                                            offset: Offset(0, 1),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Text(
-                                        'Nearest NAP • ${LocationService.instance.formatDistance(nearestNapInfo.distanceMeters)}',
-                                        // Map furniture: fixed-size marker
-                                        // box, cannot grow with the type
-                                        // scale.
-                                        textScaler: TextScaler.noScaling,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 9, // map furniture
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Container(
-                                      width: 30,
-                                      height: 30,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF10B981),
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                            color: Colors.white, width: 2),
-                                        boxShadow: const [
-                                          BoxShadow(
-                                            color: Color(0x6610B981),
-                                            blurRadius: 8,
-                                            spreadRadius: 2,
+                                            offset: Offset(0, 2),
                                           ),
                                         ],
                                       ),
@@ -328,30 +413,8 @@ class _JobsMapViewState extends State<JobsMapView> {
                                         size: 16, // map furniture
                                       ),
                                     ),
-                                  ],
-                                )
-                              : Container(
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF0284C7),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                        color: Colors.white, width: 1.5),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Colors.black26,
-                                        blurRadius: 4,
-                                        offset: Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Icon(
-                                    Icons.hub_rounded,
-                                    color: Colors.white,
-                                    size: 16, // map furniture
-                                  ),
-                                ),
-                        ),
-                      ),
+                            ),
+                          ),
                 ],
               ),
 
@@ -965,6 +1028,51 @@ class _JobsMapViewState extends State<JobsMapView> {
             style: context.text.bodySmall,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Several NAP boxes merged because they would overlap at this zoom.
+class _NapClusterPin extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const _NapClusterPin({required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '$count NAP boxes, zoom in to separate',
+      button: true,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0284C7),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Text(
+            count > 999 ? '999+' : '$count',
+            // Map furniture: fixed-size marker circle, cannot grow with the
+            // type scale.
+            textScaler: TextScaler.noScaling,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11, // map furniture
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
       ),
     );
   }

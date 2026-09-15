@@ -47,6 +47,8 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
   TileProvider? _tiles;
   LcpNapDto? _selected;
   bool _didInitialFit = false;
+  bool _mapReady = false;
+  List<LcpNapDto>? _pendingFit;
   bool _satellite = false;
   bool _showLegend = false;
   double _zoom = 14;
@@ -119,12 +121,28 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
   /// the map on their whole plant rather than zoomed onto one arbitrary box.
   /// Sites load asynchronously from the local database, so this cannot be done via
   /// MapOptions' initial camera alone.
+  ///
+  /// Waits for [MapOptions.onMapReady]: a camera fit issued in the very
+  /// first frame, before flutter_map has finished initialising, moved the
+  /// camera but never triggered a tile load, so the overview opened as pins
+  /// on a blank grey background until the technician panned.
   void _fitOnFirstLoad(List<LcpNapDto> sites) {
     if (_didInitialFit || sites.isEmpty) return;
+    if (!_mapReady) {
+      _pendingFit = sites;
+      return;
+    }
     _didInitialFit = true;
+    _pendingFit = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _fitToSites(sites);
     });
+  }
+
+  void _onMapReady() {
+    _mapReady = true;
+    final pending = _pendingFit;
+    if (pending != null) _fitOnFirstLoad(pending);
   }
 
   /// Zoom to a cluster's members so they separate into individual pins.
@@ -168,6 +186,7 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                 initialCenter:
                     sites.isNotEmpty ? sites.first.latLng! : _fallbackCentre,
                 initialZoom: sites.isEmpty ? 11 : 14,
+                onMapReady: _onMapReady,
                 onTap: (_, __) => setState(() {
                   _selected = null;
                   _showLegend = false;
@@ -189,6 +208,9 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                       : MapTiles.streetMaxZoom,
                   userAgentPackageName: MapTiles.userAgentPackageName,
                   tileProvider: tiles,
+                  errorTileCallback: (tile, error, stackTrace) =>
+                      debugPrint('Map tile failed: '
+                          '${tile.coordinates} $error'),
                 ),
                 MarkerLayer(
                   markers: [
