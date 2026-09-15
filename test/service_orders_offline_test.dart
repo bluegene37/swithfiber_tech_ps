@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/services/photo_storage_service.dart';
@@ -35,7 +34,7 @@ void main() {
   late Directory tempDir;
 
   setUp(() {
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase.forTesting();
     mockApi = _MockServiceOrdersApi();
     tempDir = Directory.systemTemp.createTempSync('service_orders_test_');
     PhotoStorageService.instance.setDirectoryForTesting(tempDir);
@@ -65,7 +64,7 @@ void main() {
     final dao = db.serviceOrdersDao;
     expect(await dao.getAllOrders(), isEmpty);
 
-    await dao.insertOrUpdateOrder(dummyOrder.toCompanion(synced: true));
+    await dao.insertOrUpdateOrder(dummyOrder, synced: true);
     final loaded = await dao.getOrderById(501);
     expect(loaded, isNotNull);
     expect(loaded!.accountNumber, 'SO-2026-001');
@@ -77,7 +76,8 @@ void main() {
 
     // Update with unsynced change
     await dao.insertOrUpdateOrder(
-      dummyOrder.copyWith(visitStatus: 'Done').toCompanion(synced: false),
+      dummyOrder.copyWith(visitStatus: 'Done'),
+      synced: false,
     );
 
     expect(await dao.countUnsynced(), 1);
@@ -96,11 +96,10 @@ void main() {
     final dao = db.serviceOrdersDao;
 
     // Order 501 is synced; Order 502 has an unsynced local edit
-    await dao.insertOrUpdateOrder(dummyOrder.toCompanion(synced: true));
+    await dao.insertOrUpdateOrder(dummyOrder, synced: true);
     await dao.insertOrUpdateOrder(
-      dummyOrder
-          .copyWith(id: 502, accountNumber: 'SO-002')
-          .toCompanion(synced: false),
+      dummyOrder.copyWith(id: 502, accountNumber: 'SO-002'),
+      synced: false,
     );
 
     // Server returns only order 503 (501 and 502 are not returned)
@@ -112,7 +111,8 @@ void main() {
     expect(await dao.getOrderById(502), isNotNull);
   });
 
-  test('ServiceOrdersSignals fetchRemote populates Drift SQLite', () async {
+  test('ServiceOrdersSignals fetchRemote populates the local database',
+      () async {
     final dao = db.serviceOrdersDao;
     mockApi.remoteOrders = [dummyOrder];
 
@@ -127,7 +127,7 @@ void main() {
     expect(signals.totalCount.value, 1);
     expect(signals.urgentCount.value, 1);
 
-    // Verify written to Drift
+    // Verify written to the local database
     final fromDb = await dao.getOrderById(501);
     expect(fromDb, isNotNull);
     expect(fromDb!.fullName, 'Maria Santos');
@@ -154,7 +154,7 @@ void main() {
     final success = await signals.submitCompletion(updated);
     expect(success, isTrue);
 
-    // Order was saved to Drift SQLite
+    // Order was saved to the local database
     final inDb = await dao.getOrderById(501);
     expect(inDb, isNotNull);
     expect(inDb!.visitStatus, 'Done');

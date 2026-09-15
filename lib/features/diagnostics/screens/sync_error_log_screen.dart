@@ -2,8 +2,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../core/database/app_database.dart';
 import '../../../core/database/daos/sync_error_logs_dao.dart';
+import '../../../core/database/models/sync_error_log.dart';
 import '../../../core/network/request_snapshot.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';

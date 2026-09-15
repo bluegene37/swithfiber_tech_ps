@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/features/auth/models/user_model.dart';
@@ -16,7 +15,7 @@ void main() {
   late JobsSignals signals;
 
   setUp(() {
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase.forTesting();
     repository = JobRepository(db.jobOrdersDao);
     signals = JobsSignals(repository);
   });
@@ -26,12 +25,12 @@ void main() {
     await db.close();
   });
 
-  group('Drift SQLite & Signals Reactive State Tests', () {
+  group('PowerSync SQLite & Signals Reactive State Tests', () {
     test('Seeding sample jobs inserts records and updates Signals stream',
         () async {
       await repository.seedSampleJobs();
 
-      // Wait for Drift reactive stream to push to Signals
+      // Wait for the reactive stream to push to Signals
       await Future.delayed(const Duration(milliseconds: 100));
 
       expect(signals.allJobs.value.length, 6);
@@ -67,7 +66,7 @@ void main() {
           signals.filteredJobs.value.first.customerName, 'Jasmine Alcantara');
     });
 
-    test('Activating a job updates Drift locally and sets isSynced = false',
+    test('Activating a job updates the local row and sets isSynced = false',
         () async {
       await repository.seedSampleJobs();
       await Future.delayed(const Duration(milliseconds: 100));

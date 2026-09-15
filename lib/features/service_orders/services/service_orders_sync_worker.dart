@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/database/daos/service_orders_dao.dart';
 import '../../../core/network/network_exceptions.dart';
-import '../models/service_order_model.dart';
 import 'service_orders_api.dart';
 
 /// Background worker that synchronizes offline-edited service orders with the backend API.
@@ -19,7 +18,7 @@ class ServiceOrdersSyncWorker {
   final lastSyncTime = signal<DateTime?>(null);
   final syncError = signal<String?>(null);
 
-  /// Refresh pending count from Drift
+  /// Refresh pending count from the local database
   Future<int> refreshPendingCount() async {
     final count = await _dao.countUnsynced();
     pendingCount.value = count;
@@ -55,8 +54,7 @@ class ServiceOrdersSyncWorker {
         );
       }
 
-      for (final rawOrder in unsynced) {
-        final dto = ServiceOrderDto.fromDrift(rawOrder);
+      for (final dto in unsynced) {
         try {
           final payload = await dto.toApiJsonAsync();
           final ok = await _api.updateServiceOrder(dto.id, payload);

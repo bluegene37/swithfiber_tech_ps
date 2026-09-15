@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -73,14 +72,14 @@ void main() {
     await db.close();
   });
 
-  testWidgets('submitting a report survives Drift re-emitting the job list',
+  testWidgets(
+      'submitting a report survives the database re-emitting the job list',
       (tester) async {
     await tester.runAsync(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       jobsSignals =
           JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
-      await db.jobOrdersDao
-          .insertAllJobs([_job(1).toCompanion(), _job(2).toCompanion()]);
+      await db.jobOrdersDao.insertAllJobs([_job(1), _job(2)]);
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
     reportSignals = ReportSignals()
@@ -101,7 +100,7 @@ void main() {
     // Submit through the signals in real async rather than tapping: the
     // form is long and the submit spinner animates forever, which makes a
     // scroll-and-tap flaky. What matters is what follows: the save makes
-    // Drift re-emit the list while this screen is still mounted.
+    // the database re-emit the list while this screen is still mounted.
     await tester.runAsync(() async {
       await reportSignals.submitReport(jobsSignals.repository);
       await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -128,10 +127,10 @@ void main() {
     addTearDown(tester.view.reset);
 
     await tester.runAsync(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       jobsSignals =
           JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
-      await db.jobOrdersDao.insertAllJobs([_job(1).toCompanion()]);
+      await db.jobOrdersDao.insertAllJobs([_job(1)]);
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
     reportSignals = ReportSignals()
@@ -179,7 +178,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     await tester.runAsync(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       jobsSignals =
           JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
       await db.jobOrdersDao.insertAllJobs([
@@ -190,7 +189,7 @@ void main() {
           address: 'Lot 1',
           status: 'Scheduled',
           modemRouterSN: '', // blank serial
-        ).toCompanion()
+        )
       ]);
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });

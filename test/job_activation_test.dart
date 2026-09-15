@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/features/jobs/models/job_order_model.dart';
@@ -17,7 +16,7 @@ void main() {
       Future<void>.delayed(const Duration(milliseconds: 100));
 
   setUp(() async {
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase.forTesting();
     repository = JobRepository(db.jobOrdersDao);
     signals = JobsSignals(repository);
     await db.jobOrdersDao.insertAllJobs([
@@ -28,7 +27,7 @@ void main() {
         address: 'Lot 1',
         status: 'Scheduled',
         assignedEmail: 'office.assigned@switchfiber.ph',
-      ).toCompanion(),
+      ),
       JobOrderDto(
         id: 2,
         ticketNumber: 'SF-2',
@@ -36,7 +35,7 @@ void main() {
         address: 'Lot 2',
         status: 'Confirmed',
         dateInstalled: DateTime(2026, 8, 1),
-      ).toCompanion(),
+      ),
     ]);
     await settle();
   });

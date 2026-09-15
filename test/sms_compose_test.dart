@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -18,7 +17,7 @@ void main() {
   late JobsSignals jobs;
 
   setUp(() {
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase.forTesting();
     jobs = JobsSignals(JobRepository(db.jobOrdersDao));
   });
 
@@ -47,7 +46,7 @@ void main() {
         contactNumber: '09171234567',
         isSynced: true,
         updatedAt: DateTime.now(),
-      ).toCompanion());
+      ));
       await Future<void>.delayed(const Duration(milliseconds: 150));
     });
 

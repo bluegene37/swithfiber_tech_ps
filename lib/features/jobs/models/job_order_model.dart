@@ -1,9 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'package:drift/drift.dart';
 import 'package:latlong2/latlong.dart';
-import '../../../core/database/app_database.dart';
 import '../../../core/services/photo_storage_service.dart';
+import '../../../core/database/sql_values.dart';
 
 /// The two stages a job order moves through in the field.
 ///
@@ -452,11 +451,14 @@ class JobOrderDto {
     );
   }
 
-  factory JobOrderDto.fromDrift(JobOrder row) {
+  /// Rebuilds a job from a `job_orders` row. Locally saved photo paths are
+  /// resolved back to data URLs so the rest of the app never sees a path.
+  factory JobOrderDto.fromRow(Map<String, Object?> row) {
+    final rawJson = rowText(row['raw_json']);
     final materials = <String, int>{};
-    if (row.rawJson != null && row.rawJson!.trim().isNotEmpty) {
+    if (rawJson != null && rawJson.trim().isNotEmpty) {
       try {
-        final decoded = jsonDecode(row.rawJson!);
+        final decoded = jsonDecode(rawJson);
         if (decoded is Map<String, dynamic>) {
           if (decoded['materialsUsed'] is Map) {
             (decoded['materialsUsed'] as Map).forEach((k, v) {
@@ -478,55 +480,54 @@ class JobOrderDto {
       } catch (_) {}
     }
 
+    final photos = PhotoStorageService.instance;
+    String? photo(String column) => photos.resolveToDataUrlSync(
+          rowText(row[column]),
+        );
+
     return JobOrderDto(
-      id: row.id,
-      ticketNumber: row.ticketNumber,
-      customerName: row.customerName,
-      contactNumber: row.contactNumber,
-      address: row.address,
-      barangay: row.barangay,
-      city: row.city,
-      planName: row.planName,
-      planId: row.planId,
-      status: row.status,
-      onsiteStatus: row.onsiteStatus,
-      rawJson: row.rawJson,
-      onsiteRemarks: row.onsiteRemarks,
-      statusRemarks: row.statusRemarks,
-      opticalPower: row.opticalPower,
-      modemRouterSN: row.modemRouterSN,
-      routerModel: row.routerModel,
-      lcpId: row.lcpId,
-      napId: row.napId,
-      nap: row.nap,
-      portId: row.portId,
-      vlanId: row.vlanId,
-      dateInstalled: row.dateInstalled,
-      boxReadingImage: PhotoStorageService.instance
-          .resolveToDataUrlSync(row.boxReadingImage),
-      routerReadingImage: PhotoStorageService.instance
-          .resolveToDataUrlSync(row.routerReadingImage),
-      clientSignature: PhotoStorageService.instance
-          .resolveToDataUrlSync(row.clientSignature),
-      setupImage:
-          PhotoStorageService.instance.resolveToDataUrlSync(row.setupImage),
-      speedtestImage:
-          PhotoStorageService.instance.resolveToDataUrlSync(row.speedtestImage),
-      portLabelImage:
-          PhotoStorageService.instance.resolveToDataUrlSync(row.portLabelImage),
-      signedContractImage: PhotoStorageService.instance
-          .resolveToDataUrlSync(row.signedContractImage),
-      houseFront:
-          PhotoStorageService.instance.resolveToDataUrlSync(row.houseFront),
+      id: rowInt(row['id']),
+      ticketNumber: rowText(row['ticket_number']) ?? '',
+      customerName: rowText(row['customer_name']) ?? '',
+      contactNumber: rowText(row['contact_number']),
+      address: rowText(row['address']) ?? '',
+      barangay: rowText(row['barangay']),
+      city: rowText(row['city']),
+      planName: rowText(row['plan_name']),
+      planId: rowIntOrNull(row['plan_id']),
+      status: rowText(row['status']) ?? 'pending',
+      onsiteStatus: rowText(row['onsite_status']),
+      rawJson: rawJson,
+      onsiteRemarks: rowText(row['onsite_remarks']),
+      statusRemarks: rowText(row['status_remarks']),
+      opticalPower: rowDouble(row['optical_power']),
+      modemRouterSN: rowText(row['modem_router_sn']),
+      routerModel: rowText(row['router_model']),
+      lcpId: rowIntOrNull(row['lcp_id']),
+      napId: rowIntOrNull(row['nap_id']),
+      nap: rowText(row['nap']),
+      portId: rowText(row['port_id']),
+      vlanId: rowIntOrNull(row['vlan_id']),
+      dateInstalled: rowDate(row['date_installed']),
+      boxReadingImage: photo('box_reading_image'),
+      routerReadingImage: photo('router_reading_image'),
+      clientSignature: photo('client_signature'),
+      setupImage: photo('setup_image'),
+      speedtestImage: photo('speedtest_image'),
+      portLabelImage: photo('port_label_image'),
+      signedContractImage: photo('signed_contract_image'),
+      houseFront: photo('house_front'),
       materialsUsed: materials,
-      assignedEmail: row.assignedEmail,
-      modifiedDate: row.modifiedDate,
-      isSynced: row.isSynced,
-      updatedAt: row.updatedAt,
+      assignedEmail: rowText(row['assigned_email']),
+      modifiedDate: rowDate(row['modified_date']),
+      isSynced: rowBool(row['is_synced'], fallback: true),
+      updatedAt: rowDate(row['updated_at']),
     );
   }
 
-  JobOrdersCompanion toCompanion({bool synced = true}) {
+  /// The `job_orders` row for this job. Materials are folded into `raw_json`
+  /// so they survive a round trip and reach the PUT body.
+  Map<String, Object?> toRow({bool synced = true}) {
     String? rawJsonWithMaterials = rawJson;
     if (materialsUsed.isNotEmpty) {
       Map<String, dynamic> rawMap = {};
@@ -552,43 +553,43 @@ class JobOrderDto {
       rawJsonWithMaterials = jsonEncode(rawMap);
     }
 
-    return JobOrdersCompanion(
-      id: Value(id),
-      ticketNumber: Value(ticketNumber),
-      customerName: Value(customerName),
-      contactNumber: Value(contactNumber),
-      address: Value(address),
-      barangay: Value(barangay),
-      city: Value(city),
-      planName: Value(planName),
-      planId: Value(planId),
-      status: Value(status),
-      onsiteStatus: Value(onsiteStatus),
-      rawJson: Value(rawJsonWithMaterials),
-      onsiteRemarks: Value(onsiteRemarks),
-      statusRemarks: Value(statusRemarks),
-      opticalPower: Value(opticalPower),
-      modemRouterSN: Value(modemRouterSN),
-      routerModel: Value(routerModel),
-      lcpId: Value(lcpId),
-      napId: Value(napId),
-      nap: Value(nap),
-      portId: Value(portId),
-      vlanId: Value(vlanId),
-      dateInstalled: Value(dateInstalled),
-      boxReadingImage: Value(boxReadingImage),
-      routerReadingImage: Value(routerReadingImage),
-      clientSignature: Value(clientSignature),
-      setupImage: Value(setupImage),
-      speedtestImage: Value(speedtestImage),
-      portLabelImage: Value(portLabelImage),
-      signedContractImage: Value(signedContractImage),
-      houseFront: Value(houseFront),
-      assignedEmail: Value(assignedEmail),
-      modifiedDate: Value(modifiedDate),
-      isSynced: Value(synced),
-      updatedAt: Value(updatedAt ?? DateTime.now()),
-    );
+    return {
+      'id': idText(id),
+      'ticket_number': ticketNumber,
+      'customer_name': customerName,
+      'contact_number': contactNumber,
+      'address': address,
+      'barangay': barangay,
+      'city': city,
+      'plan_name': planName,
+      'plan_id': planId,
+      'status': status,
+      'onsite_status': onsiteStatus,
+      'onsite_remarks': onsiteRemarks,
+      'status_remarks': statusRemarks,
+      'optical_power': opticalPower,
+      'modem_router_sn': modemRouterSN,
+      'router_model': routerModel,
+      'lcp_id': lcpId,
+      'nap_id': napId,
+      'nap': nap,
+      'port_id': portId,
+      'vlan_id': vlanId,
+      'date_installed': dateText(dateInstalled),
+      'box_reading_image': boxReadingImage,
+      'router_reading_image': routerReadingImage,
+      'client_signature': clientSignature,
+      'setup_image': setupImage,
+      'speedtest_image': speedtestImage,
+      'port_label_image': portLabelImage,
+      'signed_contract_image': signedContractImage,
+      'house_front': houseFront,
+      'assigned_email': assignedEmail,
+      'modified_date': dateText(modifiedDate),
+      'raw_json': rawJsonWithMaterials,
+      'is_synced': boolInt(synced),
+      'updated_at': dateText(updatedAt ?? DateTime.now()),
+    };
   }
 
   /// Every field of `UpdateJobOrderRequest`, exactly as the owner's working

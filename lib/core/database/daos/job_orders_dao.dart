@@ -1,79 +1,95 @@
 import 'dart:convert';
-import 'package:drift/drift.dart';
+
+import '../../../features/jobs/models/job_order_model.dart';
 import '../app_database.dart';
-import '../tables.dart';
+import '../sql_values.dart';
 
-part 'job_orders_dao.g.dart';
+/// Reads and writes the `job_orders` table through PowerSync.
+///
+/// Every method takes and returns [JobOrderDto]; the column mapping lives in
+/// [JobOrderDto.fromRow] and [JobOrderDto.toRow].
+class JobOrdersDao {
+  final AppDatabase _db;
 
-@DriftAccessor(tables: [JobOrders])
-class JobOrdersDao extends DatabaseAccessor<AppDatabase>
-    with _$JobOrdersDaoMixin {
-  JobOrdersDao(super.db);
+  JobOrdersDao(this._db);
+
+  static const String table = 'job_orders';
+
+  /// Ids are stored as text, so numeric order needs the cast.
+  static const String _byIdDesc = 'ORDER BY CAST(id AS INTEGER) DESC';
+
+  static List<JobOrderDto> _map(Iterable<Map<String, Object?>> rows) =>
+      [for (final r in rows) JobOrderDto.fromRow(r)];
 
   /// Watch all cached job orders sorted by ID descending
-  Stream<List<JobOrder>> watchAllJobs() {
-    return (select(jobOrders)
-          ..orderBy(
-              [(t) => OrderingTerm(expression: t.id, mode: OrderingMode.desc)]))
-        .watch();
-  }
+  Stream<List<JobOrderDto>> watchAllJobs() =>
+      _db.watch('SELECT * FROM $table $_byIdDesc').map(_map);
 
   /// Watch job orders filtered by status
-  Stream<List<JobOrder>> watchJobsByStatus(String status) {
-    if (status.isEmpty) {
-      return watchAllJobs();
-    }
-    return (select(jobOrders)
-          ..where((t) => t.status.equals(status.toLowerCase()))
-          ..orderBy(
-              [(t) => OrderingTerm(expression: t.id, mode: OrderingMode.desc)]))
-        .watch();
+  Stream<List<JobOrderDto>> watchJobsByStatus(String status) {
+    if (status.isEmpty) return watchAllJobs();
+    return _db.watch(
+      'SELECT * FROM $table WHERE status = ? $_byIdDesc',
+      parameters: [status.toLowerCase()],
+    ).map(_map);
   }
 
   /// Get all job orders once
-  Future<List<JobOrder>> getAllJobs() {
-    return (select(jobOrders)
-          ..orderBy(
-              [(t) => OrderingTerm(expression: t.id, mode: OrderingMode.desc)]))
-        .get();
-  }
+  Future<List<JobOrderDto>> getAllJobs() async =>
+      _map(await _db.getAll('SELECT * FROM $table $_byIdDesc'));
 
   /// Get single job by id
-  Future<JobOrder?> getJobById(int id) {
-    return (select(jobOrders)..where((t) => t.id.equals(id))).getSingleOrNull();
+  Future<JobOrderDto?> getJobById(int id) async {
+    final row = await _db.getOptional(
+      'SELECT * FROM $table WHERE id = ?',
+      [idText(id)],
+    );
+    return row == null ? null : JobOrderDto.fromRow(row);
   }
 
-  /// Insert or update single job
-  Future<void> insertOrUpdateJob(JobOrdersCompanion entry) {
-    return into(jobOrders).insertOnConflictUpdate(entry);
-  }
+  /// Insert or update single job.
+  ///
+  /// [synced] false marks the row as a local edit still waiting for the
+  /// server, which a refresh must not overwrite.
+  Future<void> insertOrUpdateJob(JobOrderDto job, {bool synced = true}) =>
+      insertAllJobs([job], synced: synced);
 
   /// Batch insert / cache job list from API
-  Future<void> insertAllJobs(List<JobOrdersCompanion> entries) async {
-    for (var i = 0; i < entries.length; i += 100) {
-      final chunk = entries.sublist(
-        i,
-        (i + 100 > entries.length) ? entries.length : i + 100,
-      );
-      await batch((batch) {
-        batch.insertAllOnConflictUpdate(jobOrders, chunk);
-      });
-    }
+  Future<void> insertAllJobs(List<JobOrderDto> jobs,
+      {bool synced = true}) async {
+    if (jobs.isEmpty) return;
+    final rows = [for (final j in jobs) j.toRow(synced: synced)];
+    final columns = rows.first.keys.toList();
+    final sql = insertOrReplaceSql(table, columns);
+    await _db.writeTransaction((tx) async {
+      for (var i = 0; i < rows.length; i += 100) {
+        final chunk =
+            rows.sublist(i, (i + 100 > rows.length) ? rows.length : i + 100);
+        await tx.executeBatch(sql, [
+          for (final r in chunk) [for (final c in columns) r[c]],
+        ]);
+      }
+    });
   }
 
-  /// Toggle or update job status with sync tracking
+  /// Apply [changes] (column -> value) to one row, stamping `updated_at`.
+  Future<void> _patch(int id, Map<String, Object?> changes) async {
+    final fields = {...changes, 'updated_at': dateText(DateTime.now())};
+    final sets = fields.keys.map((k) => '$k = ?').join(', ');
+    await _db.execute(
+      'UPDATE $table SET $sets WHERE id = ?',
+      [...fields.values, idText(id)],
+    );
+  }
+
   /// Update the technician's on-site status, leaving the office-side `status`
   /// column untouched.
   Future<void> updateFieldStatus(int id, String onsiteStatus,
-      {bool isSynced = false}) {
-    return (update(jobOrders)..where((t) => t.id.equals(id))).write(
-      JobOrdersCompanion(
-        onsiteStatus: Value(onsiteStatus),
-        isSynced: Value(isSynced),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
-  }
+          {bool isSynced = false}) =>
+      _patch(id, {
+        'onsite_status': onsiteStatus,
+        'is_synced': boolInt(isSynced),
+      });
 
   /// Move an open job between Scheduled and Rescheduled, with the reason
   /// (or null to clear it), and queue the edit for sync.
@@ -82,30 +98,17 @@ class JobOrdersDao extends DatabaseAccessor<AppDatabase>
     required String status,
     required String? statusRemarks,
     bool isSynced = false,
-  }) {
-    return (update(jobOrders)..where((t) => t.id.equals(id))).write(
-      JobOrdersCompanion(
-        status: Value(status),
-        statusRemarks: Value(statusRemarks),
-        isSynced: Value(isSynced),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
-  }
+  }) =>
+      _patch(id, {
+        'status': status,
+        'status_remarks': statusRemarks,
+        'is_synced': boolInt(isSynced),
+      });
 
   Future<void> updateJobStatus(int id, String newStatus,
-      {bool isSynced = false}) {
-    return (update(jobOrders)..where((t) => t.id.equals(id))).write(
-      JobOrdersCompanion(
-        status: Value(newStatus),
-        isSynced: Value(isSynced),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
-  }
+          {bool isSynced = false}) =>
+      _patch(id, {'status': newStatus, 'is_synced': boolInt(isSynced)});
 
-  /// Mark a job Activated: the technician's terminal stage.
-  ///
   /// Complete a job: sets status to 'Completed', onsiteStatus to 'Done',
   /// updates dateInstalled, and marks isSynced = false for sync.
   Future<void> completeJob(
@@ -113,20 +116,17 @@ class JobOrdersDao extends DatabaseAccessor<AppDatabase>
     String? assignedEmail,
     required DateTime installedAt,
     bool isSynced = false,
-  }) {
-    return (update(jobOrders)..where((t) => t.id.equals(id))).write(
-      JobOrdersCompanion(
-        status: const Value('Completed'),
-        onsiteStatus: const Value('Done'),
-        assignedEmail:
-            assignedEmail == null ? const Value.absent() : Value(assignedEmail),
-        dateInstalled: Value(installedAt),
-        isSynced: Value(isSynced),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
-  }
+  }) =>
+      _patch(id, {
+        'status': 'Completed',
+        'onsite_status': 'Done',
+        if (assignedEmail != null) 'assigned_email': assignedEmail,
+        'date_installed': dateText(installedAt),
+        'is_synced': boolInt(isSynced),
+      });
 
+  /// Mark a job Activated: the technician's terminal stage.
+  ///
   /// Records who activated it in [assignedEmail] (kept as-is when null) and
   /// the install date, so the job lands in that technician's history.
   Future<void> activateJob(
@@ -134,19 +134,14 @@ class JobOrdersDao extends DatabaseAccessor<AppDatabase>
     String? assignedEmail,
     required DateTime installedAt,
     bool isSynced = false,
-  }) {
-    return (update(jobOrders)..where((t) => t.id.equals(id))).write(
-      JobOrdersCompanion(
-        status: const Value('Activated'),
-        onsiteStatus: const Value('Done'),
-        assignedEmail:
-            assignedEmail == null ? const Value.absent() : Value(assignedEmail),
-        dateInstalled: Value(installedAt),
-        isSynced: Value(isSynced),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
-  }
+  }) =>
+      _patch(id, {
+        'status': 'Activated',
+        'onsite_status': 'Done',
+        if (assignedEmail != null) 'assigned_email': assignedEmail,
+        'date_installed': dateText(installedAt),
+        'is_synced': boolInt(isSynced),
+      });
 
   /// Update completion report details locally
   Future<void> updateJobCompletion({
@@ -172,12 +167,12 @@ class JobOrdersDao extends DatabaseAccessor<AppDatabase>
   }) async {
     String? updatedRawJson;
     if (materialsUsed != null) {
-      final existing = await (select(jobOrders)..where((t) => t.id.equals(id)))
-          .getSingleOrNull();
+      final existing = await getJobById(id);
       Map<String, dynamic> rawMap = {};
-      if (existing?.rawJson != null && existing!.rawJson!.trim().isNotEmpty) {
+      final raw = existing?.rawJson;
+      if (raw != null && raw.trim().isNotEmpty) {
         try {
-          final decoded = jsonDecode(existing.rawJson!);
+          final decoded = jsonDecode(raw);
           if (decoded is Map<String, dynamic>) rawMap = decoded;
         } catch (_) {}
       }
@@ -197,105 +192,85 @@ class JobOrdersDao extends DatabaseAccessor<AppDatabase>
       updatedRawJson = jsonEncode(rawMap);
     }
 
-    await (update(jobOrders)..where((t) => t.id.equals(id))).write(
-      JobOrdersCompanion(
-        status: status == null ? const Value.absent() : Value(status),
-        onsiteStatus: Value(onsiteStatus),
-        assignedEmail:
-            assignedEmail == null ? const Value.absent() : Value(assignedEmail),
-        onsiteRemarks: Value(onsiteRemarks),
-        opticalPower: Value(opticalPower),
-        modemRouterSN: Value(modemRouterSN),
-        routerModel: Value(routerModel),
-        nap: nap == null ? const Value.absent() : Value(nap),
-        dateInstalled: Value(DateTime.now()),
-        boxReadingImage: Value(boxReadingImage),
-        routerReadingImage: Value(routerReadingImage),
-        clientSignature: Value(clientSignature),
-        setupImage: Value(setupImage),
-        speedtestImage: Value(speedtestImage),
-        portLabelImage: Value(portLabelImage),
-        signedContractImage: Value(signedContractImage),
-        houseFront: Value(houseFront),
-        rawJson: updatedRawJson == null
-            ? const Value.absent()
-            : Value(updatedRawJson),
-        isSynced: Value(isSynced),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
+    await _patch(id, {
+      if (status != null) 'status': status,
+      'onsite_status': onsiteStatus,
+      if (assignedEmail != null) 'assigned_email': assignedEmail,
+      'onsite_remarks': onsiteRemarks,
+      'optical_power': opticalPower,
+      'modem_router_sn': modemRouterSN,
+      'router_model': routerModel,
+      if (nap != null) 'nap': nap,
+      'date_installed': dateText(DateTime.now()),
+      'box_reading_image': boxReadingImage,
+      'router_reading_image': routerReadingImage,
+      'client_signature': clientSignature,
+      'setup_image': setupImage,
+      'speedtest_image': speedtestImage,
+      'port_label_image': portLabelImage,
+      'signed_contract_image': signedContractImage,
+      'house_front': houseFront,
+      if (updatedRawJson != null) 'raw_json': updatedRawJson,
+      'is_synced': boolInt(isSynced),
+    });
   }
 
   /// Get all pending unsynced records
-  Future<List<JobOrder>> getUnsyncedJobs() {
-    return (select(jobOrders)..where((t) => t.isSynced.equals(false))).get();
-  }
+  Future<List<JobOrderDto>> getUnsyncedJobs() async =>
+      _map(await _db.getAll('SELECT * FROM $table WHERE is_synced = 0'));
 
   /// Ids of rows carrying a local edit that has not reached the server.
   Future<Set<int>> getUnsyncedIds() async {
-    final query = selectOnly(jobOrders)
-      ..addColumns([jobOrders.id])
-      ..where(jobOrders.isSynced.equals(false));
-    final rows = await query.map((r) => r.read(jobOrders.id)!).get();
-    return rows.toSet();
+    final rows = await _db.getAll('SELECT id FROM $table WHERE is_synced = 0');
+    return {for (final r in rows) rowInt(r['id'])};
   }
 
   /// Count unsynced items
   Future<int> countUnsynced() async {
-    final countExp = jobOrders.id.count();
-    final query = selectOnly(jobOrders)
-      ..addColumns([countExp])
-      ..where(jobOrders.isSynced.equals(false));
-    final result = await query.map((row) => row.read(countExp)).getSingle();
-    return result ?? 0;
+    final row =
+        await _db.get('SELECT count(*) AS c FROM $table WHERE is_synced = 0');
+    return rowInt(row['c']);
   }
 
   /// Mark job as synced
-  Future<void> markAsSynced(int id) {
-    return (update(jobOrders)..where((t) => t.id.equals(id))).write(
-      JobOrdersCompanion(
-        isSynced: const Value(true),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
-  }
+  Future<void> markAsSynced(int id) => _patch(id, {'is_synced': 1});
 
   /// Drop cached rows the server no longer returns, keeping any row with a
   /// local edit still waiting to sync so nothing the technician did is lost.
   Future<int> deleteSyncedJobsNotIn(Set<int> keepIds) async {
-    if (keepIds.isEmpty) {
-      return (delete(jobOrders)..where((t) => t.isSynced.equals(true))).go();
-    }
-    final allSynced = await (selectOnly(jobOrders)
-          ..addColumns([jobOrders.id])
-          ..where(jobOrders.isSynced.equals(true)))
-        .map((r) => r.read(jobOrders.id)!)
-        .get();
-    final toDelete = allSynced.where((id) => !keepIds.contains(id)).toList();
-    var deleted = 0;
-    for (var i = 0; i < toDelete.length; i += 200) {
-      final chunk = toDelete.sublist(
-        i,
-        (i + 200 > toDelete.length) ? toDelete.length : i + 200,
-      );
-      deleted += await (delete(jobOrders)..where((t) => t.id.isIn(chunk))).go();
-    }
-    return deleted;
+    final synced =
+        await _db.getAll('SELECT id FROM $table WHERE is_synced = 1');
+    final toDelete = [
+      for (final r in synced)
+        if (!keepIds.contains(rowInt(r['id']))) r['id'],
+    ];
+    if (toDelete.isEmpty) return 0;
+    await _db.writeTransaction((tx) async {
+      for (var i = 0; i < toDelete.length; i += 200) {
+        final chunk = toDelete.sublist(
+            i, (i + 200 > toDelete.length) ? toDelete.length : i + 200);
+        await tx.execute(
+          'DELETE FROM $table WHERE id IN (${placeholders(chunk.length)})',
+          chunk,
+        );
+      }
+    });
+    return toDelete.length;
   }
 
   /// Delete a job
-  Future<void> deleteJob(int id) {
-    return (delete(jobOrders)..where((t) => t.id.equals(id))).go();
-  }
+  Future<void> deleteJob(int id) =>
+      _db.execute('DELETE FROM $table WHERE id = ?', [idText(id)]);
 
   /// Clear table (e.g. on full resync or logout)
-  Future<void> clearAllJobs() {
-    return delete(jobOrders).go();
-  }
+  Future<void> clearAllJobs() => _db.execute('DELETE FROM $table');
 
   /// Delete test/sample demo jobs (IDs 101 to 106)
-  Future<int> deleteSampleJobs() {
-    return (delete(jobOrders)..where((t) => t.id.isBetweenValues(101, 106)))
-        .go();
+  Future<int> deleteSampleJobs() async {
+    const where = 'CAST(id AS INTEGER) BETWEEN 101 AND 106';
+    final row = await _db.get('SELECT count(*) AS c FROM $table WHERE $where');
+    final count = rowInt(row['c']);
+    if (count > 0) await _db.execute('DELETE FROM $table WHERE $where');
+    return count;
   }
 }

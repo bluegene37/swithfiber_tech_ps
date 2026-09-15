@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -50,7 +49,7 @@ void main() {
       late ReportSignals reportSignals;
 
       await tester.runAsync(() async {
-        db = AppDatabase(NativeDatabase.memory());
+        db = AppDatabase.forTesting();
         jobsSignals =
             JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
       });

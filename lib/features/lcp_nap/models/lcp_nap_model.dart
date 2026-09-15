@@ -1,6 +1,5 @@
 import 'package:latlong2/latlong.dart';
-import 'package:drift/drift.dart';
-import '../../../core/database/app_database.dart';
+import '../../../core/database/sql_values.dart';
 
 /// DTO for Local Convergence Point (LCP) and Network Access Point (NAP) location sites.
 class LcpNapDto {
@@ -129,49 +128,47 @@ class LcpNapDto {
     );
   }
 
-  factory LcpNapDto.fromDrift(LcpNapLocation row) {
-    return LcpNapDto(
-      id: row.id,
-      lcp: row.lcp,
-      nap: row.nap,
-      lcpNap: row.lcpNap,
-      portTotal: row.portTotal,
-      coordinates: row.coordinates,
-      street: row.street,
-      barangay: row.barangay,
-      city: row.city,
-      region: row.region,
-      image: row.image,
-      image2: row.image2,
-      readingImage: row.readingImage,
-      modifiedBy: row.modifiedBy,
-      userEmail: row.userEmail,
-      modifiedDate: row.modifiedDate,
-      isSynced: row.isSynced,
-      updatedAt: row.updatedAt,
-    );
-  }
+  /// Rebuilds a site from an `lcp_nap_locations` row.
+  factory LcpNapDto.fromRow(Map<String, Object?> row) => LcpNapDto(
+        id: rowInt(row['id']),
+        lcp: rowText(row['lcp']) ?? '',
+        nap: rowText(row['nap']) ?? '',
+        lcpNap: rowText(row['lcp_nap']) ?? '',
+        portTotal: rowInt(row['port_total'], 8),
+        coordinates: rowText(row['coordinates']),
+        street: rowText(row['street']),
+        barangay: rowText(row['barangay']),
+        city: rowText(row['city']),
+        region: rowText(row['region']),
+        image: rowText(row['image']),
+        image2: rowText(row['image2']),
+        readingImage: rowText(row['reading_image']),
+        modifiedBy: rowText(row['modified_by']),
+        userEmail: rowText(row['user_email']),
+        modifiedDate: rowDate(row['modified_date']),
+        isSynced: rowBool(row['is_synced'], fallback: true),
+        updatedAt: rowDate(row['updated_at']),
+      );
 
-  LcpNapLocationsCompanion toCompanion({bool synced = true}) {
-    return LcpNapLocationsCompanion(
-      id: Value(id),
-      lcp: Value(lcp),
-      nap: Value(nap),
-      lcpNap: Value(lcpNap),
-      portTotal: Value(portTotal),
-      coordinates: Value(coordinates),
-      street: Value(street),
-      barangay: Value(barangay),
-      city: Value(city),
-      region: Value(region),
-      image: Value(image),
-      image2: Value(image2),
-      readingImage: Value(readingImage),
-      modifiedBy: Value(modifiedBy),
-      userEmail: Value(userEmail),
-      modifiedDate: Value(modifiedDate),
-      isSynced: Value(synced),
-      updatedAt: Value(updatedAt ?? DateTime.now()),
-    );
-  }
+  /// The `lcp_nap_locations` row for this site.
+  Map<String, Object?> toRow({bool synced = true}) => {
+        'id': idText(id),
+        'lcp': lcp,
+        'nap': nap,
+        'lcp_nap': lcpNap,
+        'port_total': portTotal,
+        'coordinates': coordinates,
+        'street': street,
+        'barangay': barangay,
+        'city': city,
+        'region': region,
+        'image': image,
+        'image2': image2,
+        'reading_image': readingImage,
+        'modified_by': modifiedBy,
+        'user_email': userEmail,
+        'modified_date': dateText(modifiedDate),
+        'is_synced': boolInt(synced),
+        'updated_at': dateText(updatedAt ?? DateTime.now()),
+      };
 }

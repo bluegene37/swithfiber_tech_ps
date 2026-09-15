@@ -1,5 +1,4 @@
 import 'dart:async';
-import '../../../core/database/app_database.dart';
 import '../../../core/database/daos/job_orders_dao.dart';
 import '../../../core/database/daos/sync_error_logs_dao.dart';
 import '../../../core/services/photo_storage_service.dart';
@@ -7,7 +6,7 @@ import '../models/job_order_model.dart';
 import '../services/job_orders_api.dart';
 import '../services/sync_worker.dart';
 
-/// Repository coordinating Drift local SQLite caching and remote API operations.
+/// Repository coordinating the local PowerSync cache and remote API operations.
 class JobRepository {
   final JobOrdersDao _dao;
   final JobOrdersApi _api;
@@ -22,12 +21,8 @@ class JobRepository {
     syncWorker = SyncWorker(_dao, api: _api, errorLog: errorLog);
   }
 
-  /// Watch reactive stream of all jobs directly from Drift SQLite
-  Stream<List<JobOrderDto>> watchJobs() {
-    return _dao.watchAllJobs().map(
-          (rows) => rows.map(JobOrderDto.fromDrift).toList(),
-        );
-  }
+  /// Watch reactive stream of all jobs directly from the local database
+  Stream<List<JobOrderDto>> watchJobs() => _dao.watchAllJobs();
 
   /// Pull the job orders the technician can act on or look back at, and
   /// bring the cache in line with them.
@@ -76,14 +71,14 @@ class JobRepository {
       );
 
       final pending = await _dao.getUnsyncedIds();
-      final companions = <JobOrdersCompanion>[];
+      final fresh = <JobOrderDto>[];
       final keep = <int>{};
 
       void take(JobOrderDto dto) {
         keep.add(dto.id);
         // A pending local edit is newer than anything the server has.
         if (pending.contains(dto.id)) return;
-        companions.add(dto.toCompanion(synced: true));
+        fresh.add(dto);
       }
 
       for (final item in scheduled) {
@@ -99,8 +94,8 @@ class JobRepository {
         take(JobOrderDto.fromJson(item));
       }
 
-      if (companions.isNotEmpty) {
-        await _dao.insertAllJobs(companions);
+      if (fresh.isNotEmpty) {
+        await _dao.insertAllJobs(fresh, synced: true);
       }
       await _dao.deleteSyncedJobsNotIn(keep);
     } catch (_) {
@@ -191,7 +186,7 @@ class JobRepository {
 
   /// Update job status locally and trigger offline sync worker
   Future<void> updateJobStatus(int id, String newStatus) async {
-    // 1. Instant local optimistic update in Drift DB (isSynced = false)
+    // 1. Instant local optimistic update (isSynced = false)
     await _dao.updateJobStatus(id, newStatus, isSynced: false);
     await syncWorker.refreshPendingCount();
 
@@ -401,8 +396,6 @@ class JobRepository {
       ),
     ];
 
-    final companions =
-        sampleJobs.map((j) => j.toCompanion(synced: true)).toList();
-    await _dao.insertAllJobs(companions);
+    await _dao.insertAllJobs(sampleJobs, synced: true);
   }
 }

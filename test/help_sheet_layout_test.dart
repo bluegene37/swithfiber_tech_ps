@@ -1,6 +1,5 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:drift/native.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/database/daos/lcp_nap_dao.dart';
 import 'package:swithfiber_tech_ps/features/auth/signals/auth_signals.dart';
@@ -27,7 +26,7 @@ void main() {
       (call) async => call.method == 'readAll' ? store : null,
     );
 
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase.forTesting();
     lcpNapSignals = LcpNapSignals(LcpNapRepository(LcpNapLocationsDao(db)));
     final authSignals = AuthSignals.instance;
     authSignals.currentUser.value = null;

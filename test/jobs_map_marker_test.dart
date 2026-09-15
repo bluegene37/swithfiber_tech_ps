@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,7 +18,7 @@ void main() {
       late final JobsSignals jobsSignals;
 
       await tester.runAsync(() async {
-        db = AppDatabase(NativeDatabase.memory());
+        db = AppDatabase.forTesting();
         jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao));
         await db.jobOrdersDao.insertOrUpdateJob(
           JobOrderDto(
@@ -34,7 +33,7 @@ void main() {
             isSynced: true,
             updatedAt: DateTime.now(),
             rawJson: '{"coordinates": "14.469586, 121.195615"}',
-          ).toCompanion(),
+          ),
         );
         await Future<void>.delayed(const Duration(milliseconds: 100));
       });

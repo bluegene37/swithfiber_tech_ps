@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../constants/app_constants.dart';
 import '../storage/secure_storage_service.dart';
 import 'network_exceptions.dart';
@@ -20,6 +21,26 @@ class ApiClient {
   /// Set to `true` in a request's `Options.extra` to send it with no
   /// `Authorization` header at all, exactly like a bare curl.
   static const String skipAuthOption = 'skipAuth';
+
+  /// When set, every request through the helpers below fails at once with
+  /// an [ApiException] and never reaches Dio. `test/flutter_test_config.dart`
+  /// turns it on for the whole suite: screens such as the RADIUS card look
+  /// their subscriber up on build, and an unstubbed request from a widget
+  /// test would otherwise go to the real server and leave Dio's timers
+  /// pending in the test zone. Tests that mock the HTTP adapter switch it
+  /// off for themselves.
+  @visibleForTesting
+  static bool blockNetworkForTesting = false;
+
+  static void _checkNetworkAllowed(String method, String path) {
+    if (blockNetworkForTesting) {
+      throw ApiException(
+        message: 'Network access is disabled in tests',
+        requestMethod: method,
+        requestUrl: path,
+      );
+    }
+  }
 
   ApiClient._internal() {
     dio = Dio(
@@ -123,6 +144,7 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
+    _checkNetworkAllowed('GET', path);
     try {
       return await dio.get<T>(path,
           queryParameters: queryParameters, options: options);
@@ -141,6 +163,7 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
+    _checkNetworkAllowed('POST', path);
     try {
       return await dio.post<T>(path,
           data: data, queryParameters: queryParameters, options: options);
@@ -159,6 +182,7 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
+    _checkNetworkAllowed('PUT', path);
     try {
       return await dio.put<T>(path,
           data: data, queryParameters: queryParameters, options: options);
@@ -177,6 +201,7 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
+    _checkNetworkAllowed('DELETE', path);
     try {
       return await dio.delete<T>(path,
           data: data, queryParameters: queryParameters, options: options);

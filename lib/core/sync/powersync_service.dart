@@ -1,11 +1,14 @@
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart';
+import 'package:swithfiber_tech_ps/core/constants/app_constants.dart';
+import 'package:swithfiber_tech_ps/core/storage/secure_storage_service.dart';
 import 'package:swithfiber_tech_ps/core/sync/powersync_backend_connector.dart';
 import 'package:swithfiber_tech_ps/core/sync/powersync_schema.dart';
 
-/// Singleton service managing the PowerSync client database lifecycle,
-/// schema initialization, and cloud synchronization.
+/// Singleton owning the PowerSync client database: the app's only local
+/// store. Opens it on [powerSyncSchema] and, when a PowerSync token has been
+/// configured, joins the cloud sync connection.
 class PowerSyncService {
   PowerSyncService._();
   static final PowerSyncService instance = PowerSyncService._();
@@ -25,8 +28,10 @@ class PowerSyncService {
 
   bool get isInitialized => _db != null;
 
-  /// Initializes the local SQLite database with PowerSync schema and
-  /// connects to the PowerSync Cloud service.
+  /// Whether the cloud sync connection is currently open.
+  bool get isConnected => _db?.connected ?? false;
+
+  /// Opens the local database. Idempotent.
   Future<void> initialize({
     String dbFilename = 'switchfiber_powersync.db',
     SwitchFiberBackendConnector? connector,
@@ -34,20 +39,29 @@ class PowerSyncService {
     if (_db != null) return;
 
     final dir = await getApplicationSupportDirectory();
-    final dbPath = join(dir.path, dbFilename);
-
     final database = PowerSyncDatabase(
       schema: powerSyncSchema,
-      path: dbPath,
+      path: join(dir.path, dbFilename),
     );
-
     await database.initialize();
 
-    final activeConnector = connector ?? SwitchFiberBackendConnector();
-    _connector = activeConnector;
-
-    await database.connect(connector: activeConnector);
+    _connector = connector ?? SwitchFiberBackendConnector();
     _db = database;
+  }
+
+  /// Joins the PowerSync Cloud connection if, and only if, a dedicated
+  /// PowerSync token is stored. Every table is local-only today, so the
+  /// connection carries nothing yet; the gate keeps the sync client from
+  /// retrying forever with the API's own JWT, which the PowerSync instance
+  /// does not accept.
+  Future<void> connectIfConfigured({SecureStorageService? storage}) async {
+    final database = _db;
+    final connector = _connector;
+    if (database == null || connector == null || database.connected) return;
+    final store = storage ?? SecureStorageService();
+    final token = await store.read(AppConstants.keyPowerSyncToken);
+    if (token == null || token.isEmpty) return;
+    await database.connect(connector: connector);
   }
 
   /// Disconnects from PowerSync and clears local database storage (e.g. on logout).
@@ -55,6 +69,7 @@ class PowerSyncService {
     if (_db != null) {
       await _db!.disconnectAndClear();
       _db = null;
+      _connector = null;
     }
   }
 

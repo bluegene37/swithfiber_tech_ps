@@ -44,7 +44,7 @@ The project is organized by feature with a decoupled core layer:
 lib/
 ├── core/
 │   ├── constants/       App constants, optical thresholds, and configuration keys
-│   ├── database/        Local SQLite schema, DAOs, and persistence layer
+│   ├── database/        PowerSync-backed DAOs and the local persistence layer
 │   ├── network/         HTTP client, interceptors, and error handling
 │   ├── services/        Camera capture, EXIF metadata, GPS location, file storage
 │   ├── storage/         Secure hardware-backed storage (Keychain / Keystore)
@@ -71,7 +71,7 @@ lib/
 |---|---|
 | **Data Sync** | [`powersync`](https://pub.dev/packages/powersync) for bidirectional offline-first data replication and offline SQLite caching. |
 | **State Management** | [`signals_flutter`](https://pub.dev/packages/signals_flutter) for reactive, fine-grained UI updates driven directly by local data streams. |
-| **Database** | SQLite via [`drift`](https://pub.dev/packages/drift) & PowerSync engine for type-safe local storage. |
+| **Database** | SQLite through the PowerSync engine: one local store, reactive `watch` queries, no code generation. |
 | **Networking** | [`dio`](https://pub.dev/packages/dio) with TLS certificate pinning and automated token refresh. |
 | **Mapping** | [`flutter_map`](https://pub.dev/packages/flutter_map) with offline tile caching. |
 | **Barcode Scanning** | [`mobile_scanner`](https://pub.dev/packages/mobile_scanner) for serial and QR code capture. |

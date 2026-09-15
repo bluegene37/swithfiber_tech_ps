@@ -67,7 +67,14 @@ class _JobsMapViewState extends State<JobsMapView> {
   }
 
   Future<void> _loadTiles() async {
-    final provider = await MapTiles.provider();
+    final TileProvider provider;
+    try {
+      provider = await MapTiles.provider();
+    } catch (_) {
+      // No usable cache directory (a stripped-down host, or a test): the map
+      // keeps its pins and simply shows no base tiles rather than crashing.
+      return;
+    }
     if (!mounted) return;
     setState(() => _tiles = provider);
   }
@@ -208,15 +215,19 @@ class _JobsMapViewState extends State<JobsMapView> {
           ),
           children: [
             // Map Tile Layer
-            TileLayer(
-              urlTemplate:
-                  _satellite ? MapTiles.satelliteUrl : MapTiles.streetUrl,
-              tileProvider: _tiles,
-              maxZoom: _satellite
-                  ? MapTiles.satelliteMaxZoom
-                  : MapTiles.streetMaxZoom,
-              userAgentPackageName: MapTiles.userAgentPackageName,
-            ),
+            // Only once the caching provider is ready: without one, flutter_map would
+            // fall back to its own network provider and open a cache directory of its
+            // own, which no test host (and no stripped-down device) can provide.
+            if (_tiles != null)
+              TileLayer(
+                urlTemplate:
+                    _satellite ? MapTiles.satelliteUrl : MapTiles.streetUrl,
+                tileProvider: _tiles,
+                maxZoom: _satellite
+                    ? MapTiles.satelliteMaxZoom
+                    : MapTiles.streetMaxZoom,
+                userAgentPackageName: MapTiles.userAgentPackageName,
+              ),
 
             // Connection Polyline to Nearest LCP NAP (when a job is selected)
             if (_selectedJob != null &&

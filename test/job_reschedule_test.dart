@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -53,11 +52,11 @@ void main() {
   late JobsSignals signals;
 
   Future<void> setUpJob(JobOrderDto job) async {
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase.forTesting();
     api = _RecordingApi();
     repository = JobRepository(db.jobOrdersDao, api: api);
     signals = JobsSignals(repository);
-    await db.jobOrdersDao.insertOrUpdateJob(job.toCompanion(synced: true));
+    await db.jobOrdersDao.insertOrUpdateJob(job, synced: true);
     await Future<void>.delayed(const Duration(milliseconds: 100));
   }
 
@@ -74,7 +73,7 @@ void main() {
         status: JobStatus.rescheduled, statusRemarks: 'No Available Slot');
     await Future<void>.delayed(const Duration(milliseconds: 200));
 
-    final row = JobOrderDto.fromDrift((await db.jobOrdersDao.getJobById(42))!);
+    final row = (await db.jobOrdersDao.getJobById(42))!;
     expect(row.status, 'Rescheduled');
     expect(row.statusRemarks, 'No Available Slot');
     expect(row.isRescheduled, isTrue);
@@ -96,7 +95,7 @@ void main() {
     await repository.changeStatus(42, status: JobStatus.scheduled);
     await Future<void>.delayed(const Duration(milliseconds: 200));
 
-    final row = JobOrderDto.fromDrift((await db.jobOrdersDao.getJobById(42))!);
+    final row = (await db.jobOrdersDao.getJobById(42))!;
     expect(row.status, 'Scheduled');
     expect(row.statusRemarks, '');
     expect(api.updates.single['statusRemarks'], '');
@@ -128,6 +127,12 @@ void main() {
       final change = find.byKey(const ValueKey('job_status_change'));
       await tester.scrollUntilVisible(change, 300,
           scrollable: find.byType(Scrollable).first);
+      // Visible is not enough: the sticky action bar covers the bottom of the
+      // viewport, and with the RADIUS lookup refused at once its card is
+      // shorter, which leaves the button right under that bar. Scroll on a
+      // little so the tap lands on the button itself.
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -160));
+      await settle(tester);
       expect(find.byKey(const ValueKey('job_exception_banner')), findsNothing);
 
       // Tapping Change starts the chain that ends in a database write once
@@ -172,7 +177,7 @@ void main() {
 
       expect(find.byType(StatusChangeSheet), findsNothing);
       final saved = await tester.runAsync(() => db.jobOrdersDao.getJobById(42));
-      final row = JobOrderDto.fromDrift(saved!);
+      final row = saved!;
       expect(row.status, 'Rescheduled');
       expect(row.statusRemarks, 'Not Available');
 

@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -25,9 +24,9 @@ void main() {
     void Function(JobOrderDto job)? onOpenReport,
   }) async {
     await tester.runAsync(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao));
-      await db.jobOrdersDao.insertOrUpdateJob(job.toCompanion());
+      await db.jobOrdersDao.insertOrUpdateJob(job);
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
 
@@ -117,9 +116,9 @@ void main() {
     var opened = 0;
 
     await tester.runAsync(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao));
-      await db.jobOrdersDao.insertOrUpdateJob(target.toCompanion());
+      await db.jobOrdersDao.insertOrUpdateJob(target);
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
 

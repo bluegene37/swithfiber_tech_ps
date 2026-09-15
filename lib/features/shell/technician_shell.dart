@@ -79,7 +79,7 @@ class _TechnicianShellState extends State<TechnicianShell> {
         _serviceOrdersSignals.fetchRemote();
       }
     });
-    // Initial fetch / Drift seed. Runs here rather than at construction time so
+    // Initial fetch / local seed. Runs here rather than at construction time so
     // that requests are only made once the technician is authenticated.
     // `initial` walks each screen through downloading -> skeleton -> data.
     widget.lcpNapSignals.fetchRemote(initial: true);

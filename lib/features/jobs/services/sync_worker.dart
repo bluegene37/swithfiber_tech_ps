@@ -27,7 +27,7 @@ class SyncWorker {
   final lastSyncTime = signal<DateTime?>(null);
   final syncError = signal<String?>(null);
 
-  /// Refresh pending count from Drift
+  /// Refresh pending count from the local database
   Future<int> refreshPendingCount() async {
     final count = await _dao.countUnsynced();
     pendingCount.value = count;
@@ -60,8 +60,7 @@ class SyncWorker {
             success: true, syncedCount: 0, message: 'All jobs are up to date.');
       }
 
-      for (final rawJob in unsynced) {
-        final dto = JobOrderDto.fromDrift(rawJob);
+      for (final dto in unsynced) {
         // Measured before the request so a refusal can be read against the
         // size that caused it: a completion inlines every photo as Base64
         // and is orders of magnitude larger than an activation.
@@ -172,8 +171,7 @@ class SyncWorker {
     try {
       final fresh = await _api.fetchById(id);
       if (fresh != null) {
-        await _dao.insertOrUpdateJob(
-            JobOrderDto.fromJson(fresh).toCompanion(synced: true));
+        await _dao.insertOrUpdateJob(JobOrderDto.fromJson(fresh), synced: true);
         return;
       }
     } catch (_) {

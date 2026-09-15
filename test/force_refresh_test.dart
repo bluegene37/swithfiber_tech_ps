@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/database/daos/sync_error_logs_dao.dart';
@@ -63,7 +62,7 @@ Map<String, dynamic> _record(int id, String status) => {
 void main() {
   late AppDatabase db;
 
-  setUp(() => db = AppDatabase(NativeDatabase.memory()));
+  setUp(() => db = AppDatabase.forTesting());
   tearDown(() => db.close());
 
   Future<JobRepository> repoWith(_ServerApi api) async {

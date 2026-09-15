@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -42,7 +41,7 @@ void main() {
   late JobsSignals jobs;
 
   setUp(() {
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase.forTesting();
     jobs = JobsSignals(JobRepository(db.jobOrdersDao));
   });
 
@@ -66,7 +65,7 @@ void main() {
         isSynced: true,
         updatedAt: DateTime.now(),
         rawJson: '{"coordinates": "14.469586, 121.195615"}',
-      ).toCompanion());
+      ));
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
   }
@@ -167,7 +166,7 @@ void main() {
 
   testWidgets('bottom tab bar hit areas are at least 48dp tall',
       (tester) async {
-    final db = AppDatabase(NativeDatabase.memory());
+    final db = AppDatabase.forTesting();
     final shellJobs = JobsSignals(JobRepository(db.jobOrdersDao));
     final lcpNap = LcpNapSignals(LcpNapRepository(LcpNapLocationsDao(db)));
     final auth = AuthSignals.instance;
@@ -196,6 +195,15 @@ void main() {
       expect(tester.getSize(tab).height, greaterThanOrEqualTo(48),
           reason: '$label tab');
     }
+
+    // The shell's first load ends with a 900 ms skeleton timer, armed once
+    // the initial database read (real time, on PowerSync's isolate) comes
+    // back. Give that read a moment, then let the timer expire so nothing is
+    // left pending when the tree is torn down.
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
 
     await tester.runAsync(() async {
       await shellJobs.dispose();

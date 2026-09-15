@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/features/jobs/models/job_order_model.dart';
@@ -59,17 +58,17 @@ void main() {
       expect(unassigned.isAssignedTo('tech@switchfiber.ph'), isFalse);
     });
 
-    test('assignedEmail survives the Drift round trip', () async {
-      final db = AppDatabase(NativeDatabase.memory());
+    test('assignedEmail survives the database round trip', () async {
+      final db = AppDatabase.forTesting();
       addTearDown(db.close);
       final dto = JobOrderDto.fromJson(liveRecord(
         id: 7,
         assignedEmail: 'tech@switchfiber.ph',
         modifiedDate: '2026-08-20T09:15:00',
       ));
-      await db.jobOrdersDao.insertOrUpdateJob(dto.toCompanion());
+      await db.jobOrdersDao.insertOrUpdateJob(dto);
       final row = await db.jobOrdersDao.getJobById(7);
-      final back = JobOrderDto.fromDrift(row!);
+      final back = row!;
       expect(back.assignedEmail, 'tech@switchfiber.ph');
       expect(back.modifiedDate, DateTime(2026, 8, 20, 9, 15));
     });
@@ -101,7 +100,7 @@ void main() {
     final now = DateTime(2026, 9, 2, 14, 30);
 
     setUp(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       repository = JobRepository(db.jobOrdersDao);
       signals = JobsSignals(repository, clock: () => now);
 
@@ -148,7 +147,7 @@ void main() {
         liveRecord(id: 7, assignedEmail: 'tech@switchfiber.ph'),
       ];
       await db.jobOrdersDao.insertAllJobs([
-        for (final r in rows) JobOrderDto.fromJson(r).toCompanion(),
+        for (final r in rows) JobOrderDto.fromJson(r),
       ]);
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });

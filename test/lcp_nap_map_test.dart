@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/database/daos/lcp_nap_dao.dart';
@@ -81,7 +80,7 @@ void main() {
     late LcpNapSignals signals;
 
     setUp(() {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       repository = LcpNapRepository(LcpNapLocationsDao(db));
       signals = LcpNapSignals(repository);
     });

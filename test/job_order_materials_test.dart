@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -74,9 +73,9 @@ void main() {
     });
 
     test(
-        'JobOrdersDao persists materialsUsed in rawJson and fromDrift restores it',
+        'JobOrdersDao persists materialsUsed in rawJson and fromRow restores it',
         () async {
-      final db = AppDatabase(NativeDatabase.memory());
+      final db = AppDatabase.forTesting();
       final dao = db.jobOrdersDao;
 
       final initialJob = JobOrderDto(
@@ -87,7 +86,7 @@ void main() {
         status: 'Scheduled',
       );
 
-      await dao.insertOrUpdateJob(initialJob.toCompanion());
+      await dao.insertOrUpdateJob(initialJob);
 
       await dao.updateJobCompletion(
         id: 501,
@@ -104,7 +103,7 @@ void main() {
       final updatedRow = await dao.getJobById(501);
       expect(updatedRow, isNotNull);
 
-      final restoredDto = JobOrderDto.fromDrift(updatedRow!);
+      final restoredDto = updatedRow!;
       expect(restoredDto.materialsUsed['Drop Cable (m)'], 35);
       expect(restoredDto.materialsUsed['SC/APC Fast Connector'], 2);
       expect(restoredDto.materialsUsed['S-Clamp'], 3);
@@ -141,10 +140,10 @@ void main() {
       );
 
       await tester.runAsync(() async {
-        db = AppDatabase(NativeDatabase.memory());
+        db = AppDatabase.forTesting();
         jobsSignals =
             JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
-        await db.jobOrdersDao.insertOrUpdateJob(testJob.toCompanion());
+        await db.jobOrdersDao.insertOrUpdateJob(testJob);
       });
 
       reportSignals = ReportSignals()..setJobOrder(testJob);
@@ -194,7 +193,7 @@ void main() {
         expect(success, isTrue);
 
         final saved = await db.jobOrdersDao.getJobById(701);
-        final savedDto = JobOrderDto.fromDrift(saved!);
+        final savedDto = saved!;
         expect(savedDto.materialsUsed['Drop Cable (m)'], 2);
         expect(savedDto.materialsUsed['SC/APC Fast Connector'], 1);
         expect(savedDto.materialsUsed['S-Clamp'], 1);
@@ -231,10 +230,10 @@ void main() {
       );
 
       await tester.runAsync(() async {
-        db = AppDatabase(NativeDatabase.memory());
+        db = AppDatabase.forTesting();
         jobsSignals =
             JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
-        await db.jobOrdersDao.insertOrUpdateJob(jobWithMaterials.toCompanion());
+        await db.jobOrdersDao.insertOrUpdateJob(jobWithMaterials);
         await Future<void>.delayed(const Duration(milliseconds: 100));
       });
 

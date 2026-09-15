@@ -9,7 +9,7 @@ import '../utils/data_url.dart';
 /// Offloading Base64 images and drawn signatures to discrete files in the
 /// application documents directory prevents SQLite rows from exceeding the
 /// 2MB Android CursorWindow limit and eliminates high memory bloat in
-/// reactive Drift queries.
+/// reactive database queries.
 class PhotoStorageService {
   static PhotoStorageService instance = PhotoStorageService();
 

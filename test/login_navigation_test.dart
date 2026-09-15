@@ -1,4 +1,4 @@
-import 'package:drift/native.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/database/daos/lcp_nap_dao.dart';
@@ -13,9 +13,13 @@ import 'package:swithfiber_tech_ps/main.dart';
 // Note: these use explicit pump() calls rather than pumpAndSettle(), because the
 // splash screen's CircularProgressIndicator animates forever and never settles.
 void main() {
+  // LoginScreen reads the saved endpoint from secure storage on build; the
+  // plugin has no host in a widget test, so give it an empty mock store.
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+
   testWidgets('a successful login replaces the login screen with the shell',
       (WidgetTester tester) async {
-    final db = AppDatabase(NativeDatabase.memory());
+    final db = AppDatabase.forTesting();
     final jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao));
     final lcpNapSignals =
         LcpNapSignals(LcpNapRepository(LcpNapLocationsDao(db)));
@@ -55,6 +59,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Technician Sign In'), findsOneWidget,
         reason: 'signing out must return the technician to the login screen');
+
+    // The shell's first load ends with a 900 ms skeleton timer, armed once
+    // the initial database read (real time, on PowerSync's isolate) comes
+    // back. Give that read a moment, then let the timer expire so nothing is
+    // left pending when the tree is torn down.
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
 
     await tester.runAsync(() async {
       await lcpNapSignals.dispose();

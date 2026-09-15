@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/network/network_exceptions.dart';
@@ -113,7 +112,7 @@ void main() {
       Future<void>.delayed(const Duration(milliseconds: 100));
 
   setUp(() {
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase.forTesting();
     api = FakeJobOrdersApi({
       'Scheduled': [
         _record(1, 'Scheduled', email: 'me@switchfiber.ph'),

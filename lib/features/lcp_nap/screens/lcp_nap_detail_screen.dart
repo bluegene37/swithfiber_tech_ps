@@ -38,7 +38,14 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
   }
 
   Future<void> _loadTileProvider() async {
-    final provider = await MapTiles.provider();
+    final TileProvider provider;
+    try {
+      provider = await MapTiles.provider();
+    } catch (_) {
+      // No usable cache directory (a stripped-down host, or a test): the map
+      // keeps its pins and simply shows no base tiles rather than crashing.
+      return;
+    }
     if (!mounted) return;
     setState(() => _tiles = provider);
   }

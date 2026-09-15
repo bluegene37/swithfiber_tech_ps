@@ -29,7 +29,7 @@ enum HistoryRange {
 }
 
 /// Signals state layer for Job Orders.
-/// Pipes the Drift SQLite reactive stream into Signals and provides instant UI computations.
+/// Pipes the PowerSync reactive stream into Signals and provides instant UI computations.
 class JobsSignals {
   final JobRepository repository;
 
@@ -232,7 +232,7 @@ class JobsSignals {
   late final ReadonlySignal<int> historyThisWeekCount =
       computed(() => _historyCountIn(HistoryRange.week));
 
-  /// Pipe Drift SQLite reactive stream into allJobs signal
+  /// Pipe the PowerSync reactive stream into allJobs signal
   void _initDriftStream() {
     _driftSubscription?.cancel();
     _driftSubscription = repository.watchJobs().listen((jobs) {
@@ -243,9 +243,9 @@ class JobsSignals {
   /// Pull scheduled jobs and the technician's activated history from the
   /// server and refresh the cache.
   ///
-  /// With [initial] set, and only when Drift holds nothing yet, the screen is
+  /// With [initial] set, and only when the local database holds nothing yet, the screen is
   /// walked through the download indicator and a brief skeleton pass before
-  /// the hydrated Drift rows are revealed.
+  /// the hydrated local rows are revealed.
   Future<void> fetchRemote({bool initial = false}) async {
     final showPhases = initial && allJobs.value.isEmpty;
     if (showPhases) loadPhase.value = DataLoadPhase.downloading;
@@ -340,7 +340,7 @@ class JobsSignals {
     historySearch.value = query;
   }
 
-  /// Must be awaited: the Drift stream subscription has to be fully torn down
+  /// Must be awaited: the database stream subscription has to be fully torn down
   /// before the database can be closed, otherwise close() blocks forever.
   Future<void> dispose() async {
     await _driftSubscription?.cancel();

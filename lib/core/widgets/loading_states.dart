@@ -4,7 +4,7 @@ import '../theme/app_theme.dart';
 
 /// Phases the technician data screens move through on first load:
 /// a "downloading" indicator while the API fetch runs, a short skeleton
-/// pass while Drift hydrates the list, then the real data.
+/// pass while the local database hydrates the list, then the real data.
 enum DataLoadPhase { downloading, skeleton, ready }
 
 /// Full-area indicator shown while records are being downloaded from the API.
@@ -97,7 +97,7 @@ class SkeletonBox extends StatelessWidget {
   }
 }
 
-/// Pulsing list of placeholder cards shown while Drift hydrates the screen.
+/// Pulsing list of placeholder cards shown while the local database hydrates the screen.
 class SkeletonCardList extends StatefulWidget {
   final int cardCount;
 

@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -17,7 +16,7 @@ void main() {
   late LcpNapSignals signals;
 
   setUp(() {
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase.forTesting();
     repository = LcpNapRepository(LcpNapLocationsDao(db));
     signals = LcpNapSignals(repository);
   });
@@ -29,7 +28,7 @@ void main() {
 
   group('LCP NAP Locations - Drift to Signals Data Flow Tests', () {
     test(
-        '1. Seeding Drift SQLite automatically triggers Signals reactive update',
+        '1. Seeding the local database automatically triggers Signals reactive update',
         () async {
       await repository.seedSampleLocations();
       await Future.delayed(const Duration(milliseconds: 100));

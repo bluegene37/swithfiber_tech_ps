@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
@@ -58,7 +57,7 @@ void main() {
     late final AppDatabase db;
     late final JobsSignals jobsSignals;
     await tester.runAsync(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       final repository = JobRepository(db.jobOrdersDao);
       jobsSignals = JobsSignals(repository);
       await db.jobOrdersDao.insertOrUpdateJob(
@@ -74,7 +73,7 @@ void main() {
           isSynced: true,
           updatedAt: DateTime.now(),
           rawJson: '{"coordinates": "14.469586, 121.195615"}',
-        ).toCompanion(),
+        ),
       );
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });

@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -21,7 +20,7 @@ void main() {
   late LcpNapSignals lcp;
 
   setUp(() {
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase.forTesting();
     jobs = JobsSignals(JobRepository(db.jobOrdersDao));
     lcp = LcpNapSignals(LcpNapRepository(LcpNapLocationsDao(db)));
   });

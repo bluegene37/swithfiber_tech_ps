@@ -1,31 +1,22 @@
 import 'dart:async';
-import '../../../core/database/app_database.dart';
 import '../../../core/database/daos/lcp_nap_dao.dart';
 import '../../../core/network/api_client.dart';
 import '../models/lcp_nap_model.dart';
 
-/// Repository coordinating LCP NAP locations between API and Drift SQLite.
+/// Repository coordinating LCP NAP locations between the API and the local database.
 class LcpNapRepository {
   final LcpNapLocationsDao _dao;
   final ApiClient _api = ApiClient.instance;
 
   LcpNapRepository(this._dao);
 
-  /// Watch reactive stream of all locations from Drift SQLite
-  Stream<List<LcpNapDto>> watchLocations() {
-    return _dao.watchAllLocations().map(
-          (rows) => rows.map(LcpNapDto.fromDrift).toList(),
-        );
-  }
+  /// Watch reactive stream of all locations from the local database
+  Stream<List<LcpNapDto>> watchLocations() => _dao.watchAllLocations();
 
   /// Watch a specific location by ID
-  Stream<LcpNapDto?> watchLocationById(int id) {
-    return _dao.watchLocationById(id).map(
-          (row) => row != null ? LcpNapDto.fromDrift(row) : null,
-        );
-  }
+  Stream<LcpNapDto?> watchLocationById(int id) => _dao.watchLocationById(id);
 
-  /// Fetch remote records from API and cache in Drift
+  /// Fetch remote records from API and cache them locally
   Future<void> fetchRemoteLocations() async {
     // Purge test/sample demo locations permanently
     await _dao.deleteSampleLocations();
@@ -35,15 +26,12 @@ class LcpNapRepository {
       final data = response.data;
 
       if (data is List) {
-        final companions = <LcpNapLocationsCompanion>[];
-        for (final item in data) {
-          if (item is Map<String, dynamic>) {
-            final dto = LcpNapDto.fromJson(item);
-            companions.add(dto.toCompanion(synced: true));
-          }
-        }
-        if (companions.isNotEmpty) {
-          await _dao.insertAllLocations(companions);
+        final sites = <LcpNapDto>[
+          for (final item in data)
+            if (item is Map<String, dynamic>) LcpNapDto.fromJson(item),
+        ];
+        if (sites.isNotEmpty) {
+          await _dao.insertAllLocations(sites, synced: true);
         }
       }
     } catch (_) {
@@ -127,8 +115,6 @@ class LcpNapRepository {
       ),
     ];
 
-    final companions =
-        sampleSites.map((s) => s.toCompanion(synced: true)).toList();
-    await _dao.insertAllLocations(companions);
+    await _dao.insertAllLocations(sampleSites, synced: true);
   }
 }

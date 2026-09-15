@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -62,7 +61,7 @@ void main() {
       tester.view.physicalSize = const Size(402 * 3.0, 874 * 3.0);
       addTearDown(tester.view.reset);
       await tester.runAsync(() async {
-        db = AppDatabase(NativeDatabase.memory());
+        db = AppDatabase.forTesting();
         jobs = JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
         await db.jobOrdersDao.insertAllJobs([
           JobOrderDto(
@@ -71,7 +70,7 @@ void main() {
             customerName: 'Subscriber One',
             address: 'Lot 1',
             status: 'Scheduled',
-          ).toCompanion(),
+          ),
         ]);
         await Future<void>.delayed(const Duration(milliseconds: 100));
       });

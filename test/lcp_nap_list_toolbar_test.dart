@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -24,7 +23,7 @@ void main() {
     tester.view.physicalSize = const Size(_screenWidth * 3.0, 2400);
     addTearDown(tester.view.reset);
 
-    final db = AppDatabase(NativeDatabase.memory());
+    final db = AppDatabase.forTesting();
     final dao = LcpNapLocationsDao(db);
     final signals = LcpNapSignals(LcpNapRepository(dao));
     addTearDown(() async {
@@ -36,7 +35,7 @@ void main() {
     // plant ("252 LCP Cabinet Groups (1573 NAPs)").
     await tester.runAsync(() async {
       var id = 1;
-      final rows = <LcpNapLocationsCompanion>[];
+      final rows = <LcpNapDto>[];
       for (var lcp = 1; lcp <= 252; lcp++) {
         for (var nap = 1; nap <= 6; nap++) {
           rows.add(LcpNapDto(
@@ -47,7 +46,7 @@ void main() {
             portTotal: 8,
             barangay: 'San Antonio',
             city: 'Pasig',
-          ).toCompanion());
+          ));
         }
       }
       await dao.insertAllLocations(rows);

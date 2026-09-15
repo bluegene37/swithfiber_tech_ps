@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -50,13 +49,12 @@ void main() {
 
   Future<void> seed(WidgetTester tester, List<JobOrderDto> jobs) async {
     await tester.runAsync(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       signals = JobsSignals(JobRepository(db.jobOrdersDao));
       signals.setTechnicianEmail(me);
       for (final j in jobs) {
-        // toCompanion takes the sync flag as its own argument.
-        await db.jobOrdersDao
-            .insertOrUpdateJob(j.toCompanion(synced: j.isSynced));
+        // insertOrUpdateJob takes the sync flag as its own argument.
+        await db.jobOrdersDao.insertOrUpdateJob(j, synced: j.isSynced);
       }
       await Future<void>.delayed(const Duration(milliseconds: 120));
     });

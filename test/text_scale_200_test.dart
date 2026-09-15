@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -33,7 +32,7 @@ void main() {
   late ServiceOrdersSignals serviceOrders;
 
   setUp(() {
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase.forTesting();
     jobs = JobsSignals(JobRepository(db.jobOrdersDao));
     lcp = LcpNapSignals(LcpNapRepository(LcpNapLocationsDao(db)));
     serviceOrders = ServiceOrdersSignals();
@@ -85,7 +84,7 @@ void main() {
         isSynced: true,
         updatedAt: DateTime.now(),
         rawJson: '{"coordinates": "14.469586, 121.195615"}',
-      ).toCompanion());
+      ));
       await LcpNapRepository(LcpNapLocationsDao(db)).seedSampleLocations();
       await Future<void>.delayed(const Duration(milliseconds: 150));
     });

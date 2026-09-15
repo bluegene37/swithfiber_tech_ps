@@ -63,7 +63,14 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
   }
 
   Future<void> _loadTileProvider() async {
-    final provider = await MapTiles.provider();
+    final TileProvider provider;
+    try {
+      provider = await MapTiles.provider();
+    } catch (_) {
+      // No usable cache directory (a stripped-down host, or a test): the map
+      // keeps its pins and simply shows no base tiles rather than crashing.
+      return;
+    }
     if (!mounted) return;
     setState(() => _tiles = provider);
   }
@@ -110,7 +117,7 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
 
   /// Frame every site the first time records arrive, so the technician opens
   /// the map on their whole plant rather than zoomed onto one arbitrary box.
-  /// Sites load asynchronously from Drift, so this cannot be done via
+  /// Sites load asynchronously from the local database, so this cannot be done via
   /// MapOptions' initial camera alone.
   void _fitOnFirstLoad(List<LcpNapDto> sites) {
     if (_didInitialFit || sites.isEmpty) return;

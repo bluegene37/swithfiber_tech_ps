@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/database/daos/lcp_nap_dao.dart';
@@ -62,6 +61,9 @@ void main() {
       () async {
     final adapter = _RecordingAdapter();
     final dio = ApiClient.instance.dio;
+    // This test drives a mocked HTTP adapter through the real client.
+    ApiClient.blockNetworkForTesting = false;
+    addTearDown(() => ApiClient.blockNetworkForTesting = true);
     final original = dio.httpClientAdapter;
     dio.httpClientAdapter = adapter;
     addTearDown(() => dio.httpClientAdapter = original);
@@ -84,7 +86,7 @@ void main() {
 
   testWidgets('the sign-in field asks for a username only, never an email',
       (WidgetTester tester) async {
-    final db = AppDatabase(NativeDatabase.memory());
+    final db = AppDatabase.forTesting();
     final jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao));
     final lcpNapSignals =
         LcpNapSignals(LcpNapRepository(LcpNapLocationsDao(db)));

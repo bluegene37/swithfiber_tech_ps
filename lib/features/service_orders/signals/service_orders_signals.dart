@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:signals_flutter/signals_flutter.dart';
-import '../../../core/database/app_database.dart';
 import '../../../core/database/daos/service_orders_dao.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../models/service_order_model.dart';
@@ -8,12 +7,12 @@ import '../services/service_orders_api.dart';
 import '../services/service_orders_sync_worker.dart';
 
 /// Signals state container for Service Orders (repairs, maintenance, swaps).
-/// Connects reactive Drift SQLite persistence and background sync worker.
+/// Connects reactive local persistence and the background sync worker.
 class ServiceOrdersSignals {
   final ServiceOrdersApi api;
   final ServiceOrdersDao? dao;
   late final ServiceOrdersSyncWorker? syncWorker;
-  StreamSubscription<List<ServiceOrder>>? _driftSubscription;
+  StreamSubscription<List<ServiceOrderDto>>? _driftSubscription;
 
   ServiceOrdersSignals({
     ServiceOrdersApi? api,
@@ -31,7 +30,7 @@ class ServiceOrdersSignals {
     if (dao == null) return;
     _driftSubscription?.cancel();
     _driftSubscription = dao!.watchAllOrders().listen((rows) {
-      allOrders.value = rows.map(ServiceOrderDto.fromDrift).toList();
+      allOrders.value = rows;
     });
   }
 
@@ -131,15 +130,15 @@ class ServiceOrdersSignals {
       final remoteList = await api.fetchServiceOrders();
       if (dao != null) {
         final pending = await dao!.getUnsyncedIds();
-        final companions = <ServiceOrdersCompanion>[];
+        final fresh = <ServiceOrderDto>[];
         final keep = <int>{};
         for (final dto in remoteList) {
           keep.add(dto.id);
           if (pending.contains(dto.id)) continue;
-          companions.add(dto.toCompanion(synced: true));
+          fresh.add(dto);
         }
-        if (companions.isNotEmpty) {
-          await dao!.insertAllOrders(companions);
+        if (fresh.isNotEmpty) {
+          await dao!.insertAllOrders(fresh, synced: true);
         }
         await dao!.deleteSyncedOrdersNotIn(keep);
       } else {
@@ -196,8 +195,8 @@ class ServiceOrdersSignals {
     );
 
     if (dao != null) {
-      // Optimistic local persist to Drift SQLite
-      await dao!.insertOrUpdateOrder(prepared.toCompanion(synced: false));
+      // Optimistic local persist; the sync worker pushes it to the API.
+      await dao!.insertOrUpdateOrder(prepared, synced: false);
       // Proactively trigger background sync
       unawaited(syncWorker?.syncPendingOrders());
       isSyncing.value = false;

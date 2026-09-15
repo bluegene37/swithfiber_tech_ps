@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -55,7 +54,7 @@ void main() {
     late LcpNapSignals signals;
 
     setUp(() {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       signals = LcpNapSignals(LcpNapRepository(LcpNapLocationsDao(db)));
     });
 
@@ -118,7 +117,7 @@ void main() {
     late JobsSignals jobsSignals;
 
     setUp(() {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao));
     });
 
@@ -139,7 +138,7 @@ void main() {
           isSynced: true,
           updatedAt: DateTime.now(),
           rawJson: '{"coordinates": "14.469586, 121.195615"}',
-        ).toCompanion());
+        ));
         await Future<void>.delayed(const Duration(milliseconds: 100));
       });
 

@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -28,7 +27,7 @@ void main() {
     late final AppDatabase db;
     late final JobsSignals jobsSignals;
     await tester.runAsync(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao));
       await db.jobOrdersDao.insertOrUpdateJob(JobOrderDto(
         id: 1,
@@ -36,7 +35,7 @@ void main() {
         customerName: 'Subscriber Santos',
         address: 'Lot 1, Fiber Street',
         status: 'Scheduled',
-      ).toCompanion());
+      ));
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
     final rep = ReportSignals()..setJobOrder(jobsSignals.allJobs.value.first);

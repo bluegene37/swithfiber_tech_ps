@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -151,10 +150,10 @@ void main() {
   });
 
   group('JobOrderDto NAP serialization', () {
-    test('JobOrderDto preserves nap in API json and Drift companion', () {
+    test('JobOrderDto preserves nap in API json and the local row', () {
       final job = _job(1, nap: 'NAP 004');
-      final companion = job.toCompanion();
-      expect(companion.nap.value, 'NAP 004');
+      final row = job.toRow();
+      expect(row['nap'], 'NAP 004');
 
       // The PUT contract carries the selection as napId only; `nap` is a
       // read-side echo the request type does not declare, so it is not sent.
@@ -184,10 +183,10 @@ void main() {
     late ReportSignals reportSignals;
 
     setUp(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       jobsSignals =
           JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
-      await db.jobOrdersDao.insertAllJobs([_job(1).toCompanion()]);
+      await db.jobOrdersDao.insertAllJobs([_job(1)]);
       reportSignals = ReportSignals()
         ..setJobOrder(_job(1))
         ..setSignature(_signature);
@@ -253,7 +252,7 @@ void main() {
       expect(reportSignals.nap.value, 'NAP 005');
       expect(find.text('NAP 005'), findsOneWidget);
 
-      // Submitting report saves the selected NAP to Drift SQLite
+      // Submitting report saves the selected NAP to the local database
       await tester.runAsync(() async {
         await reportSignals.submitReport(jobsSignals.repository);
         await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -261,7 +260,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify in Drift database
-      final savedJob = await db.jobOrdersDao.getJobById(1);
+      // Database reads run on PowerSync's isolate, so they must be awaited
+      // outside the fake-async zone.
+      final savedJob =
+          await tester.runAsync(() => db.jobOrdersDao.getJobById(1));
       expect(savedJob?.nap, 'NAP 005');
     });
   });

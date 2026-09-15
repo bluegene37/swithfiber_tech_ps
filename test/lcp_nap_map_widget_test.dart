@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,7 +30,7 @@ void main() {
   late LcpNapSignals signals;
 
   setUp(() {
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase.forTesting();
     repository = LcpNapRepository(LcpNapLocationsDao(db));
     signals = LcpNapSignals(repository);
   });

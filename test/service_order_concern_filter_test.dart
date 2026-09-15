@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:drift/native.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,8 +27,9 @@ void main() {
   late Directory tempDir;
 
   setUp(() {
-    db = AppDatabase(NativeDatabase.memory());
-    tempDir = Directory.systemTemp.createTempSync('service_orders_concern_test_');
+    db = AppDatabase.forTesting();
+    tempDir =
+        Directory.systemTemp.createTempSync('service_orders_concern_test_');
     PhotoStorageService.instance.setDirectoryForTesting(tempDir);
   });
 
@@ -137,7 +137,8 @@ void main() {
       expect(find.byIcon(CupertinoIcons.cloud_upload), findsOneWidget);
     });
 
-    testWidgets('hides cloud_upload icon when isSynced is true', (tester) async {
+    testWidgets('hides cloud_upload icon when isSynced is true',
+        (tester) async {
       final signals = ServiceOrdersSignals(dao: db.serviceOrdersDao);
       addTearDown(signals.dispose);
 
@@ -165,12 +166,13 @@ void main() {
       addTearDown(tester.view.reset);
 
       final mockApi = _MockApi();
-      final signals = ServiceOrdersSignals(api: mockApi, dao: db.serviceOrdersDao);
+      final signals =
+          ServiceOrdersSignals(api: mockApi, dao: db.serviceOrdersDao);
       addTearDown(signals.dispose);
 
       await tester.runAsync(() async {
         await db.serviceOrdersDao
-            .insertOrUpdateOrder(samplePullout.toCompanion(synced: true));
+            .insertOrUpdateOrder(samplePullout, synced: true);
         await Future<void>.delayed(const Duration(milliseconds: 100));
       });
       await tester.pump();
@@ -204,17 +206,25 @@ void main() {
       await tester.pumpAndSettle();
 
       // Check SQLite order was updated with pulloutRemarks
-      final updatedInDb = await db.serviceOrdersDao.getOrderById(101);
+      // The tap's write and this read both run on PowerSync's isolate, on
+      // real time, so wait outside the fake-async zone and give the write a
+      // moment to commit before reading it back.
+      final updatedInDb = await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        return db.serviceOrdersDao.getOrderById(101);
+      });
       expect(updatedInDb, isNotNull);
       expect(updatedInDb!.pulloutRemarks,
           'Recovered ONU SN HWTC123 with 12V adapter.');
       expect(updatedInDb.visitStatus, 'Done');
     });
 
-    test('submitCompletion offloads and saves houseFrontPicture to Drift',
+    test(
+        'submitCompletion offloads and saves houseFrontPicture to the local database',
         () async {
       final mockApi = _MockApi();
-      final signals = ServiceOrdersSignals(api: mockApi, dao: db.serviceOrdersDao);
+      final signals =
+          ServiceOrdersSignals(api: mockApi, dao: db.serviceOrdersDao);
       addTearDown(signals.dispose);
 
       final dummyPngBytes =

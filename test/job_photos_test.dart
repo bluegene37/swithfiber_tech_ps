@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/utils/data_url.dart';
@@ -43,17 +42,16 @@ void main() {
       expect(dto.hasSignature, isTrue);
     });
 
-    test('survives the Drift round trip', () async {
-      final db = AppDatabase(NativeDatabase.memory());
+    test('survives the database round trip', () async {
+      final db = AppDatabase.forTesting();
       addTearDown(db.close);
       final dto = JobOrderDto.fromJson({
         ..._serverRecord(),
         'houseFront': _photo,
         'clientSignature': _signature,
       });
-      await db.jobOrdersDao.insertOrUpdateJob(dto.toCompanion());
-      final back =
-          JobOrderDto.fromDrift((await db.jobOrdersDao.getJobById(813))!);
+      await db.jobOrdersDao.insertOrUpdateJob(dto);
+      final back = (await db.jobOrdersDao.getJobById(813))!;
       expect(back.houseFront, _photo);
       expect(back.clientSignature, _signature);
       expect(back.speedtestImage, 'uploads/813/speedtestImage.jpg');
@@ -105,11 +103,11 @@ void main() {
         Future<void>.delayed(const Duration(milliseconds: 100));
 
     setUp(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       repository = JobRepository(db.jobOrdersDao);
       signals = JobsSignals(repository);
-      await db.jobOrdersDao.insertOrUpdateJob(
-          JobOrderDto.fromJson(_serverRecord()).toCompanion());
+      await db.jobOrdersDao
+          .insertOrUpdateJob(JobOrderDto.fromJson(_serverRecord()));
       await settle();
     });
 

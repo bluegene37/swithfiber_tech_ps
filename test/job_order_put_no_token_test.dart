@@ -39,6 +39,9 @@ void main() {
 
     adapter = _RecordingAdapter();
     final dio = ApiClient.instance.dio;
+    // This test drives a mocked HTTP adapter through the real client.
+    ApiClient.blockNetworkForTesting = false;
+    addTearDown(() => ApiClient.blockNetworkForTesting = true);
     final original = dio.httpClientAdapter;
     dio.httpClientAdapter = adapter;
     addTearDown(() => dio.httpClientAdapter = original);

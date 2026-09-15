@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -24,7 +23,7 @@ void main() {
       tester.view.physicalSize = const Size(_screenWidth * 3.0, 2400);
       addTearDown(tester.view.reset);
 
-      final db = AppDatabase(NativeDatabase.memory());
+      final db = AppDatabase.forTesting();
       final signals = LcpNapSignals(LcpNapRepository(LcpNapLocationsDao(db)));
       addTearDown(() async {
         await signals.dispose();

@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -40,13 +39,12 @@ void main() {
 
   Future<void> seed(WidgetTester tester, List<JobOrderDto> jobs) async {
     // Database work must run in runAsync: the fake-async test zone never
-    // advances Drift's stream otherwise, and allJobs would stay empty.
+    // advances the database stream otherwise, and allJobs would stay empty.
     await tester.runAsync(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       jobsSignals =
           JobsSignals(JobRepository(db.jobOrdersDao), clock: () => _now);
-      await db.jobOrdersDao
-          .insertAllJobs([for (final j in jobs) j.toCompanion()]);
+      await db.jobOrdersDao.insertAllJobs([for (final j in jobs) j]);
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
   }

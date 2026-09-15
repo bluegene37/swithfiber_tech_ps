@@ -1,8 +1,7 @@
 import 'dart:convert';
-import 'package:drift/drift.dart' show Value;
 import 'package:latlong2/latlong.dart';
-import '../../../core/database/app_database.dart';
 import '../../../core/services/photo_storage_service.dart';
+import '../../../core/database/sql_values.dart';
 
 /// Data Transfer Object representing a Field Repair / Trouble Ticket / Service Order.
 class ServiceOrderDto {
@@ -211,12 +210,13 @@ class ServiceOrderDto {
     );
   }
 
-  factory ServiceOrderDto.fromDrift(ServiceOrder row) {
+  /// Rebuilds a service order from a `service_orders` row.
+  factory ServiceOrderDto.fromRow(Map<String, Object?> row) {
     Map<String, int> materials = const {};
-    if (row.materialsUsedJson != null &&
-        row.materialsUsedJson!.trim().isNotEmpty) {
+    final materialsJson = rowText(row['materials_used_json']);
+    if (materialsJson != null && materialsJson.trim().isNotEmpty) {
       try {
-        final decoded = jsonDecode(row.materialsUsedJson!);
+        final decoded = jsonDecode(materialsJson);
         if (decoded is Map) {
           materials =
               decoded.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
@@ -224,106 +224,105 @@ class ServiceOrderDto {
       } catch (_) {}
     }
     return ServiceOrderDto(
-      id: row.id,
-      accountNumber: row.accountNumber,
-      fullName: row.fullName,
-      contactNumber: row.contactNumber ?? '',
-      emailAddress: row.emailAddress ?? '',
-      address: row.address,
-      barangay: row.barangay,
-      city: row.city,
-      provider: row.provider,
-      plan: row.plan,
-      username: row.username,
-      connectionType: row.connectionType,
-      routerModemSN: row.routerModemSN,
-      lcp: row.lcp,
-      nap: row.nap,
-      port: row.port,
-      vlan: row.vlan,
-      supportStatus: row.supportStatus,
-      concern: row.concern,
-      priorityLevel: row.priorityLevel,
-      visitStatus: row.visitStatus,
-      visitBy: row.visitBy,
-      visitRemarks: row.visitRemarks,
-      assignedEmail: row.assignedEmail,
-      createdDate: row.createdDate,
-      dateInstalled: row.dateInstalled,
-      newRouterModemSN: row.newRouterModemSN,
-      newLCP: row.newLCP,
-      newNAP: row.newNAP,
-      newPORT: row.newPORT,
-      newVLAN: row.newVLAN,
-      routerModel: row.routerModel,
-      pulloutRouterModel: row.pulloutRouterModel,
-      pulloutRouterModelSN: row.pulloutRouterModelSN,
-      pulloutRemarks: row.pulloutRemarks,
+      id: rowInt(row['id']),
+      accountNumber: rowText(row['account_number']) ?? '',
+      fullName: rowText(row['full_name']) ?? '',
+      contactNumber: rowText(row['contact_number']) ?? '',
+      emailAddress: rowText(row['email_address']) ?? '',
+      address: rowText(row['address']) ?? '',
+      barangay: rowText(row['barangay']),
+      city: rowText(row['city']),
+      provider: rowText(row['provider']),
+      plan: rowText(row['plan']),
+      username: rowText(row['username']),
+      connectionType: rowText(row['connection_type']),
+      routerModemSN: rowText(row['router_modem_sn']),
+      lcp: rowText(row['lcp']),
+      nap: rowText(row['nap']),
+      port: rowText(row['port']),
+      vlan: rowText(row['vlan']),
+      supportStatus: rowText(row['support_status']) ?? 'Open',
+      concern: rowText(row['concern']) ?? 'Service Call',
+      priorityLevel: rowText(row['priority_level']),
+      visitStatus: rowText(row['visit_status']),
+      visitBy: rowText(row['visit_by']),
+      visitRemarks: rowText(row['visit_remarks']),
+      assignedEmail: rowText(row['assigned_email']),
+      createdDate: rowDate(row['created_date']),
+      dateInstalled: rowDate(row['date_installed']),
+      newRouterModemSN: rowText(row['new_router_modem_sn']),
+      newLCP: rowText(row['new_lcp']),
+      newNAP: rowText(row['new_nap']),
+      newPORT: rowText(row['new_port']),
+      newVLAN: rowText(row['new_vlan']),
+      routerModel: rowText(row['router_model']),
+      pulloutRouterModel: rowText(row['pullout_router_model']),
+      pulloutRouterModelSN: rowText(row['pullout_router_model_sn']),
+      pulloutRemarks: rowText(row['pullout_remarks']),
       materialsUsed: materials,
-      clientSignature: row.clientSignature,
-      image1: row.image1,
-      image2: row.image2,
-      image3: row.image3,
-      houseFrontPicture: row.houseFrontPicture,
-      addressCoordinates: row.addressCoordinates,
-      serviceCharge: row.serviceCharge,
-      rawJson: row.rawJson,
-      isSynced: row.isSynced,
-      updatedAt: row.updatedAt,
+      clientSignature: rowText(row['client_signature']),
+      image1: rowText(row['image1']),
+      image2: rowText(row['image2']),
+      image3: rowText(row['image3']),
+      houseFrontPicture: rowText(row['house_front_picture']),
+      addressCoordinates: rowText(row['address_coordinates']),
+      serviceCharge: rowDouble(row['service_charge']) ?? 0.0,
+      rawJson: rowText(row['raw_json']),
+      isSynced: rowBool(row['is_synced'], fallback: true),
+      updatedAt: rowDate(row['updated_at']),
     );
   }
 
-  ServiceOrdersCompanion toCompanion({bool synced = true}) {
-    return ServiceOrdersCompanion(
-      id: Value(id),
-      accountNumber: Value(accountNumber),
-      fullName: Value(fullName),
-      contactNumber: Value(contactNumber),
-      emailAddress: Value(emailAddress),
-      address: Value(address),
-      barangay: Value(barangay),
-      city: Value(city),
-      provider: Value(provider),
-      plan: Value(plan),
-      username: Value(username),
-      connectionType: Value(connectionType),
-      routerModemSN: Value(routerModemSN),
-      lcp: Value(lcp),
-      nap: Value(nap),
-      port: Value(port),
-      vlan: Value(vlan),
-      supportStatus: Value(supportStatus),
-      concern: Value(concern),
-      priorityLevel: Value(priorityLevel),
-      visitStatus: Value(visitStatus),
-      visitBy: Value(visitBy),
-      visitRemarks: Value(visitRemarks),
-      assignedEmail: Value(assignedEmail),
-      createdDate: Value(createdDate),
-      dateInstalled: Value(dateInstalled),
-      newRouterModemSN: Value(newRouterModemSN),
-      newLCP: Value(newLCP),
-      newNAP: Value(newNAP),
-      newPORT: Value(newPORT),
-      newVLAN: Value(newVLAN),
-      routerModel: Value(routerModel),
-      pulloutRouterModel: Value(pulloutRouterModel),
-      pulloutRouterModelSN: Value(pulloutRouterModelSN),
-      pulloutRemarks: Value(pulloutRemarks),
-      materialsUsedJson:
-          Value(materialsUsed.isNotEmpty ? jsonEncode(materialsUsed) : null),
-      clientSignature: Value(clientSignature),
-      image1: Value(image1),
-      image2: Value(image2),
-      image3: Value(image3),
-      houseFrontPicture: Value(houseFrontPicture),
-      addressCoordinates: Value(addressCoordinates),
-      serviceCharge: Value(serviceCharge),
-      rawJson: Value(rawJson),
-      isSynced: Value(synced),
-      updatedAt: Value(updatedAt ?? DateTime.now()),
-    );
-  }
+  /// The `service_orders` row for this order.
+  Map<String, Object?> toRow({bool synced = true}) => {
+        'id': idText(id),
+        'account_number': accountNumber,
+        'full_name': fullName,
+        'contact_number': contactNumber,
+        'email_address': emailAddress,
+        'address': address,
+        'barangay': barangay,
+        'city': city,
+        'provider': provider,
+        'plan': plan,
+        'username': username,
+        'connection_type': connectionType,
+        'router_modem_sn': routerModemSN,
+        'lcp': lcp,
+        'nap': nap,
+        'port': port,
+        'vlan': vlan,
+        'support_status': supportStatus,
+        'concern': concern,
+        'priority_level': priorityLevel,
+        'visit_status': visitStatus,
+        'visit_by': visitBy,
+        'visit_remarks': visitRemarks,
+        'assigned_email': assignedEmail,
+        'created_date': dateText(createdDate),
+        'date_installed': dateText(dateInstalled),
+        'new_router_modem_sn': newRouterModemSN,
+        'new_lcp': newLCP,
+        'new_nap': newNAP,
+        'new_port': newPORT,
+        'new_vlan': newVLAN,
+        'router_model': routerModel,
+        'pullout_router_model': pulloutRouterModel,
+        'pullout_router_model_sn': pulloutRouterModelSN,
+        'pullout_remarks': pulloutRemarks,
+        'materials_used_json':
+            materialsUsed.isNotEmpty ? jsonEncode(materialsUsed) : null,
+        'client_signature': clientSignature,
+        'image1': image1,
+        'image2': image2,
+        'image3': image3,
+        'house_front_picture': houseFrontPicture,
+        'address_coordinates': addressCoordinates,
+        'service_charge': serviceCharge,
+        'raw_json': rawJson,
+        'is_synced': boolInt(synced),
+        'updated_at': dateText(updatedAt ?? DateTime.now()),
+      };
 
   /// Converts fields to API JSON map, resolving local photo file paths
   /// back into Base64 data URLs as required by the backend API.

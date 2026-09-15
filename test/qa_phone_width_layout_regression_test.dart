@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -112,7 +111,7 @@ void main() {
       testWidgets('reading, standard and verdict fit at text scale $scale',
           (tester) async {
         await tester.runAsync(() async {
-          db = AppDatabase(NativeDatabase.memory());
+          db = AppDatabase.forTesting();
           jobs = JobsSignals(JobRepository(db.jobOrdersDao));
           await db.jobOrdersDao.insertOrUpdateJob(JobOrderDto(
             id: 3980,
@@ -128,7 +127,7 @@ void main() {
             modemRouterSN: 'QA-SN-20260905',
             isSynced: true,
             updatedAt: DateTime.now(),
-          ).toCompanion());
+          ));
           await Future<void>.delayed(const Duration(milliseconds: 100));
         });
 
@@ -159,7 +158,7 @@ void main() {
     /// short to show the defect.
     Future<void> seed(WidgetTester tester) async {
       await tester.runAsync(() async {
-        db = AppDatabase(NativeDatabase.memory());
+        db = AppDatabase.forTesting();
         final dao = LcpNapLocationsDao(db);
         signals = LcpNapSignals(LcpNapRepository(dao));
         final now = DateTime.now();
@@ -177,7 +176,7 @@ void main() {
             city: 'Cardona',
             isSynced: true,
             updatedAt: now,
-          ).toCompanion());
+          ));
         }
         await Future<void>.delayed(const Duration(milliseconds: 150));
       });

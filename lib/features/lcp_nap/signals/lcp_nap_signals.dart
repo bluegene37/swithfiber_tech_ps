@@ -158,9 +158,9 @@ class LcpNapSignals {
 
   /// Trigger remote API synchronization.
   ///
-  /// With [initial] set, and only when Drift holds nothing yet, the screen is
+  /// With [initial] set, and only when the local database holds nothing yet, the screen is
   /// walked through the download indicator and a brief skeleton pass before
-  /// the hydrated Drift rows are revealed.
+  /// the hydrated local rows are revealed.
   Future<void> fetchRemote({bool initial = false}) async {
     final showPhases = initial && allLocations.value.isEmpty;
     if (showPhases) loadPhase.value = DataLoadPhase.downloading;

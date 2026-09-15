@@ -1,4 +1,3 @@
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/database/daos/sync_error_logs_dao.dart';
@@ -43,7 +42,7 @@ void main() {
   late SyncErrorLogsDao logs;
 
   setUp(() {
-    db = AppDatabase(NativeDatabase.memory());
+    db = AppDatabase.forTesting();
     logs = SyncErrorLogsDao(db);
   });
 
@@ -59,7 +58,8 @@ void main() {
           onsiteStatus: 'Done',
           isSynced: false,
           updatedAt: DateTime.now(),
-        ).toCompanion(synced: false),
+        ),
+        synced: false,
       );
 
   test('a refused push records the status code and the server message',

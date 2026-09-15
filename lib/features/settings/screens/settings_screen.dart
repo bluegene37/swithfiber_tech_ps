@@ -643,8 +643,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
 
-          // Section 4: Offline Storage & Drift Database Cache
-          _buildIosSectionHeader('Offline Storage (Drift SQLite)'),
+          // Section 4: Offline Storage & PowerSync Database Cache
+          _buildIosSectionHeader('Offline Storage (PowerSync SQLite)'),
           _buildIosGroupedCard(
             isDark: isDark,
             padding: const EdgeInsets.all(14),
@@ -672,7 +672,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const SizedBox(height: 8),
                       _buildMetricRow(
-                        'Drift Engine Status',
+                        'PowerSync Engine Status',
                         isSyncing
                             ? 'Synchronizing...'
                             : 'Reactive Stream Active',
@@ -703,7 +703,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           label: Text(
                             isSyncing
                                 ? 'Synchronizing...'
-                                : 'Force Full Sync (Drift ↔ API)',
+                                : 'Force Full Sync (Local ↔ API)',
                           ),
                         ),
                       ),

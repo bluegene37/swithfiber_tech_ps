@@ -21,23 +21,30 @@ void main() {
     });
 
     test('PowerSync schema defines core tables and valid structure', () {
-      expect(powerSyncSchema.tables.length, 3);
+      expect(powerSyncSchema.tables.length, 4);
 
       final tableNames = powerSyncSchema.tables.map((t) => t.name).toList();
       expect(tableNames, contains('job_orders'));
       expect(tableNames, contains('service_orders'));
       expect(tableNames, contains('lcp_nap_locations'));
+      expect(tableNames, contains('sync_error_logs'));
+
+      // Every table stays local-only until the PowerSync service replicates
+      // the backend: a REST pull must not land in the upload queue.
+      expect(powerSyncSchema.tables.every((t) => t.localOnly), isTrue);
 
       expect(() => powerSyncSchema.validate(), returnsNormally);
     });
 
-    test('SwitchFiberBackendConnector returns null when no token exists', () async {
+    test('SwitchFiberBackendConnector returns null when no token exists',
+        () async {
       final connector = SwitchFiberBackendConnector();
       final creds = await connector.fetchCredentials();
       expect(creds, isNull);
     });
 
-    test('SwitchFiberBackendConnector returns credentials when token exists', () async {
+    test('SwitchFiberBackendConnector returns credentials when token exists',
+        () async {
       FlutterSecureStorage.setMockInitialValues({
         AppConstants.keyPowerSyncToken: 'test-jwt-token-123',
       });

@@ -1,5 +1,5 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/database/daos/lcp_nap_dao.dart';
@@ -17,6 +17,10 @@ import 'package:swithfiber_tech_ps/features/reports/widgets/optical_power_gauge.
 import 'package:swithfiber_tech_ps/main.dart';
 
 void main() {
+  // LoginScreen reads the saved endpoint from secure storage on build; the
+  // plugin has no host in a widget test, so give it an empty mock store.
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+
   testWidgets(
       'StatusBadge renders appropriate labels and colors for scheduled and workflow states',
       (WidgetTester tester) async {
@@ -80,7 +84,7 @@ void main() {
     late final JobRepository repository;
     late final JobsSignals jobsSignals;
     await tester.runAsync(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       repository = JobRepository(db.jobOrdersDao);
       jobsSignals = JobsSignals(repository);
       await repository.seedSampleJobs();
@@ -166,7 +170,7 @@ void main() {
     late final JobRepository repository;
     late final JobsSignals jobsSignals;
     await tester.runAsync(() async {
-      db = AppDatabase(NativeDatabase.memory());
+      db = AppDatabase.forTesting();
       repository = JobRepository(db.jobOrdersDao);
       jobsSignals = JobsSignals(repository);
       await repository.seedSampleJobs();
@@ -221,7 +225,7 @@ void main() {
 
   testWidgets('SplashScreen renders official logo branding and title',
       (WidgetTester tester) async {
-    final db = AppDatabase(NativeDatabase.memory());
+    final db = AppDatabase.forTesting();
     final repository = JobRepository(db.jobOrdersDao);
     final jobsSignals = JobsSignals(repository);
     final lcpNapSignals =
@@ -255,7 +259,7 @@ void main() {
   testWidgets(
       'SwitchFiberTechApp directly renders LoginScreen when showSplash is false',
       (WidgetTester tester) async {
-    final db = AppDatabase(NativeDatabase.memory());
+    final db = AppDatabase.forTesting();
     final repository = JobRepository(db.jobOrdersDao);
     final jobsSignals = JobsSignals(repository);
     final lcpNapSignals =
