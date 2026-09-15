@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_search_field.dart';
 import '../models/radius_user_model.dart';
 import '../services/radius_user_service.dart';
+import '../widgets/radius_connection_card.dart';
 
 /// Screen mirroring `https://switchfiber.genexis.dev/disconnection` for reviewing
 /// RADIUS subscriber accounts and toggling live connection/disconnection states.
@@ -167,6 +168,27 @@ class _RadiusDisconnectionsScreenState
                   onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: 10),
+                if (!RadiusConnectionCard.technicianCanToggle) ...[
+                  Row(
+                    key: const ValueKey('radius_admin_only_note'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(CupertinoIcons.lock,
+                          size: 20, color: AppTheme.secondaryInkOf(context)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Connect / disconnect is admin-only for now. This '
+                          'list is read-only; ask the office to change a line.',
+                          style: context.text.labelSmall!.copyWith(
+                            color: AppTheme.secondaryInkOf(context),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                ],
 
                 // Filter Tabs: All, Connected, Disconnected
                 Row(
@@ -295,11 +317,16 @@ class _RadiusDisconnectionsScreenState
                                                   radius: 8)),
                                         )
                                       else
+                                        // Greyed out while connect /
+                                        // disconnect is admin-only; still
+                                        // shows the line state at a glance.
                                         Switch.adaptive(
                                           value: isConnected,
                                           activeTrackColor: AppTheme.success,
-                                          onChanged: (val) =>
-                                              _toggleUser(user, val),
+                                          onChanged: RadiusConnectionCard
+                                                  .technicianCanToggle
+                                              ? (val) => _toggleUser(user, val)
+                                              : null,
                                         ),
                                     ],
                                   ),

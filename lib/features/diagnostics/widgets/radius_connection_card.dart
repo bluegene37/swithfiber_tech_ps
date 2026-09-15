@@ -7,6 +7,14 @@ import '../services/radius_user_service.dart';
 
 /// Card displaying live RADIUS subscriber PPPoE connection telemetry and 1-tap connect/disconnect toggle.
 class RadiusConnectionCard extends StatefulWidget {
+  /// Whether a technician may connect or disconnect the line from the app.
+  ///
+  /// Off for now: cutting or restoring a subscriber's line is an admin
+  /// action done from the office console. The status stays visible so the
+  /// technician can still confirm the line is up after a repair. Flip this
+  /// to `true` to bring the switch back; the handler is still wired.
+  static const bool technicianCanToggle = false;
+
   final String accountName;
   final String? subscriberName;
 
@@ -214,23 +222,48 @@ class _RadiusConnectionCardState extends State<RadiusConnectionCard> {
                         ],
                       ),
                     ),
-                    // Connect / Disconnect Toggle
+                    // Connect / Disconnect Toggle. Greyed out while the
+                    // action is admin-only; a disabled switch still shows
+                    // the line's current state at a glance.
                     if (_isPending)
                       const CupertinoActivityIndicator()
                     else
                       Switch.adaptive(
+                        key: const ValueKey('radius_toggle'),
                         value: isConnected,
                         activeTrackColor: AppTheme.success,
-                        onChanged: (val) => _handleToggle(val),
+                        onChanged: RadiusConnectionCard.technicianCanToggle
+                            ? (val) => _handleToggle(val)
+                            : null,
                       ),
                   ],
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
-                'Toggle to test subscriber line cut or reconnect after repair.',
-                style: context.text.labelSmall,
-              ),
+              if (RadiusConnectionCard.technicianCanToggle)
+                Text(
+                  'Toggle to test subscriber line cut or reconnect after repair.',
+                  style: context.text.labelSmall,
+                )
+              else
+                Row(
+                  key: const ValueKey('radius_admin_only_note'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(CupertinoIcons.lock,
+                        size: 20, color: AppTheme.secondaryInkOf(context)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Connect / disconnect is admin-only for now. Ask the '
+                        'office to change this line.',
+                        style: context.text.labelSmall!.copyWith(
+                          color: AppTheme.secondaryInkOf(context),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ],
         ),
