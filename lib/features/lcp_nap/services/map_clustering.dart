@@ -30,9 +30,12 @@ List<MapCluster> clusterSites(List<LcpNapDto> sites, {required double zoom}) {
   final mappable = sites.where((s) => s.isMappable).toList();
   if (mappable.isEmpty) return const [];
 
-  // ~80px worth of degrees at this zoom, the point where markers start to
-  // collide. 360 degrees spans 256 * 2^zoom pixels in Web Mercator.
-  final cell = 360.0 / (256 * _pow2(zoom)) * 80;
+  // ~120px worth of degrees at this zoom. Markers collide at about 80px,
+  // but a coarser cell keeps the overview to a handful of count badges: the
+  // technician reads how many boxes sit in an area and zooms into the one
+  // they need, instead of scanning dozens of small clusters. 360 degrees
+  // spans 256 * 2^zoom pixels in Web Mercator.
+  final cell = 360.0 / (256 * _pow2(zoom)) * 120;
 
   final buckets = <String, List<LcpNapDto>>{};
   for (final s in mappable) {
