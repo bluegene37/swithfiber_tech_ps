@@ -20,6 +20,7 @@ migrate_working_dir/
 *.pem
 *.p12
 *.pfx
+*.crt
 secrets.json
 
 # IntelliJ / Android Studio related

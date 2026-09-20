@@ -62,6 +62,12 @@ class _JobsMapViewState extends State<JobsMapView> {
   /// Camera zoom the NAP clustering was last computed for.
   double _zoom = 14.5;
   bool _didInitialFit = false;
+
+  /// Screen space the floating controls cover, so a camera fit keeps pins and
+  /// cluster badges out from under them: the place-search strip across the
+  /// top and the 48dp button column down the right edge (see build).
+  static const double _overlayTop = 16 + MapSearchBar.height + 8;
+  static const double _overlayRight = 16 + 48 + 8;
   bool _mapReady = false;
   VoidCallback? _pendingFit;
 
@@ -179,7 +185,8 @@ class _JobsMapViewState extends State<JobsMapView> {
     _mapController.fitCamera(
       CameraFit.bounds(
         bounds: LatLngBounds.fromPoints(points),
-        padding: const EdgeInsets.fromLTRB(40, 40, 40, 160),
+        padding: const EdgeInsets.fromLTRB(
+            40, _overlayTop + 40, _overlayRight + 40, 160),
       ),
     );
   }
@@ -190,7 +197,8 @@ class _JobsMapViewState extends State<JobsMapView> {
       CameraFit.bounds(
         bounds: LatLngBounds.fromPoints(
             cluster.sites.map((s) => s.latLng!).toList()),
-        padding: const EdgeInsets.all(64),
+        padding: const EdgeInsets.fromLTRB(
+            64, _overlayTop + 64, _overlayRight + 64, 64),
       ),
     );
   }

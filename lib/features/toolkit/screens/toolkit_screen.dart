@@ -166,7 +166,7 @@ class ToolkitScreen extends StatelessWidget {
             context: context,
             title: 'Subscriber Disconnections & RADIUS',
             subtitle:
-                'Review RADIUS PPPoE accounts and toggle live line connection/disconnection state.',
+                'Review RADIUS PPPoE accounts and check each line\'s live connection state. Connect / disconnect is admin-only.',
             icon: CupertinoIcons.wifi_slash,
             badge: 'Live RADIUS',
             color: const Color(0xFFEF4444),

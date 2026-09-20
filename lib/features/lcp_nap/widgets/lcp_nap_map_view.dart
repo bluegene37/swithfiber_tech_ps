@@ -53,6 +53,11 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
   bool _showLegend = false;
   double _zoom = 14;
 
+  /// The floating column across the top of the map (place search, the
+  /// unmapped-sites notice, legend and base-layer row). Measured so a camera
+  /// fit can keep pins and cluster badges out from under it.
+  final GlobalKey _overlayKey = GlobalKey();
+
   /// Where the last place search landed, and what was typed to get there.
   LatLng? _searchTarget;
   String? _searchLabel;
@@ -88,6 +93,15 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
     _mapController.move(target, 17);
   }
 
+  /// Pixels the top overlay covers, including its 8px margins, capped so a
+  /// tall overlay (large text, expanded legend) never eats the whole map.
+  double _overlayInset() {
+    final box = _overlayKey.currentContext?.findRenderObject();
+    final height = box is RenderBox && box.hasSize ? box.size.height : 0.0;
+    final cap = _mapController.camera.nonRotatedSize.height * 0.4;
+    return (8 + height + 8).clamp(0.0, cap);
+  }
+
   void _fitToSites(List<LcpNapDto> sites) {
     final points = sites.map((s) => s.latLng!).toList();
     if (points.isEmpty) return;
@@ -98,7 +112,7 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
     _mapController.fitCamera(
       CameraFit.bounds(
         bounds: LatLngBounds.fromPoints(points),
-        padding: const EdgeInsets.all(48),
+        padding: EdgeInsets.fromLTRB(48, 48 + _overlayInset(), 48, 48),
       ),
     );
   }
@@ -151,7 +165,7 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
     _mapController.fitCamera(
       CameraFit.bounds(
         bounds: LatLngBounds.fromPoints(points),
-        padding: const EdgeInsets.all(64),
+        padding: EdgeInsets.fromLTRB(64, 64 + _overlayInset(), 64, 64),
       ),
     );
   }
@@ -262,10 +276,12 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
             // offsets, so a large text setting pushes the controls down
             // rather than drawing them over the search bar and each other.
             Positioned(
+              key: const Key('lcpNapMapOverlay'),
               top: 8,
               left: 8,
               right: 8,
               child: Column(
+                key: _overlayKey,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
