@@ -16,7 +16,7 @@ void main() {
     test('PowerSync default endpoint is correctly configured', () {
       expect(
         AppConstants.defaultPowerSyncEndpoint,
-        'https://6aa61885a77ca1231d27bb58.powersync.journeyapps.com',
+        'http://103.249.198.50:8080',
       );
     });
 
@@ -29,18 +29,26 @@ void main() {
       expect(tableNames, contains('lcp_nap_locations'));
       expect(tableNames, contains('sync_error_logs'));
 
-      // Every table stays local-only until the PowerSync service replicates
-      // the backend: a REST pull must not land in the upload queue.
-      expect(powerSyncSchema.tables.every((t) => t.localOnly), isTrue);
+      // Core business tables replicate with PowerSync; sync_error_logs and lcp_nap remain local-only
+      final jobOrders =
+          powerSyncSchema.tables.firstWhere((t) => t.name == 'job_orders');
+      final serviceOrders =
+          powerSyncSchema.tables.firstWhere((t) => t.name == 'service_orders');
+      expect(jobOrders.localOnly, isFalse);
+      expect(serviceOrders.localOnly, isFalse);
 
       expect(() => powerSyncSchema.validate(), returnsNormally);
     });
 
-    test('SwitchFiberBackendConnector returns null when no token exists',
+    test('SwitchFiberBackendConnector returns dev token fallback when no token exists',
         () async {
       final connector = SwitchFiberBackendConnector();
       final creds = await connector.fetchCredentials();
-      expect(creds, isNull);
+      expect(creds, isNotNull);
+      expect(creds!.token.startsWith('eyJ'), isTrue);
+      expect(creds.userId, 'technician@switchfiber.ph');
+      expect(creds.expiresAt, isNotNull);
+      expect(creds.endpoint, AppConstants.defaultPowerSyncEndpoint);
     });
 
     test('SwitchFiberBackendConnector returns credentials when token exists',

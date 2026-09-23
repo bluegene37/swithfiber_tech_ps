@@ -26,9 +26,13 @@ class AppConstants {
   static const String keyDarkMode = 'dark_mode_enabled';
   static const String keyPowerSyncToken = 'powersync_token';
 
-  // PowerSync Cloud Config
+  // PowerSync Self-Hosted Server Config
   static const String defaultPowerSyncEndpoint =
-      'https://6aa61885a77ca1231d27bb58.powersync.journeyapps.com';
+      'http://103.249.198.50:8080';
+
+  /// Development shared secret matching service.yaml for local/direct sync.
+  static const String devSecretKey =
+      'switchfiber_powersync_dev_secret_key_2026';
 
   // Optical Power dBm Standards (GPON standard)
   static const double opticalMinOptimal = -24.0;

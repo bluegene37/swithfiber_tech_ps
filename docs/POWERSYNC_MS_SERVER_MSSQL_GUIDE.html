@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PowerSync + Microsoft SQL Server Setup & Installation Guide</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 12mm 12mm 14mm 12mm;
+    @bottom-right {
+      content: counter(page);
+    }
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1e293b;
+    line-height: 1.45;
+    font-size: 11.5px;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Header banner */
+  .header {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+    color: #ffffff;
+    padding: 18px 22px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    page-break-inside: avoid;
+  }
+  .header h1 {
+    margin: 0 0 4px 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .header p {
+    margin: 0;
+    font-size: 12px;
+    color: #cbd5e1;
+  }
+  .badge {
+    display: inline-block;
+    background: #3b82f6;
+    color: white;
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    margin-bottom: 6px;
+  }
+
+  /* Section Styling */
+  h2 {
+    font-size: 14px;
+    color: #0f172a;
+    border-bottom: 1.5px solid #cbd5e1;
+    padding-bottom: 3px;
+    margin-top: 18px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    page-break-after: avoid;
+  }
+
+  h3 {
+    font-size: 12.5px;
+    color: #1e3a8a;
+    margin-top: 10px;
+    margin-bottom: 4px;
+    page-break-after: avoid;
+  }
+
+  h4 {
+    font-size: 11px;
+    color: #334155;
+    margin-top: 8px;
+    margin-bottom: 3px;
+    font-weight: 700;
+    page-break-after: avoid;
+  }
+
+  p, ul, ol {
+    margin-top: 0;
+    margin-bottom: 6px;
+  }
+
+  ul, ol {
+    padding-left: 18px;
+  }
+
+  li {
+    margin-bottom: 2px;
+  }
+
+  /* Cards & Boxes */
+  .card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    page-break-inside: avoid;
+  }
+
+  .alert {
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    page-break-inside: avoid;
+  }
+  .alert-warning {
+    background: #fffbeb;
+    border-left: 4px solid #f59e0b;
+    color: #92400e;
+  }
+  .alert-info {
+    background: #eff6ff;
+    border-left: 4px solid #3b82f6;
+    color: #1e40af;
+  }
+  .alert-success {
+    background: #f0fdf4;
+    border-left: 4px solid #10b981;
+    color: #065f46;
+  }
+  .alert-danger {
+    background: #fef2f2;
+    border-left: 4px solid #ef4444;
+    color: #991b1b;
+  }
+
+  /* Code blocks */
+  pre {
+    background: #0f172a;
+    color: #f8fafc;
+    padding: 8px 10px;
+    border-radius: 5px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: 10px;
+    overflow-x: auto;
+    margin: 4px 0 8px 0;
+    line-height: 1.35;
+    page-break-inside: avoid;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    background: #f1f5f9;
+    color: #0f172a;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 10px;
+  }
+
+  pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10px;
+    font-size: 10.5px;
+    page-break-inside: avoid;
+  }
+  th, td {
+    padding: 6px 8px;
+    border: 1px solid #cbd5e1;
+    text-align: left;
+  }
+  th {
+    background: #f1f5f9;
+    color: #0f172a;
+    font-weight: 600;
+  }
+  tr:nth-child(even) {
+    background: #f8fafc;
+  }
+
+  .page-break {
+    page-break-before: always;
+  }
+
+  .diagram {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 9.5px;
+    white-space: pre;
+    line-height: 1.3;
+    margin-bottom: 10px;
+    page-break-inside: avoid;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="badge">Production Architecture & Runbook</span>
+  <h1>PowerSync + Microsoft SQL Server Setup Guide</h1>
+  <p>Self-Hosted Offline-First Real-Time Synchronization Architecture for Windows Server & Mobile Clients</p>
+</div>
+
+<h2>1. Architecture & Data Flow Overview</h2>
+
+<div class="diagram">
++-------------------------------------------------------------------------------------------------+
+|                                    WINDOWS SERVER HOST (e.g. 103.249.198.50)                    |
+|                                                                                                 |
+|   +------------------------------------+          +-----------------------------------------+   |
+|   | Microsoft SQL Server (2019/2022)   |          | Docker Engine (C:\powersync\)           |   |
+|   | Database: SWITCH_Dev               |          |                                         |   |
+|   |                                    |          |  +-----------------------------------+  |   |
+|   |  - JobOrder                        |  CDC     |  | powersync (Core v1.26.1)          |  |   |
+|   |  - ServiceOrders                   |--------->|  |   - Replicator Engine             |  |   |
+|   |  - _powersync_checkpoints          | Log Scan |  |   - CDC Poller (1000ms)           |  |   |
+|   |  - SQL Server Agent (CDC Jobs)     | Port 1433|  |   - Router Engine (Port 8080)     |  |   |
+|   +------------------------------------+          |  +-----------------------------------+  |   |
+|                                                   |                   |                     |   |
+|                                                   |                   v                     |   |
+|                                                   |  +-----------------------------------+  |   |
+|                                                   |  | powersync_storage (PostgreSQL 16) |  |   |
+|                                                   |  |   - Bucket storage & checkpoints  |  |   |
+|                                                   |  +-----------------------------------+  |   |
+|                                                   +-----------------------------------------+   |
++-------------------------------------------------------------------------------------------------+
+                                      ^
+                                      | HTTP / WebSockets (Port 8080)
+                                      | Dynamic JWT (< 86,400s)
+                                      v
++-------------------------------------------------------------------------------------------------+
+| FLUTTER CLIENT APPS (Android / iOS)                                                             |
+| - Local SQLite Database (Replicated Views)                                                      |
+| - PowerSync Dart Core 2.4.0 (Offline-First CRUD + Background Sync Stream)                       |
++-------------------------------------------------------------------------------------------------+
+</div>
+
+<p>
+  PowerSync acts as a high-performance synchronization gateway between your central <strong>Microsoft SQL Server</strong> and remote client devices. It utilizes SQL Server's native <strong>Change Data Capture (CDC)</strong> to stream incremental changes in real time (~1 second latency) into a local PostgreSQL bucket cache, which distributes data to connected mobile apps.
+</p>
+
+<h2>2. Phase 1: Windows Server Prerequisites</h2>
+
+<div class="card">
+  <h4>Mandatory Host Requirements</h4>
+  <ul>
+    <li><strong>Windows Server</strong>: 2019, 2022, or 2025 (or Windows 10/11 Pro for local development).</li>
+    <li><strong>Docker Engine</strong>: Docker Desktop for Windows or Docker CE with Docker Compose v2.</li>
+    <li><strong>Microsoft SQL Server</strong>: Developer, Standard, or Enterprise Edition (SQL Server Express does <em>not</em> support CDC).</li>
+    <li><strong>SQL Server Agent</strong>: Required for executing background CDC log scanning jobs.</li>
+  </ul>
+</div>
+
+<h3>Step 2.1: Enable Mixed Mode Authentication</h3>
+<p>PowerSync connects using SQL Server Authentication. Ensure SQL Server allows both Windows and SQL Logins:</p>
+<ol>
+  <li>Open <strong>SQL Server Management Studio (SSMS)</strong>.</li>
+  <li>Right-click the server instance at the top of Object Explorer &rarr; <strong>Properties</strong>.</li>
+  <li>Navigate to <strong>Security</strong> &rarr; Select <strong>SQL Server and Windows Authentication mode</strong>.</li>
+  <li>Click <strong>OK</strong> and restart the SQL Server service.</li>
+</ol>
+
+<h3>Step 2.2: Ensure SQL Server Agent is Running</h3>
+<p>Run the following command in an administrative PowerShell terminal to start and configure the SQL Server Agent for your instance:</p>
+<pre><code># Check and start SQL Server Agent
+Get-Service -Name "*SQL*AGENT*"
+Start-Service -Name "SQLAgent$MSSQLSERVER01"   # Use your active instance name
+Set-Service -Name "SQLAgent$MSSQLSERVER01" -StartupType Automatic</code></pre>
+
+<div class="page-break"></div>
+
+<h2>3. Phase 2: Database CDC & User Configuration (MSSQL)</h2>
+
+<p>Execute the following script against your SQL Server instance using PowerShell or SSMS to configure the target database (e.g. <code>SWITCH_Dev</code>):</p>
+
+<h3>Step 3.1: Enable CDC on the Database & Target Tables</h3>
+<pre><code>USE [SWITCH_Dev];
+GO
+
+-- 1. Enable CDC on the database
+IF (SELECT is_cdc_enabled FROM sys.databases WHERE name = 'SWITCH_Dev') = 0
+BEGIN
+    EXEC sys.sp_cdc_enable_db;
+END
+GO
+
+-- 2. Create PowerSync coordination checkpoint table
+IF OBJECT_ID(N'dbo._powersync_checkpoints', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo._powersync_checkpoints (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        last_updated DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+    );
+END
+GO
+
+-- 3. Enable CDC on replicated tables and checkpoints
+IF NOT EXISTS (SELECT 1 FROM cdc.change_tables WHERE capture_instance = 'dbo_JobOrder')
+BEGIN
+    EXEC sys.sp_cdc_enable_table
+        @source_schema = N'dbo',
+        @source_name = N'JobOrder',
+        @role_name = NULL,
+        @supports_net_changes = 0;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM cdc.change_tables WHERE capture_instance = 'dbo_ServiceOrders')
+BEGIN
+    EXEC sys.sp_cdc_enable_table
+        @source_schema = N'dbo',
+        @source_name = N'ServiceOrders',
+        @role_name = NULL,
+        @supports_net_changes = 0;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM cdc.change_tables WHERE capture_instance = 'dbo__powersync_checkpoints')
+BEGIN
+    EXEC sys.sp_cdc_enable_table
+        @source_schema = N'dbo',
+        @source_name = N'_powersync_checkpoints',
+        @role_name = NULL,
+        @supports_net_changes = 0;
+END
+GO</code></pre>
+
+<h3>Step 3.2: Create Dedicated Replicator User (<code>powersync_user</code>)</h3>
+<div class="alert alert-warning">
+  <strong>CRITICAL GOTCHA:</strong> Always specify <code>CHECK_POLICY = OFF, CHECK_EXPIRATION = OFF</code> when creating the SQL login. If left enabled, Windows password expiration or "User must change password at next login" will reject PowerSync connections with <code>ELOGIN: Login failed for user</code>.
+</div>
+
+<pre><code>USE [master];
+GO
+
+-- 1. Create or reset SQL Login with policy checks disabled
+IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = N'powersync_user')
+BEGIN
+    CREATE LOGIN [powersync_user] WITH PASSWORD = 'SwitchFiberPS2026', CHECK_POLICY = OFF, CHECK_EXPIRATION = OFF;
+END
+ELSE
+BEGIN
+    ALTER LOGIN [powersync_user] WITH PASSWORD = 'SwitchFiberPS2026', CHECK_POLICY = OFF, CHECK_EXPIRATION = OFF;
+END
+GO
+
+ALTER LOGIN [powersync_user] ENABLE;
+GRANT CONNECT SQL TO [powersync_user];
+GO
+
+-- 2. Grant access in the target database
+USE [SWITCH_Dev];
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = N'powersync_user')
+BEGIN
+    CREATE USER [powersync_user] FOR LOGIN [powersync_user];
+END
+GO
+
+ALTER ROLE [db_owner] ADD MEMBER [powersync_user];
+GRANT VIEW CHANGE TRACKING ON SCHEMA::dbo TO [powersync_user];
+GRANT SELECT ON SCHEMA::cdc TO [powersync_user];
+GO</code></pre>
+
+<h3>Step 3.3: Initialize the Initial CDC LSN Boundary (Crucial Step)</h3>
+<div class="alert alert-danger">
+  <strong>CRITICAL GOTCHA:</strong> When CDC is first activated, <code>cdc.lsn_time_mapping</code> contains 0 rows, causing <code>sys.fn_cdc_get_max_lsn()</code> to return <code>NULL</code>. In PowerSync, this triggers <code>TypeError: Cannot read properties of null (reading 'length') at LSN.fromBinary</code>. To fix this permanently, write one transaction and force an immediate log scan:
+</div>
+
+<pre><code>USE [SWITCH_Dev];
+INSERT INTO dbo._powersync_checkpoints (last_updated) VALUES (GETUTCDATE());
+EXEC sys.sp_cdc_scan;
+
+-- Verify that max_lsn is now populated (non-null)
+SELECT count(*) AS lsn_mapping_count FROM cdc.lsn_time_mapping;
+SELECT sys.fn_cdc_get_max_lsn() AS max_lsn;</code></pre>
+
+<div class="page-break"></div>
+
+<h2>4. Phase 3: PowerSync Docker Environment Setup</h2>
+
+<p>Create the directory structure on the Windows Server under <code>C:\powersync</code>:</p>
+<pre><code>C:\powersync\
+├── docker-compose.yaml
+├── .env
+└── config\
+    └── service.yaml</code></pre>
+
+<h3>Step 4.1: <code>C:\powersync\docker-compose.yaml</code></h3>
+<pre><code>services:
+  powersync:
+    image: journeyapps/powersync-service:latest
+    container_name: powersync
+    restart: unless-stopped
+    command: ["start", "-r", "unified", "-c", "/config/service.yaml"]
+    ports:
+      - "8080:8080"
+    environment:
+      - "PS_DATA_SOURCE_URI=mssql://powersync_user:SwitchFiberPS2026@host.docker.internal:1433/SWITCH_Dev"
+      - "NODE_OPTIONS=--max-old-space-size=384"
+    volumes:
+      - ./config:/config:ro
+    depends_on:
+      - storage-db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  storage-db:
+    image: postgres:16-alpine
+    container_name: powersync_storage
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: powersync_storage
+      POSTGRES_PASSWORD: SwitchFiberPS2026!
+      POSTGRES_DB: powersync_storage
+    volumes:
+      - storage_data:/var/lib/postgresql/data
+
+volumes:
+  storage_data:</code></pre>
+
+<h3>Step 4.2: <code>C:\powersync\.env</code></h3>
+<pre><code>PS_DATA_SOURCE_URI=mssql://powersync_user:SwitchFiberPS2026@host.docker.internal:1433/SWITCH_Dev</code></pre>
+
+<h3>Step 4.3: <code>C:\powersync\config\service.yaml</code></h3>
+<div class="alert alert-info">
+  <strong>PROVEN ARCHITECTURAL FIX:</strong> Always embed sync rules <strong>inline</strong> under <code>sync_config.content</code> with an explicit <code>version_label: 'v1'</code>. Storing sync rules in a separate mounted file causes Windows CRLF (<code>\r\n</code>) vs Linux LF (<code>\n</code>) string inequality checks in PowerSync's <code>AbstractReplicator.ts</code>, which will stall replication and throw <code>PSYNC_S2302: No sync config available</code>.
+</div>
+
+<pre><code>port: 8080
+
+replication:
+  connections:
+    - type: mssql
+      uri: !env PS_DATA_SOURCE_URI
+      schema: dbo
+      additionalConfig:
+        pollingIntervalMs: 1000
+        pollingBatchSize: 10
+        trustServerCertificate: true
+
+storage:
+  type: postgresql
+  uri: postgresql://powersync_storage:SwitchFiberPS2026!@storage-db:5432/powersync_storage
+  sslmode: disable
+
+sync_config:
+  version_label: 'v1'
+  content: |
+    config:
+      edition: 3
+
+    streams:
+      # 1. Job orders stream (mapped to mobile job_orders table)
+      assigned_job_orders:
+        auto_subscribe: true
+        query: |
+          SELECT 
+            CAST(Id AS TEXT) AS id,
+            AccountNo AS ticket_number,
+            FirstName || ' ' || LastName AS customer_name,
+            ContactNumber AS contact_number,
+            Address AS address,
+            Barangay AS barangay,
+            City AS city,
+            Choose_Plan AS plan_name,
+            PlanId AS plan_id,
+            Status AS status,
+            OnsiteStatus AS onsite_status,
+            OnsiteRemarks AS onsite_remarks,
+            StatusRemarks AS status_remarks,
+            ModemRouterSN AS modem_router_sn,
+            RouterModel AS router_model,
+            LcpId AS lcp_id,
+            NapId AS nap_id,
+            Nap AS nap,
+            PortId AS port_id,
+            VlanId AS vlan_id,
+            DateInstalled AS date_installed,
+            SetupImage AS setup_image,
+            SpeedtestImage AS speedtest_image,
+            PortLabelImage AS port_label_image,
+            SignedContractImage AS signed_contract_image,
+            BoxReadingImage AS box_reading_image,
+            RouterReadingImage AS router_reading_image,
+            ClientSignature AS client_signature,
+            HouseFront AS house_front,
+            AssignedEmail AS assigned_email,
+            ModifiedDate AS modified_date
+          FROM JobOrder AS job_orders
+
+      # 2. Service orders stream (mapped to mobile service_orders table)
+      assigned_service_orders:
+        auto_subscribe: true
+        query: |
+          SELECT 
+            CAST(id AS TEXT) AS id,
+            accountNumber AS account_number,
+            FullName AS full_name,
+            ContactNumber AS contact_number,
+            EmailAddress AS email_address,
+            Address AS address,
+            Barangay AS barangay,
+            City AS city,
+            Provider AS provider,
+            Plan AS plan,
+            Username AS username,
+            ConnectionType AS connection_type,
+            RouterModemSN AS router_modem_sn,
+            LCP AS lcp,
+            NAP AS nap,
+            PORT AS port,
+            VLAN AS vlan,
+            SupportStatus AS support_status,
+            Concern AS concern,
+            PriorityLevel AS priority_level,
+            VisitStatus AS visit_status,
+            VisitBy AS visit_by,
+            VisitRemarks AS visit_remarks,
+            AssignedEmail AS assigned_email,
+            createdDate AS created_date,
+            DateInstalled AS date_installed,
+            NewRouterModemSN AS new_router_modem_sn,
+            NewLCP AS new_lcp,
+            NewNAP AS new_nap,
+            NewPort AS new_port,
+            NewVLAN AS new_vlan,
+            RouterModel AS router_model,
+            pulloutRemarks AS pullout_remarks,
+            PulloutRouterModel AS pullout_router_model,
+            PulloutRouterModelSN AS pullout_router_model_sn,
+            ClientSignature AS client_signature,
+            Image1 AS image1,
+            Image2 AS image2,
+            Image3 AS image3,
+            housefrontpicture AS house_front_picture,
+            addressCoordinates AS address_coordinates,
+            ServiceCharge AS service_charge
+          FROM ServiceOrders AS service_orders
+
+client_auth:
+  audience: ['powersync']
+  jwks:
+    keys:
+      - kty: 'oct'
+        alg: 'HS256'
+        k: 'c3dpdGNoZmliZXJfcG93ZXJzeW5jX2Rldl9zZWNyZXRfa2V5XzIwMjY'
+        kid: 'dev-key'
+
+system:
+  logging:
+    level: info
+    format: text
+
+telemetry:
+  disable_telemetry_sharing: false</code></pre>
+
+<div class="page-break"></div>
+
+<h2>5. Phase 4: Windows Firewall & Service Deployment</h2>
+
+<h3>Step 5.1: Open Inbound Firewall Port</h3>
+<p>In an administrative PowerShell terminal, open port 8080 for incoming mobile client connections:</p>
+<pre><code>New-NetFirewallRule -DisplayName "PowerSync Service Port 8080" `
+    -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow</code></pre>
+
+<h3>Step 5.2: Launch the Containers</h3>
+<pre><code>cd C:\powersync
+docker compose down -v      # Wipes stale storage state on initial setup
+docker compose up -d
+docker logs powersync -f    # Monitor live output (Ctrl+C to exit)</code></pre>
+
+<h3>Step 5.3: What Verified Success Looks Like</h3>
+<div class="alert alert-success">
+  When operating correctly, <code>docker logs powersync</code> will report the following exact sequence:
+</div>
+<pre><code>info: Loaded sync config v1 {"name":"Replicator:mssql-SWITCH_Dev"}
+info: Sync config updated
+info: [powersync_1_...][v1] Resuming snapshot at 00000062:00004616:0005.
+info: [powersync_1_...][v1] Skipping table [[dbo].[JobOrder]] - snapshot already done.
+info: [powersync_1_...][v1] Skipping table [[dbo].[ServiceOrders]] - snapshot already done.
+info: [powersync_1_...][v1] Activated new replication stream at 00000062:00004737:0004
+info: [powersync_1_...][v1] Streaming changes from: 00000062:00004737:0004
+info: [powersync_1_...][v1] CDC polling started with interval of 1000ms...
+info: Sync stream started {"client_id":"...","user_id":"technician@switchfiber.ph"}
+info: New checkpoint: 0 | buckets: 2 ["1#assigned_job_orders|0[]","1#assigned_service_orders|0[]"]
+info: checkpoint_complete: 0 {"data_synced_bytes":505,"status":200}
+info: GET /write-checkpoint2.json ... status: 200</code></pre>
+
+<h2>6. Phase 5: Troubleshooting & Comprehensive "Gotchas" Runbook</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 25%;">Error / Symptom</th>
+      <th style="width: 35%;">Root Cause</th>
+      <th style="width: 40%;">Exact Solution</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>PSYNC_S2302 (500)</strong><br><code>No sync config available</code></td>
+      <td>The replicator skipped activating the sync stream because <code>processingConfig.sync_rules_content == loadedSyncRules</code> failed due to Windows CRLF (<code>\r\n</code>) vs Linux LF (<code>\n</code>) string differences.</td>
+      <td>Embed sync rules directly inline inside <code>service.yaml</code> under <code>sync_config.content</code> with an explicit <code>version_label: 'v1'</code>. Run <code>docker compose down -v</code> to clear stale postgres rows.</td>
+    </tr>
+    <tr>
+      <td><strong>Failed to update sync config</strong><br><code>Unknown function</code></td>
+      <td>Functions like <code>CONCAT()</code>, <code>COALESCE()</code>, or <code>ISNULL()</code> are not supported in PowerSync sync rule queries.</td>
+      <td>Use SQLite-standard <code>||</code> concatenation syntax: <code>FirstName || ' ' || LastName AS customer_name</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>ELOGIN</strong><br><code>Login failed for user 'powersync_user'</code></td>
+      <td>SQL Server in Windows Authentication only mode, user password expired / locked by policy, or password in <code>docker-compose.yaml</code> has special delimiter characters (like <code>!</code>).</td>
+      <td>Use an alphanumeric password like <code>SwitchFiberPS2026</code>. Execute <code>ALTER LOGIN [powersync_user] WITH PASSWORD='...', CHECK_POLICY=OFF, CHECK_EXPIRATION=OFF;</code> and enable Mixed Mode authentication.</td>
+    </tr>
+    <tr>
+      <td><strong>TypeError</strong><br><code>Cannot read properties of null (reading 'length')</code></td>
+      <td><code>sys.fn_cdc_get_max_lsn()</code> returned <code>NULL</code> because CDC was newly enabled and no transactions had been logged in <code>cdc.lsn_time_mapping</code>.</td>
+      <td>Run: <code>INSERT INTO dbo._powersync_checkpoints (last_updated) VALUES (GETUTCDATE()); EXEC sys.sp_cdc_scan;</code> to populate the initial LSN.</td>
+    </tr>
+    <tr>
+      <td><strong>PSYNC_S2104 (401)</strong><br><code>Token must expire in a maximum of 86400 seconds</code></td>
+      <td>Client JWT token was signed with an expiration longer than PowerSync's strict 24-hour limit (86,400 seconds).</td>
+      <td>In Flutter backend connector, sign tokens with a lifetime of 23 hours: <code>DateTime.now().toUtc().add(const Duration(hours: 23))</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>Multi-Instance Conflict</strong><br><code>SQLSERVERAGENT cannot start</code></td>
+      <td>The server has multiple SQL instances (e.g. default <code>MSSQLSERVER</code> stopped, but named instance <code>MSSQLSERVER01</code> active).</td>
+      <td>Check active services with <code>Get-Service -Name "*MSSQL*"</code>. Ensure the active instance's agent (e.g. <code>SQLAgent$MSSQLSERVER01</code>) is set to Automatic and Running.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="page-break"></div>
+
+<h2>7. Phase 6: Mobile Client (Flutter) Configuration</h2>
+
+<h3>Step 7.1: Configure PowerSync Endpoint</h3>
+<p>In <code>lib/core/constants/app_constants.dart</code>, set the endpoint to your server's IP address on port 8080:</p>
+<pre><code>class AppConstants {
+  static const String defaultPowerSyncEndpoint = 'http://103.249.198.50:8080';
+  static const String devSecretKey = 'switchfiber_powersync_dev_secret_key_2026';
+}</code></pre>
+
+<h3>Step 7.2: Allow Cleartext HTTP Traffic on Mobile</h3>
+<p>Because the development server uses HTTP, ensure cleartext traffic is permitted in mobile manifests:</p>
+<h4>Android (<code>android/app/src/main/AndroidManifest.xml</code>):</h4>
+<pre><code>&lt;application
+    android:label="Switch Fiber Tech"
+    android:name="${applicationName}"
+    android:icon="@mipmap/ic_launcher"
+    android:usesCleartextTraffic="true"&gt;</code></pre>
+
+<h4>iOS (<code>ios/Runner/Info.plist</code>):</h4>
+<pre><code>&lt;key&gt;NSAppTransportSecurity&lt;/key&gt;
+&lt;dict&gt;
+    &lt;key&gt;NSAllowsArbitraryLoads&lt;/key&gt;
+    &lt;true/&gt;
+&lt;/dict&gt;</code></pre>
+
+<h3>Step 7.3: Dynamic Client JWT Signing (HMAC-SHA256)</h3>
+<p>In <code>lib/core/sync/powersync_backend_connector.dart</code>, dynamically generate the JWT with a 23-hour lifespan:</p>
+<pre><code>import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:powersync/powersync.dart';
+
+class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
+  @override
+  Future&lt;PowerSyncCredentials?&gt; fetchCredentials() async {
+    final now = DateTime.now().toUtc();
+    final expiresAt = now.add(const Duration(hours: 23));
+
+    final header = base64Url.encode(utf8.encode(jsonEncode({
+      'alg': 'HS256',
+      'typ': 'JWT',
+      'kid': 'dev-key'
+    }))).replaceAll('=', '');
+
+    final payload = base64Url.encode(utf8.encode(jsonEncode({
+      'sub': 'technician@switchfiber.ph',
+      'aud': 'powersync',
+      'iat': now.millisecondsSinceEpoch ~/ 1000,
+      'exp': expiresAt.millisecondsSinceEpoch ~/ 1000,
+    }))).replaceAll('=', '');
+
+    final secretBytes = utf8.encode('switchfiber_powersync_dev_secret_key_2026');
+    final hmac = Hmac(sha256, secretBytes);
+    final signature = base64Url.encode(hmac.convert(utf8.encode('$header.$payload')).bytes).replaceAll('=', '');
+
+    final token = '$header.$payload.$signature';
+    return PowerSyncCredentials(
+      endpoint: 'http://103.249.198.50:8080',
+      token: token,
+      userId: 'technician@switchfiber.ph',
+      expiresAt: expiresAt,
+    );
+  }
+}</code></pre>
+
+<div class="card" style="margin-top: 15px; border-left: 4px solid #10b981;">
+  <h4 style="color: #065f46; margin: 0 0 4px 0;">Summary of End-to-End Success</h4>
+  <p style="margin: 0; font-size: 11px;">
+    With this configuration in place, the entire system is fully autonomous. Any job orders or repairs dispatched in Microsoft SQL Server replicate directly to mobile technicians' local SQLite databases within ~1 second, with full offline operation and bidirectional checkpointing.
+  </p>
+</div>
+
+</body>
+</html>

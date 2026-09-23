@@ -49,19 +49,16 @@ class PowerSyncService {
     _db = database;
   }
 
-  /// Joins the PowerSync Cloud connection if, and only if, a dedicated
-  /// PowerSync token is stored. Every table is local-only today, so the
-  /// connection carries nothing yet; the gate keeps the sync client from
-  /// retrying forever with the API's own JWT, which the PowerSync instance
-  /// does not accept.
+  /// Connects to the PowerSync service using the configured connector.
   Future<void> connectIfConfigured({SecureStorageService? storage}) async {
     final database = _db;
     final connector = _connector;
     if (database == null || connector == null || database.connected) return;
-    final store = storage ?? SecureStorageService();
-    final token = await store.read(AppConstants.keyPowerSyncToken);
-    if (token == null || token.isEmpty) return;
-    await database.connect(connector: connector);
+    try {
+      await database.connect(connector: connector);
+    } catch (_) {
+      // Offline or initial network failure: PowerSync client retries automatically.
+    }
   }
 
   /// Disconnects from PowerSync and clears local database storage (e.g. on logout).
