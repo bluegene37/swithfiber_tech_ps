@@ -35,7 +35,6 @@ void main() async {
   final lcpNapRepository = LcpNapRepository(database.lcpNapLocationsDao);
   final serviceOrdersSignals =
       ServiceOrdersSignals(dao: database.serviceOrdersDao);
-  unawaited(powerSync.connectIfConfigured());
 
   // 2. Initialize Signals State Layer
   final authSignals = AuthSignals.instance;
@@ -56,6 +55,9 @@ void main() async {
   // 5. Restore display preferences and the active technician session
   await SettingsSignals.instance.restore();
   await authSignals.restoreSession();
+
+  // 6. Connect PowerSync cloud sync with active technician session
+  unawaited(powerSync.connectIfConfigured());
 
   runApp(
     SwitchFiberTechApp(

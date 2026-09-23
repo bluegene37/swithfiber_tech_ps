@@ -64,6 +64,19 @@ void main() {
       expect(creds.endpoint, AppConstants.defaultPowerSyncEndpoint);
     });
 
+    test('SwitchFiberBackendConnector extracts logged-in technician email from session',
+        () async {
+      FlutterSecureStorage.setMockInitialValues({
+        AppConstants.keyUserSession:
+            '{"id":42,"username":"tech_juan","email":"juan.delacruz@switchfiber.ph"}',
+      });
+
+      final connector = SwitchFiberBackendConnector();
+      final creds = await connector.fetchCredentials();
+      expect(creds, isNotNull);
+      expect(creds!.userId, 'juan.delacruz@switchfiber.ph');
+    });
+
     test('PowerSyncService singleton starts uninitialized', () {
       final service = PowerSyncService.instance;
       expect(service.isInitialized, isFalse);

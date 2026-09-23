@@ -3,6 +3,7 @@ import 'package:crypto/crypto.dart';
 import 'package:powersync/powersync.dart';
 import 'package:swithfiber_tech_ps/core/constants/app_constants.dart';
 import 'package:swithfiber_tech_ps/core/storage/secure_storage_service.dart';
+import 'package:swithfiber_tech_ps/features/auth/signals/auth_signals.dart';
 
 /// Backend connector that supplies PowerSync authentication tokens
 /// and handles outbound local CRUD mutations.
@@ -18,6 +19,38 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
 
   @override
   Future<PowerSyncCredentials?> fetchCredentials() async {
+    // 0. Determine current logged-in technician identity from session or auth state
+    String currentUserId = 'technician@switchfiber.ph';
+    try {
+      final inMemoryUser = AuthSignals.instance.currentUser.value;
+      if (inMemoryUser != null) {
+        final email = inMemoryUser.email.trim();
+        final username = inMemoryUser.username.trim();
+        if (email.isNotEmpty) {
+          currentUserId = email;
+        } else if (username.isNotEmpty) {
+          currentUserId =
+              username.contains('@') ? username : '$username@switchfiber.ph';
+        }
+      } else {
+        final sessionJson = await _storage.getUserSession();
+        if (sessionJson != null && sessionJson.isNotEmpty) {
+          final sessionMap = jsonDecode(sessionJson);
+          if (sessionMap is Map<String, dynamic>) {
+            final email = sessionMap['email']?.toString().trim();
+            final username = sessionMap['username']?.toString().trim();
+            if (email != null && email.isNotEmpty) {
+              currentUserId = email;
+            } else if (username != null && username.isNotEmpty) {
+              currentUserId = username.contains('@')
+                  ? username
+                  : '$username@switchfiber.ph';
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
     // 1. Check for a dedicated PowerSync token or user session JWT
     final storedToken = await _storage.read(AppConstants.keyPowerSyncToken) ??
         await _storage.read(AppConstants.keyJwtToken);
@@ -26,6 +59,7 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
       return PowerSyncCredentials(
         endpoint: _endpoint,
         token: storedToken,
+        userId: currentUserId,
       );
     }
 
@@ -39,7 +73,7 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
 
     final header = jsonEncode({'alg': 'HS256', 'typ': 'JWT', 'kid': 'dev-key'});
     final payload = jsonEncode({
-      'sub': 'technician@switchfiber.ph',
+      'sub': currentUserId,
       'aud': 'powersync',
       'iat': now,
       'exp': exp,
@@ -58,7 +92,7 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
     return PowerSyncCredentials(
       endpoint: _endpoint,
       token: devToken,
-      userId: 'technician@switchfiber.ph',
+      userId: currentUserId,
       expiresAt: DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true),
     );
   }

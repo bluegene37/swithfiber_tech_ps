@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:signals_flutter/signals_flutter.dart';
+import 'package:swithfiber_tech_ps/core/sync/powersync_service.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 
@@ -27,6 +29,9 @@ class AuthSignals {
     try {
       final user = await _authService.restoreSession();
       currentUser.value = user;
+      if (user != null && PowerSyncService.instance.isInitialized) {
+        unawaited(PowerSyncService.instance.reconnect());
+      }
     } catch (e) {
       authError.value = e.toString();
     } finally {
@@ -47,6 +52,9 @@ class AuthSignals {
         password: password,
       );
       currentUser.value = user;
+      if (PowerSyncService.instance.isInitialized) {
+        unawaited(PowerSyncService.instance.reconnect());
+      }
       return true;
     } catch (e) {
       authError.value = e.toString().replaceAll('Exception: ', '');
@@ -62,7 +70,11 @@ class AuthSignals {
     final current = currentUser.value;
     if (current == null) return;
     try {
-      currentUser.value = await _authService.fetchProfile(current.id);
+      final updated = await _authService.fetchProfile(current.id);
+      currentUser.value = updated;
+      if (PowerSyncService.instance.isInitialized) {
+        unawaited(PowerSyncService.instance.reconnect());
+      }
     } catch (_) {
       // Offline or endpoint unavailable: the cached session stays valid.
     }
@@ -73,5 +85,8 @@ class AuthSignals {
     await _authService.logout();
     currentUser.value = null;
     authError.value = null;
+    if (PowerSyncService.instance.isInitialized) {
+      unawaited(PowerSyncService.instance.disconnectAndClear());
+    }
   }
 }

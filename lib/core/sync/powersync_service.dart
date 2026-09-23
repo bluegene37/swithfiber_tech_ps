@@ -61,6 +61,21 @@ class PowerSyncService {
     }
   }
 
+  /// Forces a fresh credentials fetch and reconnects to PowerSync with the current user.
+  Future<void> reconnect() async {
+    final database = _db;
+    final connector = _connector;
+    if (database == null || connector == null) return;
+    try {
+      if (database.connected) {
+        await database.disconnect();
+      }
+      await database.connect(connector: connector);
+    } catch (_) {
+      // Offline or initial network failure: PowerSync retries automatically.
+    }
+  }
+
   /// Disconnects from PowerSync and clears local database storage (e.g. on logout).
   Future<void> disconnectAndClear() async {
     if (_db != null) {
