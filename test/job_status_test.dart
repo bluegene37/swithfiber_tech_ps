@@ -68,10 +68,12 @@ void main() {
       expect(job(status: 'Pending').jobStatus, JobStatus.scheduled);
     });
 
-    test('folds statuses written by earlier app versions into the stages', () {
-      // Still open work.
-      expect(job(status: 'In Progress').jobStatus, JobStatus.scheduled);
-      expect(job(status: 'inprogress').jobStatus, JobStatus.scheduled);
+    test('recognises In Progress as distinct from Scheduled', () {
+      expect(job(status: 'In Progress').jobStatus, JobStatus.inProgress);
+      expect(job(status: 'inprogress').jobStatus, JobStatus.inProgress);
+      expect(job(status: 'In Progress').isScheduled, isFalse);
+      expect(job(status: 'In Progress').isOpen, isFalse);
+      expect(job(status: 'In Progress').isInProgress, isTrue);
       // Finished legacy work.
       expect(job(status: 'Completed').jobStatus, JobStatus.completed);
     });

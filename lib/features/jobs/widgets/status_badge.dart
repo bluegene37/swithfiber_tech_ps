@@ -67,6 +67,7 @@ class StatusBadge extends StatelessWidget {
 
   static IconData _iconFor(JobStatus? s) => switch (s) {
         JobStatus.scheduled => Icons.calendar_today_rounded,
+        JobStatus.inProgress => Icons.hourglass_top_rounded,
         JobStatus.activated => Icons.verified_rounded,
         JobStatus.completed => Icons.check_circle_rounded,
         JobStatus.rescheduled => Icons.event_repeat_rounded,
@@ -77,6 +78,7 @@ class StatusBadge extends StatelessWidget {
     if (isDark) {
       return switch (s) {
         JobStatus.scheduled => const Color(0xFF0369A1).withValues(alpha: 0.25),
+        JobStatus.inProgress => const Color(0xFF0284C7).withValues(alpha: 0.25),
         JobStatus.activated => const Color(0xFF4F46E5).withValues(alpha: 0.25),
         JobStatus.completed => const Color(0xFF059669).withValues(alpha: 0.25),
         JobStatus.rescheduled => AppTheme.warning.withValues(alpha: 0.25),
@@ -85,6 +87,7 @@ class StatusBadge extends StatelessWidget {
     }
     return switch (s) {
       JobStatus.scheduled => const Color(0xFFF0F9FF),
+      JobStatus.inProgress => const Color(0xFFE0F2FE),
       JobStatus.activated => const Color(0xFFEFF6FF),
       JobStatus.completed => AppTheme.successSubtle,
       JobStatus.rescheduled => AppTheme.warningSubtle,
@@ -96,6 +99,7 @@ class StatusBadge extends StatelessWidget {
     if (isDark) {
       return switch (s) {
         JobStatus.scheduled => const Color(0xFF38BDF8),
+        JobStatus.inProgress => const Color(0xFF38BDF8),
         JobStatus.activated => const Color(0xFF818CF8),
         JobStatus.completed => const Color(0xFF4ADE80),
         JobStatus.rescheduled => const Color(0xFFFBBF24),
@@ -104,6 +108,7 @@ class StatusBadge extends StatelessWidget {
     }
     return switch (s) {
       JobStatus.scheduled => const Color(0xFF0369A1),
+      JobStatus.inProgress => const Color(0xFF0284C7),
       JobStatus.activated => const Color(0xFF1E40AF),
       JobStatus.completed => const Color(0xFF166534),
       JobStatus.rescheduled => const Color(0xFF92400E),
@@ -115,6 +120,7 @@ class StatusBadge extends StatelessWidget {
     if (isDark) {
       return switch (s) {
         JobStatus.scheduled => const Color(0xFF0284C7).withValues(alpha: 0.4),
+        JobStatus.inProgress => const Color(0xFF0284C7).withValues(alpha: 0.4),
         JobStatus.activated => const Color(0xFF4F46E5).withValues(alpha: 0.4),
         JobStatus.completed => const Color(0xFF059669).withValues(alpha: 0.4),
         JobStatus.rescheduled => AppTheme.warning.withValues(alpha: 0.4),
@@ -123,6 +129,7 @@ class StatusBadge extends StatelessWidget {
     }
     return switch (s) {
       JobStatus.scheduled => const Color(0xFFBAE6FD),
+      JobStatus.inProgress => const Color(0xFFBAE6FD),
       JobStatus.activated => const Color(0xFFBFDBFE),
       JobStatus.completed => const Color(0xFF86EFAC),
       JobStatus.rescheduled => const Color(0xFFFDE68A),

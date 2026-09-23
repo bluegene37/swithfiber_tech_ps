@@ -1,7 +1,6 @@
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart';
-import 'package:swithfiber_tech_ps/core/constants/app_constants.dart';
 import 'package:swithfiber_tech_ps/core/storage/secure_storage_service.dart';
 import 'package:swithfiber_tech_ps/core/sync/powersync_backend_connector.dart';
 import 'package:swithfiber_tech_ps/core/sync/powersync_schema.dart';

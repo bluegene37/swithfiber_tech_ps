@@ -16,6 +16,7 @@ import '../../../core/database/sql_values.dart';
 /// as Scheduled; `Completed` is finished work and counts as Activated.
 enum JobStatus {
   scheduled('Scheduled'),
+  inProgress('In Progress'),
   activated('Activated'),
   completed('Completed'),
 
@@ -33,6 +34,7 @@ enum JobStatus {
   /// The next stage. [completed] and [activated] are terminal stages.
   JobStatus? get next => switch (this) {
         JobStatus.scheduled => JobStatus.completed,
+        JobStatus.inProgress => JobStatus.completed,
         JobStatus.rescheduled => JobStatus.completed,
         JobStatus.activated => null,
         JobStatus.completed => null,
@@ -45,9 +47,9 @@ enum JobStatus {
       'scheduled' ||
       'confirmed' ||
       'applied' ||
-      'pending' ||
-      'inprogress' =>
+      'pending' =>
         JobStatus.scheduled,
+      'inprogress' => JobStatus.inProgress,
       'activated' => JobStatus.activated,
       'completed' => JobStatus.completed,
       'rescheduled' || 'reschedule' => JobStatus.rescheduled,
@@ -212,6 +214,7 @@ class JobOrderDto {
   JobStatus? get jobStatus => JobStatus.parse(status);
 
   bool get isScheduled => jobStatus == JobStatus.scheduled;
+  bool get isInProgress => jobStatus == JobStatus.inProgress;
   bool get isActivated => jobStatus == JobStatus.activated;
   bool get isCompleted => jobStatus == JobStatus.completed;
   bool get isRescheduled => jobStatus == JobStatus.rescheduled;
