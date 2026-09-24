@@ -13,8 +13,10 @@ class FakeJobOrdersApi implements JobOrdersApi {
   final List<String> requestedStatuses = [];
   final List<(String, String?)> requestedAssigned = [];
   final List<(int, Map<String, dynamic>)> updates = [];
+  final List<String> callLog = [];
   bool filterByAssignedEmail = false;
   Object? failWith;
+  Object? failUpdateWith;
 
   /// Ids the server answers 404 for.
   final Set<int> deletedIds = {};
@@ -27,6 +29,7 @@ class FakeJobOrdersApi implements JobOrdersApi {
 
   @override
   Future<List<Map<String, dynamic>>> fetchByStatus(String status) async {
+    callLog.add('fetchByStatus:$status');
     requestedStatuses.add(status);
     if (failWith != null) throw failWith!;
     return byStatus[status] ?? const [];
@@ -37,6 +40,7 @@ class FakeJobOrdersApi implements JobOrdersApi {
     required String status,
     String? assignedEmail,
   }) async {
+    callLog.add('fetchByStatusAssigned:$status');
     requestedStatuses.add(status);
     requestedAssigned.add((status, assignedEmail));
     if (failWith != null) throw failWith!;
@@ -58,6 +62,7 @@ class FakeJobOrdersApi implements JobOrdersApi {
     DateTime? dateFrom,
     DateTime? dateTo,
   }) async {
+    callLog.add('fetchByStatusDate:$status');
     if (status != null) return fetchByStatus(status);
     if (failWith != null) throw failWith!;
     return [
@@ -67,6 +72,7 @@ class FakeJobOrdersApi implements JobOrdersApi {
 
   @override
   Future<Map<String, dynamic>?> fetchById(int id) async {
+    callLog.add('fetchById:$id');
     if (failWith != null) throw failWith!;
     if (deletedIds.contains(id)) return null;
     if (serverCopies.containsKey(id)) return serverCopies[id];
@@ -80,11 +86,32 @@ class FakeJobOrdersApi implements JobOrdersApi {
 
   @override
   Future<void> update(int id, Map<String, dynamic> body) async {
+    callLog.add('update:$id');
+    if (failUpdateWith != null) throw failUpdateWith!;
     if (failWith != null) throw failWith!;
     if (deletedIds.contains(id)) {
       throw ApiException(message: 'Not Found', statusCode: 404);
     }
     updates.add((id, body));
+    final newStatus = body['status'] as String?;
+    if (newStatus != null) {
+      Map<String, dynamic>? existingRecord;
+      for (final list in byStatus.values) {
+        final idx = list.indexWhere((r) => r['id'] == id);
+        if (idx != -1) {
+          existingRecord = list.removeAt(idx);
+          break;
+        }
+      }
+      final updatedRecord = {
+        if (existingRecord != null) ...existingRecord,
+        ...body,
+        'id': id,
+        'status': newStatus,
+        'modifiedDate': '2026-09-02T12:00:00',
+      };
+      (byStatus[newStatus] ??= []).add(updatedRecord);
+    }
   }
 }
 
@@ -230,8 +257,9 @@ void main() {
     await settle();
     expect(signals.unsyncedCount.value, 1);
 
-    // Server comes back but has already moved job 2 out of Scheduled.
+    // Server comes back for reads, but the PUT still cannot get through.
     api.failWith = null;
+    api.failUpdateWith = Exception('offline');
     api.byStatus['Scheduled'] = [
       _record(1, 'Scheduled', email: 'me@switchfiber.ph'),
     ];
@@ -267,6 +295,7 @@ void main() {
     // Server reachable again for reads but still lists job 2 as Scheduled,
     // because the PUT has not gone through yet.
     api.failWith = null;
+    api.failUpdateWith = Exception('offline');
     await signals.fetchRemote();
     await settle();
 
@@ -274,6 +303,43 @@ void main() {
     expect(job2.isActivated, isTrue,
         reason: 'the older server copy must not clobber the local edit');
     expect(job2.isSynced, isFalse);
+  });
+
+  test('fetchRemote flushes pending edits before pulling remote jobs', () async {
+    signals.setTechnicianEmail('me@switchfiber.ph');
+    await signals.fetchRemote();
+    await settle();
+
+    // Go offline and activate job 2
+    api.failWith = Exception('offline');
+    await signals
+        .activateJob(signals.allJobs.value.firstWhere((j) => j.id == 2));
+    await settle();
+
+    expect(signals.unsyncedCount.value, 1);
+    expect(repository.syncWorker.pendingCount.value, 1);
+    api.callLog.clear();
+
+    // Come back online and pull-to-refresh
+    api.failWith = null;
+    api.failUpdateWith = null;
+    await signals.fetchRemote();
+    await settle();
+
+    // Verify pending edits flushed before fetching remote jobs
+    expect(repository.syncWorker.pendingCount.value, 0);
+    expect(signals.unsyncedCount.value, 0);
+    expect(api.callLog, contains('update:2'));
+    expect(api.callLog, contains('fetchByStatusAssigned:Scheduled'));
+
+    final updateIdx = api.callLog.indexOf('update:2');
+    final fetchIdx = api.callLog.indexOf('fetchByStatusAssigned:Scheduled');
+    expect(updateIdx, lessThan(fetchIdx),
+        reason: 'Pending changes must be pushed before pulling remote jobs');
+
+    final job2 = signals.allJobs.value.firstWhere((j) => j.id == 2);
+    expect(job2.isActivated, isTrue);
+    expect(job2.isSynced, isTrue);
   });
 
   test('after a successful sync the row is replaced by the server copy',

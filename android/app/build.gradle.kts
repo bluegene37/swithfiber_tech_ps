@@ -20,7 +20,7 @@ if (hasReleaseKeystore) {
 
 android {
     namespace = "ph.switchfiber.tech"
-    compileSdk = 37
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

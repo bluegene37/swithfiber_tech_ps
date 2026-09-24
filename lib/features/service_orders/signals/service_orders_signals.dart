@@ -127,6 +127,9 @@ class ServiceOrdersSignals {
     syncError.value = null;
 
     try {
+      if (syncWorker != null && syncWorker!.pendingCount.value > 0) {
+        await syncWorker!.syncPendingOrders();
+      }
       final remoteList = await api.fetchServiceOrders();
       if (dao != null) {
         final pending = await dao!.getUnsyncedIds();

@@ -251,6 +251,9 @@ class JobsSignals {
     if (showPhases) loadPhase.value = DataLoadPhase.downloading;
     isRefreshing.value = true;
     try {
+      if (repository.syncWorker.pendingCount.value > 0) {
+        await repository.syncWorker.syncPendingJobs();
+      }
       await repository.fetchRemoteJobs(technicianEmail: technicianEmail.value);
     } finally {
       isRefreshing.value = false;

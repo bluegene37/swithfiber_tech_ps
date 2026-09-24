@@ -11,9 +11,17 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
   final SecureStorageService _storage;
   final String _endpoint;
 
+  /// Optional upload handler callback for intercepting or forwarding CRUD transactions.
+  Future<void> Function(CrudTransaction transaction)? onUpload;
+
+  /// Optional per-entry upload handler callback for individual CRUD mutations.
+  Future<void> Function(CrudEntry entry)? onEntryUpload;
+
   SwitchFiberBackendConnector({
     SecureStorageService? storage,
     String? endpoint,
+    this.onUpload,
+    this.onEntryUpload,
   })  : _storage = storage ?? SecureStorageService(),
         _endpoint = endpoint ?? AppConstants.defaultPowerSyncEndpoint;
 
@@ -105,19 +113,41 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
       return;
     }
 
-    for (var op in transaction.crud) {
-      // Outbound CRUD mutations are uploaded to the Switch Fiber API.
-      // Detailed endpoint mapping will be attached as tables are migrated.
-      switch (op.op) {
-        case UpdateType.put:
-          break;
-        case UpdateType.patch:
-          break;
-        case UpdateType.delete:
-          break;
+    final handler = onUpload;
+    final entryHandler = onEntryUpload;
+
+    if (handler != null) {
+      await handler(transaction);
+    } else if (entryHandler != null) {
+      for (var op in transaction.crud) {
+        // Table recognition for core business tables
+        switch (op.table) {
+          case 'job_orders':
+          case 'service_orders':
+            switch (op.op) {
+              case UpdateType.put:
+              case UpdateType.patch:
+              case UpdateType.delete:
+                break;
+            }
+            break;
+          default:
+            break;
+        }
+        await entryHandler(op);
       }
+    } else {
+      // Prevent silently completing transactions and dropping unhandled mutations.
+      // Throwing StateError ensures the transaction is preserved in ps_crud for retry.
+      throw StateError(
+        'No upload handler registered to process outbound CRUD transaction '
+        '(${transaction.crud.length} mutations). Queue preserved.',
+      );
     }
 
+    // Only complete the transaction when the upload handler succeeds.
+    // If an exception was thrown above, it bubbles up to PowerSync,
+    // preserving the transaction in ps_crud for retry on reconnect.
     await transaction.complete();
   }
 }

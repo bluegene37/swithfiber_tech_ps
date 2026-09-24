@@ -12,14 +12,17 @@ class _MockServiceOrdersApi extends ServiceOrdersApi {
   List<ServiceOrderDto> remoteOrders = [];
   Map<int, Map<String, dynamic>> updatedOrders = {};
   bool shouldFailUpdate = false;
+  final List<String> callLog = [];
 
   @override
   Future<List<ServiceOrderDto>> fetchServiceOrders() async {
+    callLog.add('fetchServiceOrders');
     return remoteOrders;
   }
 
   @override
   Future<bool> updateServiceOrder(int id, Map<String, dynamic> body) async {
+    callLog.add('updateServiceOrder:$id');
     if (shouldFailUpdate) {
       throw Exception('Network unreachable');
     }
@@ -180,5 +183,39 @@ void main() {
     // Now marked as synced in Drift
     final syncedRow = await dao.getOrderById(501);
     expect(syncedRow!.isSynced, isTrue);
+  });
+
+  test(
+      'ServiceOrdersSignals fetchRemote flushes pending orders before pulling remote',
+      () async {
+    final dao = db.serviceOrdersDao;
+    final signals = ServiceOrdersSignals(api: mockApi, dao: dao);
+    addTearDown(signals.dispose);
+
+    // Seed order in DB as unsynced
+    final pending = dummyOrder.copyWith(
+      isSynced: false,
+      visitStatus: 'Done',
+      visitRemarks: 'Repaired offline',
+    );
+    await dao.insertOrUpdateOrder(pending, synced: false);
+    await signals.syncWorker!.refreshPendingCount();
+    expect(signals.syncWorker!.pendingCount.value, 1);
+
+    mockApi.callLog.clear();
+    mockApi.remoteOrders = [pending.copyWith(isSynced: true)];
+
+    await signals.fetchRemote();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(signals.syncWorker!.pendingCount.value, 0);
+    expect(mockApi.callLog, contains('updateServiceOrder:501'));
+    expect(mockApi.callLog, contains('fetchServiceOrders'));
+    final updateIdx = mockApi.callLog.indexOf('updateServiceOrder:501');
+    final fetchIdx = mockApi.callLog.indexOf('fetchServiceOrders');
+    expect(updateIdx, lessThan(fetchIdx),
+        reason: 'Pending service orders must flush before fetching remote list');
+    final inDb = await dao.getOrderById(501);
+    expect(inDb!.isSynced, isTrue);
   });
 }

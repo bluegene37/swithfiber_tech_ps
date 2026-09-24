@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+import '../../core/network/network_connectivity_service.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/signals/auth_signals.dart';
@@ -50,6 +51,7 @@ class _TechnicianShellState extends State<TechnicianShell> {
   late final ReportSignals _reportSignals;
   late final ServiceOrdersSignals _serviceOrdersSignals;
   late final void Function() _disposeEmailSync;
+  late final void Function() _removeOnlineListener;
 
   @override
   void initState() {
@@ -88,10 +90,22 @@ class _TechnicianShellState extends State<TechnicianShell> {
     // it, so the full profile is pulled as soon as the shell appears rather
     // than only when the technician happens to open Settings.
     widget.authSignals.refreshProfile();
+
+    // Reconnection listener: automatically triggers pending mutations sync
+    // and remote cache refresh whenever connectivity is restored.
+    NetworkConnectivityService.instance.initialize();
+    _removeOnlineListener =
+        NetworkConnectivityService.instance.addOnlineListener(() async {
+      await widget.jobsSignals.repository.syncWorker.syncPendingJobs();
+      await _serviceOrdersSignals.syncWorker?.syncPendingOrders();
+      await widget.jobsSignals.fetchRemote();
+      await _serviceOrdersSignals.fetchRemote();
+    });
   }
 
   @override
   void dispose() {
+    _removeOnlineListener();
     _disposeEmailSync();
     if (widget.serviceOrdersSignals == null) {
       _serviceOrdersSignals.dispose();
