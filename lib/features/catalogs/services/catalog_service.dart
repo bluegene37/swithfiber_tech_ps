@@ -118,6 +118,16 @@ class CatalogService {
     return _cachedPlans ?? fallbackPlans;
   }
 
+  /// Find a plan name by plan id synchronously from cached or fallback plans.
+  String? findPlanName(int? id) {
+    if (id == null) return null;
+    final list = _cachedPlans ?? fallbackPlans;
+    for (final p in list) {
+      if (p.id == id) return p.name;
+    }
+    return null;
+  }
+
   /// Fetch approved ONT/router models from `/api/Routers` with cache & fallback
   Future<List<RouterDto>> getRouters({bool forceRefresh = false}) async {
     if (!forceRefresh && _cachedRouters != null) {

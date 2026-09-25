@@ -36,6 +36,8 @@ const Table jobOrdersTable = Table('job_orders', [
   Column.text('city'),
   Column.text('plan_name'),
   Column.integer('plan_id'),
+  Column.text('subscriber_email'),
+  Column.text('second_contact_number'),
   Column.text('status'),
   Column.text('onsite_status'),
   Column.text('onsite_remarks'),

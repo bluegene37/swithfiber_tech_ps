@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:latlong2/latlong.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/database/sql_values.dart';
+import '../../catalogs/services/catalog_service.dart';
 
 /// The two stages a job order moves through in the field.
 ///
@@ -127,8 +128,21 @@ class JobOrderDto {
   final String address;
   final String? barangay;
   final String? city;
-  final String? planName;
+  static final Map<int, String> _subscriberEmailCache = {};
+  static final Map<int, String> _secondContactNumberCache = {};
+  static final Map<int, String> _planNameCache = {};
+
+  @visibleForTesting
+  static void clearMemoryCaches() {
+    _subscriberEmailCache.clear();
+    _secondContactNumberCache.clear();
+    _planNameCache.clear();
+  }
+
+  final String? _planName;
   final int? planId;
+  final String? _subscriberEmail;
+  final String? _secondContactNumber;
   final String status;
   final String? onsiteStatus;
 
@@ -178,8 +192,10 @@ class JobOrderDto {
     required this.address,
     this.barangay,
     this.city,
-    this.planName,
+    String? planName,
     this.planId,
+    String? subscriberEmail,
+    String? secondContactNumber,
     this.status = 'pending',
     this.onsiteStatus,
     this.rawJson,
@@ -207,7 +223,44 @@ class JobOrderDto {
     this.modifiedDate,
     this.isSynced = true,
     this.updatedAt,
-  });
+  })  : _planName = planName,
+        _subscriberEmail = subscriberEmail,
+        _secondContactNumber = secondContactNumber {
+    if (planName != null && planName.trim().isNotEmpty) {
+      _planNameCache[id] = planName.trim();
+    }
+    if (subscriberEmail != null && subscriberEmail.trim().isNotEmpty) {
+      _subscriberEmailCache[id] = subscriberEmail.trim();
+    }
+    if (secondContactNumber != null && secondContactNumber.trim().isNotEmpty) {
+      _secondContactNumberCache[id] = secondContactNumber.trim();
+    }
+  }
+
+  /// The broadband plan name, resolved from local row, memory cache, planId catalog, or rawJson.
+  String? get planName {
+    if (_planName != null && _planName.trim().isNotEmpty) {
+      return _planName.trim();
+    }
+    final cached = _planNameCache[id];
+    if (cached != null && cached.isNotEmpty) {
+      return cached;
+    }
+    if (planId != null && planId! > 0) {
+      final catalogName = CatalogService.instance.findPlanName(planId);
+      if (catalogName != null && catalogName.isNotEmpty) {
+        _planNameCache[id] = catalogName;
+        return catalogName;
+      }
+    }
+    final raw = _rawText('plan') ??
+        _rawText('desiredPlan') ??
+        _rawText('choose_Plan');
+    if (raw != null && raw.isNotEmpty) {
+      _planNameCache[id] = raw;
+    }
+    return raw;
+  }
 
   /// This job's workflow stage, or null for a backend status the app does
   /// not recognise (shown verbatim in that case).
@@ -290,16 +343,53 @@ class JobOrderDto {
     }
   }
 
-  String? _rawText(String key) {
-    final v = _rawMap?[key]?.toString().trim();
-    return v == null || v.isEmpty || v == 'null' ? null : v;
+  static String? _cleanValue(String? v) {
+    if (v == null) return null;
+    final trimmed = v.trim();
+    return trimmed.isEmpty || trimmed.toLowerCase() == 'null' ? null : trimmed;
   }
 
-  /// The subscriber's email (`applicantEmailAddress` on the API), or null.
-  String? get subscriberEmail => _rawText('applicantEmailAddress');
+  String? _rawText(String key) {
+    final v = _rawMap?[key]?.toString().trim();
+    return _cleanValue(v);
+  }
+
+  /// The subscriber's email (`applicantEmailAddress` or `emailAddress`), or null.
+  String? get subscriberEmail {
+    if (_subscriberEmail != null && _subscriberEmail.trim().isNotEmpty) {
+      return _subscriberEmail.trim();
+    }
+    final raw = _rawText('applicantEmailAddress') ?? _rawText('emailAddress');
+    if (raw != null && raw.isNotEmpty) {
+      _subscriberEmailCache[id] = raw;
+      return raw;
+    }
+    if (_rawMap != null) {
+      _subscriberEmailCache.remove(id);
+      return null;
+    }
+    final cached = _subscriberEmailCache[id];
+    return (cached != null && cached.isNotEmpty) ? cached : null;
+  }
 
   /// The subscriber's alternate number (`secondContactNumber`), or null.
-  String? get secondContactNumber => _rawText('secondContactNumber');
+  String? get secondContactNumber {
+    if (_secondContactNumber != null &&
+        _secondContactNumber.trim().isNotEmpty) {
+      return _secondContactNumber.trim();
+    }
+    final raw = _rawText('secondContactNumber');
+    if (raw != null && raw.isNotEmpty) {
+      _secondContactNumberCache[id] = raw;
+      return raw;
+    }
+    if (_rawMap != null) {
+      _secondContactNumberCache.remove(id);
+      return null;
+    }
+    final cached = _secondContactNumberCache[id];
+    return (cached != null && cached.isNotEmpty) ? cached : null;
+  }
 
   /// The subscriber or installation location fix, parsed from rawJson if present.
   LatLng? get latLng {
@@ -372,6 +462,12 @@ class JobOrderDto {
         .trim();
     final address = rawAddr.isNotEmpty ? rawAddr : 'N/A';
 
+    final rawEmail = json['applicantEmailAddress']?.toString() ??
+        json['emailAddress']?.toString();
+    final cleanEmail = _cleanValue(rawEmail);
+    final rawSecond = json['secondContactNumber']?.toString();
+    final cleanSecond = _cleanValue(rawSecond);
+
     return JobOrderDto(
       id: id,
       ticketNumber: ticketNumber,
@@ -389,6 +485,8 @@ class JobOrderDto {
       planId: json['planId'] is int
           ? json['planId']
           : int.tryParse(json['planId']?.toString() ?? '0'),
+      subscriberEmail: cleanEmail,
+      secondContactNumber: cleanSecond,
       // Preserved verbatim: the API's office-side vocabulary is 'Applied' /
       // 'Confirmed', and lowercasing it silently broke every status comparison.
       status: json['status']?.toString().trim() ?? 'pending',
@@ -498,6 +596,8 @@ class JobOrderDto {
       city: rowText(row['city']),
       planName: rowText(row['plan_name']),
       planId: rowIntOrNull(row['plan_id']),
+      subscriberEmail: rowText(row['subscriber_email']),
+      secondContactNumber: rowText(row['second_contact_number']),
       status: rowText(row['status']) ?? 'pending',
       onsiteStatus: rowText(row['onsite_status']),
       rawJson: rawJson,
@@ -566,6 +666,8 @@ class JobOrderDto {
       'city': city,
       'plan_name': planName,
       'plan_id': planId,
+      'subscriber_email': subscriberEmail,
+      'second_contact_number': secondContactNumber,
       'status': status,
       'onsite_status': onsiteStatus,
       'onsite_remarks': onsiteRemarks,
