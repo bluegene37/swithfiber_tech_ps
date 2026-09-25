@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/signals/auth_signals.dart';
 import '../jobs/models/job_order_model.dart';
+import '../jobs/screens/job_order_detail_screen.dart';
 import '../jobs/screens/job_orders_screen.dart';
 import '../jobs/signals/jobs_signals.dart';
 import '../lcp_nap/screens/lcp_nap_list_screen.dart';
@@ -27,6 +29,7 @@ class TechnicianShell extends StatefulWidget {
   final JobsSignals jobsSignals;
   final LcpNapSignals lcpNapSignals;
   final ServiceOrdersSignals? serviceOrdersSignals;
+  final bool enableAutoSync;
 
   const TechnicianShell({
     super.key,
@@ -34,6 +37,7 @@ class TechnicianShell extends StatefulWidget {
     required this.jobsSignals,
     required this.lcpNapSignals,
     this.serviceOrdersSignals,
+    this.enableAutoSync = true,
   });
 
   @override
@@ -52,6 +56,9 @@ class _TechnicianShellState extends State<TechnicianShell> {
   late final ServiceOrdersSignals _serviceOrdersSignals;
   late final void Function() _disposeEmailSync;
   late final void Function() _removeOnlineListener;
+  late final void Function() _disposeAlertEffect;
+  Timer? _autoSyncTimer;
+  Timer? _bannerDismissTimer;
 
   @override
   void initState() {
@@ -101,10 +108,36 @@ class _TechnicianShellState extends State<TechnicianShell> {
       await widget.jobsSignals.fetchRemote();
       await _serviceOrdersSignals.fetchRemote();
     });
+
+    // Periodic background auto-sync timer (every 30 seconds) ensuring
+    // newly scheduled work orders and repair tickets are automatically refreshed
+    // without requiring manual pull-to-refresh.
+    if (widget.enableAutoSync) {
+      _autoSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+        if (mounted && !widget.jobsSignals.isRefreshing.value) {
+          await widget.jobsSignals.fetchRemote();
+          await _serviceOrdersSignals.fetchRemote();
+        }
+      });
+    }
+
+    // Auto-dismiss the new job alert banner after 7 seconds.
+    _disposeAlertEffect = effect(() {
+      final alert = widget.jobsSignals.newJobAlert.value;
+      _bannerDismissTimer?.cancel();
+      if (alert != null) {
+        _bannerDismissTimer = Timer(const Duration(seconds: 7), () {
+          widget.jobsSignals.dismissAlert();
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
+    _autoSyncTimer?.cancel();
+    _bannerDismissTimer?.cancel();
+    _disposeAlertEffect();
     _removeOnlineListener();
     _disposeEmailSync();
     if (widget.serviceOrdersSignals == null) {
@@ -123,6 +156,23 @@ class _TechnicianShellState extends State<TechnicianShell> {
           jobsSignals: widget.jobsSignals,
           reportSignals: _reportSignals,
           onReportSubmitted: () => Navigator.of(context).maybePop(),
+        ),
+      ),
+    );
+  }
+
+  void _viewAlertJob(JobOrderDto job) {
+    widget.jobsSignals.dismissAlert();
+    if (_currentIndex != _tabScheduled) {
+      setState(() => _currentIndex = _tabScheduled);
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => JobOrderDetailScreen(
+          jobId: job.id,
+          jobsSignals: widget.jobsSignals,
+          lcpNapSignals: widget.lcpNapSignals,
+          onOpenReport: _openReportForJob,
         ),
       ),
     );
@@ -155,8 +205,150 @@ class _TechnicianShellState extends State<TechnicianShell> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: screens[_currentIndex],
+      body: Stack(
+        children: [
+          screens[_currentIndex],
+          _buildNewJobAlertBanner(context),
+        ],
+      ),
       bottomNavigationBar: _buildIosBottomBar(context, jobs, isDark),
+    );
+  }
+
+  Widget _buildNewJobAlertBanner(BuildContext context) {
+    return SignalBuilder(
+      builder: (context) {
+        final job = widget.jobsSignals.newJobAlert.value;
+        if (job == null) return const SizedBox.shrink();
+
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final topPadding = MediaQuery.paddingOf(context).top;
+
+        return Positioned(
+          top: topPadding + 10,
+          left: 16,
+          right: 16,
+          child: Material(
+            elevation: 8,
+            shadowColor: Colors.black38,
+            borderRadius: BorderRadius.circular(16),
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+                  width: 1,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      CupertinoIcons.bell_fill,
+                      color: AppTheme.primary,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primary,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'NEW DISPATCH',
+                                style: context.text.labelSmall!.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                job.ticketNumber,
+                                style: context.text.labelMedium!.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          job.customerName,
+                          style: context.text.bodyMedium!.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (job.address.isNotEmpty)
+                          Text(
+                            [
+                              job.address,
+                              if (job.barangay?.isNotEmpty == true)
+                                job.barangay!,
+                            ].join(', '),
+                            style: context.text.bodySmall!.copyWith(
+                              color: AppTheme.secondaryInkOf(context),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () => _viewAlertJob(job),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                    ),
+                    child: Text(
+                      'View',
+                      style: context.text.labelLarge!.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(CupertinoIcons.xmark, size: 20),
+                    color: AppTheme.secondaryInkOf(context),
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints(minWidth: 32, minHeight: 32),
+                    tooltip: 'Dismiss',
+                    onPressed: widget.jobsSignals.dismissAlert,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

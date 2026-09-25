@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/services.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/widgets/loading_states.dart';
 import '../models/job_order_model.dart';
@@ -36,10 +37,16 @@ class JobsSignals {
   /// Source of "now" for the history date windows; injectable for tests.
   final DateTime Function() clock;
 
+  /// Optional notification hook for audio/vibration; injectable for tests.
+  final void Function(JobOrderDto job)? onNewJobAlert;
+
   StreamSubscription<List<JobOrderDto>>? _driftSubscription;
 
-  JobsSignals(this.repository, {DateTime Function()? clock})
-      : clock = clock ?? DateTime.now {
+  JobsSignals(
+    this.repository, {
+    DateTime Function()? clock,
+    this.onNewJobAlert,
+  })  : clock = clock ?? DateTime.now {
     _initDriftStream();
   }
 
@@ -53,6 +60,13 @@ class JobsSignals {
   // First-load presentation: downloading -> skeleton -> ready. Stays ready for
   // pull-to-refresh and manual syncs so existing data is never hidden.
   final loadPhase = signal<DataLoadPhase>(DataLoadPhase.ready);
+
+  /// Surfaced when a new open Job Order is synced or assigned to the technician.
+  final newJobAlert = signal<JobOrderDto?>(null);
+
+  bool _hasInitialSnapshot = false;
+  final Set<int> _knownJobIds = <int>{};
+  final Set<int> _myAssignedJobIds = <int>{};
 
   // Technician history: activated jobs whose assignedEmail matches the
   // signed-in technician, with their own date, area and search filters so the
@@ -236,8 +250,77 @@ class JobsSignals {
   void _initDriftStream() {
     _driftSubscription?.cancel();
     _driftSubscription = repository.watchJobs().listen((jobs) {
+      final email = technicianEmail.value?.trim();
+
+      // Prune cached IDs if jobs were removed from local cache
+      _knownJobIds.retainAll(jobs.map((j) => j.id));
+      _myAssignedJobIds.retainAll(jobs.map((j) => j.id));
+
+      if (!_hasInitialSnapshot ||
+          loadPhase.value == DataLoadPhase.downloading ||
+          loadPhase.value == DataLoadPhase.skeleton) {
+        if (jobs.isNotEmpty || loadPhase.value == DataLoadPhase.ready) {
+          _hasInitialSnapshot = true;
+        }
+        _knownJobIds.addAll(jobs.map((j) => j.id));
+        for (final job in jobs) {
+          final matchesTech =
+              email == null || email.isEmpty || job.isAssignedTo(email);
+          if (matchesTech) {
+            _myAssignedJobIds.add(job.id);
+          }
+        }
+        allJobs.value = jobs;
+        return;
+      }
+
+      // Check for newly added open jobs or newly assigned jobs
+      final newOpenJobs = <JobOrderDto>[];
+      for (final job in jobs) {
+        final matchesTech =
+            email == null || email.isEmpty || job.isAssignedTo(email);
+        final isNewSynced = !_knownJobIds.contains(job.id);
+        final isNewlyAssigned = _knownJobIds.contains(job.id) &&
+            !_myAssignedJobIds.contains(job.id) &&
+            matchesTech;
+
+        if (job.isOpen && matchesTech && (isNewSynced || isNewlyAssigned)) {
+          newOpenJobs.add(job);
+        }
+
+        _knownJobIds.add(job.id);
+        if (matchesTech) {
+          _myAssignedJobIds.add(job.id);
+        } else {
+          _myAssignedJobIds.remove(job.id);
+        }
+      }
+
       allJobs.value = jobs;
+
+      if (newOpenJobs.isNotEmpty) {
+        _triggerAlert(newOpenJobs.last);
+      }
     });
+  }
+
+  void _triggerAlert(JobOrderDto job) {
+    newJobAlert.value = job;
+    if (onNewJobAlert != null) {
+      onNewJobAlert!(job);
+    } else {
+      try {
+        SystemSound.play(SystemSoundType.alert);
+        HapticFeedback.heavyImpact();
+      } catch (_) {
+        // Ignored when platform channels are unavailable (e.g. headless tests)
+      }
+    }
+  }
+
+  /// Dismisses active top banner alert
+  void dismissAlert() {
+    newJobAlert.value = null;
   }
 
   /// Pull scheduled jobs and the technician's activated history from the
@@ -293,6 +376,12 @@ class JobsSignals {
 
   /// The signed-in technician's email, which scopes the job history.
   void setTechnicianEmail(String? email) {
+    if (technicianEmail.value != email) {
+      _hasInitialSnapshot = false;
+      _knownJobIds.clear();
+      _myAssignedJobIds.clear();
+      newJobAlert.value = null;
+    }
     technicianEmail.value = email;
   }
 

@@ -76,11 +76,14 @@ void main() {
       expect(job(status: 'In Progress').isInProgress, isTrue);
       // Finished legacy work.
       expect(job(status: 'Completed').jobStatus, JobStatus.completed);
+      expect(job(status: 'Completed').isOpen, isFalse);
+      expect(job(status: 'Activated').isOpen, isFalse);
     });
 
-    test('an unknown backend status is left unmapped but readable', () {
+    test('an unknown backend status is left unmapped but readable and not open', () {
       expect(job(status: 'Cancelled').jobStatus, isNull);
       expect(job(status: 'Cancelled').status, 'Cancelled');
+      expect(job(status: 'Cancelled').isOpen, isFalse);
     });
   });
 

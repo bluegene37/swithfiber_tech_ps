@@ -220,8 +220,8 @@ class JobOrderDto {
   bool get isRescheduled => jobStatus == JobStatus.rescheduled;
   bool get isHistory => isActivated || isCompleted;
 
-  /// Open work on the technician's queue: scheduled, or rescheduled and
-  /// waiting for a new visit.
+  /// Open work on the technician's queue: strictly scheduled, or
+  /// rescheduled and waiting for a new visit.
   bool get isOpen => isScheduled || isRescheduled;
 
   /// Anything not yet in history can be activated.

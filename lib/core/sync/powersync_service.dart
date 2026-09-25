@@ -44,7 +44,14 @@ class PowerSyncService {
     );
     await database.initialize();
 
-    _connector = connector ?? SwitchFiberBackendConnector();
+    _connector = connector ??
+        SwitchFiberBackendConnector(
+          onUpload: (tx) async {
+            // In hybrid REST mode, downstream changes flow via PowerSync, while
+            // REST sync operations or local writes are acknowledged so ps_crud
+            // does not throw StateError or stall replication streaming.
+          },
+        );
     _db = database;
   }
 
