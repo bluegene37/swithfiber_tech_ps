@@ -1,4 +1,4 @@
-package ph.switchfiber.tech
+package dev.genexis.swithfibertech
 
 import io.flutter.embedding.android.FlutterActivity
 

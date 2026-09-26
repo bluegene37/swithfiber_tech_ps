@@ -46,7 +46,7 @@ class MapTiles {
   static const double streetMaxZoom = 19;
 
   /// Identifies this client to the tile provider.
-  static const String userAgentPackageName = 'ph.switchfiber.tech';
+  static const String userAgentPackageName = 'dev.genexis.swithfibertech';
 
   /// How long a cached tile stays usable offline before it is refetched.
   static const Duration _cacheDuration = Duration(days: 30);

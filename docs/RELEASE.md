@@ -40,15 +40,15 @@ flutter doctor --android-licenses
 
 Open `ios/Runner.xcworkspace` in Xcode, select the Runner target, and enable
 *Automatically manage signing* with the Switch Fiber team. The bundle
-identifier is `ph.switchfiber.tech`; it must exist in App Store
+identifier is `dev.genexis.swithfibertech`; it must exist in App Store
 Connect before the first upload.
 
 ### Application identifiers
 
 | Platform | Identifier |
 |---|---|
-| Android | `ph.switchfiber.tech` |
-| iOS | `ph.switchfiber.tech` |
+| Android | `dev.genexis.swithfibertech` |
+| iOS | `dev.genexis.swithfibertech` |
 
 One identifier on both stores. Identifiers cannot be changed after the first
 store upload. If it ever has to change again, update
