@@ -4,7 +4,9 @@ import 'package:swithfiber_tech_ps/features/jobs/models/job_order_model.dart';
 
 void main() {
   group('Job Order Plan & Email Persistence Tests', () {
-    test('JobOrdersTable schema defines subscriber_email and second_contact_number', () {
+    test(
+        'JobOrdersTable schema defines subscriber_email and second_contact_number',
+        () {
       final jobOrders =
           powerSyncSchema.tables.firstWhere((t) => t.name == 'job_orders');
       final columnNames = jobOrders.columns.map((c) => c.name).toSet();
@@ -13,7 +15,9 @@ void main() {
       expect(columnNames, contains('second_contact_number'));
     });
 
-    test('JobOrderDto resolves planName from planId when plan_name is null/empty', () {
+    test(
+        'JobOrderDto resolves planName from planId when plan_name is null/empty',
+        () {
       final row = {
         'id': '101',
         'ticket_number': 'JO-101',
@@ -29,7 +33,9 @@ void main() {
       expect(job.planName, 'SwitchLite - P699');
     });
 
-    test('JobOrderDto preserves subscriberEmail and secondContactNumber from columns without raw_json', () {
+    test(
+        'JobOrderDto preserves subscriberEmail and secondContactNumber from columns without raw_json',
+        () {
       final row = {
         'id': '102',
         'ticket_number': 'JO-102',
@@ -46,7 +52,8 @@ void main() {
       expect(job.secondContactNumber, '09171234567');
     });
 
-    test('JobOrderDto preserves email across PowerSync null-overwrite cycles', () {
+    test('JobOrderDto preserves email across PowerSync null-overwrite cycles',
+        () {
       JobOrderDto.clearMemoryCaches();
 
       // Step 1: REST API returns JSON with email and plan
@@ -83,7 +90,9 @@ void main() {
       expect(syncedJob.planName, 'SwitchSpeed - P1299');
     });
 
-    test('JobOrderDto.toRow serializes subscriber_email and second_contact_number', () {
+    test(
+        'JobOrderDto.toRow serializes subscriber_email and second_contact_number',
+        () {
       final job = JobOrderDto(
         id: 104,
         ticketNumber: 'JO-104',

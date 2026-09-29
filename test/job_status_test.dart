@@ -80,7 +80,8 @@ void main() {
       expect(job(status: 'Activated').isOpen, isFalse);
     });
 
-    test('an unknown backend status is left unmapped but readable and not open', () {
+    test('an unknown backend status is left unmapped but readable and not open',
+        () {
       expect(job(status: 'Cancelled').jobStatus, isNull);
       expect(job(status: 'Cancelled').status, 'Cancelled');
       expect(job(status: 'Cancelled').isOpen, isFalse);

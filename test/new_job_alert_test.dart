@@ -82,8 +82,7 @@ void main() {
 
     setUp(() {
       db = AppDatabase.forTesting();
-      repository =
-          JobRepository(db.jobOrdersDao, api: MockJobOrdersApi());
+      repository = JobRepository(db.jobOrdersDao, api: MockJobOrdersApi());
     });
 
     tearDown(() async {
@@ -266,11 +265,9 @@ void main() {
 
       await tester.runAsync(() async {
         db = AppDatabase.forTesting();
-        repository =
-            JobRepository(db.jobOrdersDao, api: MockJobOrdersApi());
+        repository = JobRepository(db.jobOrdersDao, api: MockJobOrdersApi());
         signals = JobsSignals(repository);
-        lcpNapSignals =
-            LcpNapSignals(LcpNapRepository(LcpNapLocationsDao(db)));
+        lcpNapSignals = LcpNapSignals(LcpNapRepository(LcpNapLocationsDao(db)));
         serviceOrdersSignals =
             ServiceOrdersSignals(api: MockServiceOrdersApi());
         await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -354,11 +351,9 @@ void main() {
 
       await tester.runAsync(() async {
         db = AppDatabase.forTesting();
-        repository =
-            JobRepository(db.jobOrdersDao, api: MockJobOrdersApi());
+        repository = JobRepository(db.jobOrdersDao, api: MockJobOrdersApi());
         signals = JobsSignals(repository);
-        lcpNapSignals =
-            LcpNapSignals(LcpNapRepository(LcpNapLocationsDao(db)));
+        lcpNapSignals = LcpNapSignals(LcpNapRepository(LcpNapLocationsDao(db)));
         serviceOrdersSignals =
             ServiceOrdersSignals(api: MockServiceOrdersApi());
         await db.jobOrdersDao.insertOrUpdateJob(testJob);

@@ -253,9 +253,8 @@ class JobOrderDto {
         return catalogName;
       }
     }
-    final raw = _rawText('plan') ??
-        _rawText('desiredPlan') ??
-        _rawText('choose_Plan');
+    final raw =
+        _rawText('plan') ?? _rawText('desiredPlan') ?? _rawText('choose_Plan');
     if (raw != null && raw.isNotEmpty) {
       _planNameCache[id] = raw;
     }

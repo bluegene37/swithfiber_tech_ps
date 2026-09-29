@@ -32,17 +32,20 @@ void main() {
       // Emit offline state
       controller.add(false);
       await pumpEventQueue();
-      expect(callCount, 0, reason: 'Offline event should not trigger listeners');
+      expect(callCount, 0,
+          reason: 'Offline event should not trigger listeners');
       expect(service.isConnected, isFalse);
 
       // Emit online state
       controller.add(true);
       await pumpEventQueue();
-      expect(callCount, 1, reason: 'Transition from offline to online must trigger listeners');
+      expect(callCount, 1,
+          reason: 'Transition from offline to online must trigger listeners');
       expect(service.isConnected, isTrue);
     });
 
-    test('emitting true then true does NOT trigger duplicate executions', () async {
+    test('emitting true then true does NOT trigger duplicate executions',
+        () async {
       service.initialize(connectionStream: controller.stream);
 
       int callCount = 0;
@@ -58,7 +61,9 @@ void main() {
       // Second true: true -> true (no transition)
       controller.add(true);
       await pumpEventQueue();
-      expect(callCount, 1, reason: 'Consecutive true events must not trigger duplicate executions');
+      expect(callCount, 1,
+          reason:
+              'Consecutive true events must not trigger duplicate executions');
     });
 
     test('emitting false then false does NOT trigger callbacks', () async {
@@ -75,7 +80,8 @@ void main() {
 
       controller.add(false);
       await pumpEventQueue();
-      expect(callCount, 0, reason: 'Repeated offline events must not trigger callbacks');
+      expect(callCount, 0,
+          reason: 'Repeated offline events must not trigger callbacks');
       expect(service.isConnected, isFalse);
     });
 

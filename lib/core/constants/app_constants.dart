@@ -27,8 +27,7 @@ class AppConstants {
   static const String keyPowerSyncToken = 'powersync_token';
 
   // PowerSync Self-Hosted Server Config
-  static const String defaultPowerSyncEndpoint =
-      'http://103.249.198.50:8080';
+  static const String defaultPowerSyncEndpoint = 'http://103.249.198.50:8080';
 
   /// Development shared secret matching service.yaml for local/direct sync.
   static const String devSecretKey =

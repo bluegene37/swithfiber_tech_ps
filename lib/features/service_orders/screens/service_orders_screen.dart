@@ -184,9 +184,8 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                             if (index > 0) const SizedBox(width: 8),
                             Builder(builder: (chipContext) {
                               final c = _concerns[index];
-                              final isSelected =
-                                  currentConcern.toLowerCase() ==
-                                      c.toLowerCase();
+                              final isSelected = currentConcern.toLowerCase() ==
+                                  c.toLowerCase();
 
                               return ChoiceChip(
                                 label: Text(c == 'All' ? 'All Concerns' : c),

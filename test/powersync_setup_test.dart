@@ -40,7 +40,8 @@ void main() {
       expect(() => powerSyncSchema.validate(), returnsNormally);
     });
 
-    test('SwitchFiberBackendConnector returns dev token fallback when no token exists',
+    test(
+        'SwitchFiberBackendConnector returns dev token fallback when no token exists',
         () async {
       final connector = SwitchFiberBackendConnector();
       final creds = await connector.fetchCredentials();
@@ -64,7 +65,8 @@ void main() {
       expect(creds.endpoint, AppConstants.defaultPowerSyncEndpoint);
     });
 
-    test('SwitchFiberBackendConnector extracts logged-in technician email from session',
+    test(
+        'SwitchFiberBackendConnector extracts logged-in technician email from session',
         () async {
       FlutterSecureStorage.setMockInitialValues({
         AppConstants.keyUserSession:

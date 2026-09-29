@@ -77,7 +77,9 @@ void main() {
         (w.key == const Key('lcpNapCluster') ||
             (w.key is ValueKey<String> &&
                 (w.key as ValueKey<String>).value.startsWith('lcpNapPin_'))));
-    return markers.evaluate().map((e) => tester.getRect(find.byWidget(e.widget)));
+    return markers
+        .evaluate()
+        .map((e) => tester.getRect(find.byWidget(e.widget)));
   }
 
   testWidgets('the first fit keeps every pin below the top overlay',

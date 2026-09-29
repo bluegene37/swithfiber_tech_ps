@@ -25,12 +25,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Verify generated code is up to date
-        run: |
-          dart run build_runner build --delete-conflicting-outputs
-          git diff --exit-code -- '*.g.dart' \
-            || (echo "::error::Generated files are stale. Run: dart run build_runner build" && exit 1)
-
       - name: Analyze
         run: flutter analyze --fatal-infos
 

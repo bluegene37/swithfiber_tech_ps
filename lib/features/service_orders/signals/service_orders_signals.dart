@@ -80,7 +80,9 @@ class ServiceOrdersSignals {
     final email = technicianEmail.value?.trim();
 
     return allOrders.value.where((order) {
-      if (onlyMe && (email != null && email.isNotEmpty) && !order.isAssignedTo(email)) {
+      if (onlyMe &&
+          (email != null && email.isNotEmpty) &&
+          !order.isAssignedTo(email)) {
         return false;
       }
 

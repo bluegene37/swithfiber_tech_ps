@@ -305,7 +305,8 @@ void main() {
     expect(job2.isSynced, isFalse);
   });
 
-  test('fetchRemote flushes pending edits before pulling remote jobs', () async {
+  test('fetchRemote flushes pending edits before pulling remote jobs',
+      () async {
     signals.setTechnicianEmail('me@switchfiber.ph');
     await signals.fetchRemote();
     await settle();

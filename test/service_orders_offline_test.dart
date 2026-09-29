@@ -214,12 +214,14 @@ void main() {
     final updateIdx = mockApi.callLog.indexOf('updateServiceOrder:501');
     final fetchIdx = mockApi.callLog.indexOf('fetchServiceOrders');
     expect(updateIdx, lessThan(fetchIdx),
-        reason: 'Pending service orders must flush before fetching remote list');
+        reason:
+            'Pending service orders must flush before fetching remote list');
     final inDb = await dao.getOrderById(501);
     expect(inDb!.isSynced, isTrue);
   });
 
-  test('ServiceOrdersSignals fetchRemote scopes to technicianEmail and excludes foreign tickets',
+  test(
+      'ServiceOrdersSignals fetchRemote scopes to technicianEmail and excludes foreign tickets',
       () async {
     final dao = db.serviceOrdersDao;
     final myOrder = dummyOrder.copyWith(
@@ -254,7 +256,8 @@ void main() {
         reason: 'Foreign technician ticket must not be cached in local db');
   });
 
-  test('ServiceOrdersSignals filteredOrders filters by technicianEmail when onlyAssignedToMe is true',
+  test(
+      'ServiceOrdersSignals filteredOrders filters by technicianEmail when onlyAssignedToMe is true',
       () {
     final signals = ServiceOrdersSignals();
     addTearDown(signals.dispose);

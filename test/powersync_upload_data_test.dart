@@ -34,8 +34,7 @@ void main() {
   }
 
   group('SwitchFiberBackendConnector uploadData unit tests', () {
-    test(
-        'returns safely without error when no transaction is available (null)',
+    test('returns safely without error when no transaction is available (null)',
         () async {
       final db = await createDb();
       try {
@@ -87,8 +86,8 @@ void main() {
         expect(capturedTx!.crud.first.table, 'job_orders');
         expect(capturedTx!.crud.first.op, UpdateType.put);
         expect(capturedTx!.crud.first.opData?['ticket_number'], 'T-1001');
-        expect(capturedTx!.crud.first.opData?['customer_name'],
-            'Juan Dela Cruz');
+        expect(
+            capturedTx!.crud.first.opData?['customer_name'], 'Juan Dela Cruz');
 
         // Verify that successful upload called transaction.complete(),
         // so the queue is now empty

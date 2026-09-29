@@ -46,7 +46,7 @@ class JobsSignals {
     this.repository, {
     DateTime Function()? clock,
     this.onNewJobAlert,
-  })  : clock = clock ?? DateTime.now {
+  }) : clock = clock ?? DateTime.now {
     _initDriftStream();
   }
 

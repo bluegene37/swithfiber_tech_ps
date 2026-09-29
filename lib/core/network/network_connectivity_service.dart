@@ -89,14 +89,14 @@ class NetworkConnectivityService {
       _subscription = PowerSyncService.instance.db.statusStream
           .map((status) => status.connected)
           .listen(
-            _handleConnectionChange,
-            onError: (Object error, StackTrace stackTrace) {
-              debugPrint(
-                'NetworkConnectivityService: statusStream error: $error\n$stackTrace',
-              );
-            },
-            cancelOnError: false,
+        _handleConnectionChange,
+        onError: (Object error, StackTrace stackTrace) {
+          debugPrint(
+            'NetworkConnectivityService: statusStream error: $error\n$stackTrace',
           );
+        },
+        cancelOnError: false,
+      );
     } else {
       _isConnected = initialConnected ?? false;
     }
