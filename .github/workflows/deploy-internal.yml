@@ -10,7 +10,7 @@ on:
 
 concurrency:
   group: deploy-internal-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy-internal:
@@ -25,6 +25,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -69,6 +70,8 @@ jobs:
           echo "Keystore verified and setup complete."
 
       - name: Build Android App Bundle (.aab)
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.vfs.watch=false"
         run: |
           if [ "${{ github.event.inputs.auto_increment_build }}" = "true" ]; then
             VERSION_NAME=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
