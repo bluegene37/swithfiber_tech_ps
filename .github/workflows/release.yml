@@ -138,7 +138,6 @@ jobs:
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
           tracks: ${{ steps.params.outputs.track }}
           status: completed
-          changesNotSentForReview: true
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
