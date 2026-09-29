@@ -82,14 +82,14 @@ jobs:
       - name: Verify signing & deployment secrets
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          PLAY_CONFIG_JSON: ${{ secrets.PLAY_CONFIG_JSON }}
+          PLAY_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON || secrets.PLAY_CONFIG_JSON }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
             echo "::error::ANDROID_KEYSTORE_BASE64 secret is not set; refusing to publish an unsigned build."
             exit 1
           fi
-          if [ -z "$PLAY_CONFIG_JSON" ]; then
-            echo "::error::PLAY_CONFIG_JSON secret is not set; Google Play deployment will fail. Add your Google Play service account JSON key to repository secrets."
+          if [ -z "$PLAY_JSON" ]; then
+            echo "::error::PLAY_SERVICE_ACCOUNT_JSON (or PLAY_CONFIG_JSON) secret is not set; Google Play deployment will fail. Add your Google Play service account JSON key to repository secrets."
             exit 1
           fi
 
@@ -123,7 +123,7 @@ jobs:
       - name: Deploy to Google Play
         uses: r0adkll/upload-google-play@v1
         with:
-          serviceAccountJsonPlainText: ${{ secrets.PLAY_CONFIG_JSON }}
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON || secrets.PLAY_CONFIG_JSON }}
           packageName: dev.genexis.swithfibertech
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
           track: ${{ steps.params.outputs.track }}
