@@ -136,8 +136,9 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON || secrets.PLAY_CONFIG_JSON }}
           packageName: dev.genexis.swithfibertech
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
-          track: ${{ steps.params.outputs.track }}
+          tracks: ${{ steps.params.outputs.track }}
           status: completed
+          changesNotSentForReview: true
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')

@@ -92,8 +92,9 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON || secrets.PLAY_CONFIG_JSON }}
           packageName: dev.genexis.swithfibertech
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
-          track: internal
+          tracks: internal
           status: completed
+          changesNotSentForReview: true
 
       - name: Remove signing material
         if: always()
