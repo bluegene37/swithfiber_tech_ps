@@ -27,7 +27,7 @@ const Schema powerSyncSchema = Schema([
 ]);
 
 /// Installations: Scheduled, Rescheduled, Activated, Completed.
-const Table jobOrdersTable = Table('job_orders', [
+const Table jobOrdersTable = Table.localOnly('job_orders', [
   Column.text('ticket_number'),
   Column.text('customer_name'),
   Column.text('contact_number'),
@@ -71,7 +71,7 @@ const Table jobOrdersTable = Table('job_orders', [
 ]);
 
 /// Repairs, relocations, swaps and pullouts.
-const Table serviceOrdersTable = Table('service_orders', [
+const Table serviceOrdersTable = Table.localOnly('service_orders', [
   Column.text('account_number'),
   Column.text('full_name'),
   Column.text('contact_number'),

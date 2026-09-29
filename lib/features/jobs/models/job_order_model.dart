@@ -16,21 +16,23 @@ import '../../catalogs/services/catalog_service.dart';
 /// already in the table vanishes: `In Progress` is still open work and counts
 /// as Scheduled; `Completed` is finished work and counts as Activated.
 enum JobStatus {
-  scheduled('Scheduled'),
-  inProgress('In Progress'),
-  activated('Activated'),
-  completed('Completed'),
+  scheduled('Scheduled', 'Scheduled'),
+  inProgress('Inprogress', 'In Progress'),
+  activated('Activated', 'Activated'),
+  completed('Completed', 'Completed'),
 
   /// The technician could not do the visit; still open work. Carries a
   /// reason in `statusRemarks` (see [RescheduleReasons]).
-  rescheduled('Rescheduled');
+  rescheduled('Rescheduled', 'Rescheduled');
 
-  const JobStatus(this.wireValue);
+  const JobStatus(this.wireValue, [String? label]) : _label = label;
 
-  /// Exact wording sent back to the API, and shown to the technician.
+  /// Exact wording sent back to the API.
   final String wireValue;
+  final String? _label;
 
-  String get label => wireValue;
+  /// Shown to the technician in the UI.
+  String get label => _label ?? wireValue;
 
   /// The next stage. [completed] and [activated] are terminal stages.
   JobStatus? get next => switch (this) {
@@ -272,9 +274,9 @@ class JobOrderDto {
   bool get isRescheduled => jobStatus == JobStatus.rescheduled;
   bool get isHistory => isActivated || isCompleted;
 
-  /// Open work on the technician's queue: strictly scheduled, or
-  /// rescheduled and waiting for a new visit.
-  bool get isOpen => isScheduled || isRescheduled;
+  /// Open work on the technician's queue: scheduled, rescheduled and waiting
+  /// for a new visit, or in progress.
+  bool get isOpen => isScheduled || isRescheduled || isInProgress;
 
   /// Anything not yet in history can be activated.
   bool get canActivate => !isHistory;

@@ -167,7 +167,7 @@ void main() {
   test('pulls through the status endpoint, never the whole table', () async {
     await repository.fetchRemoteJobs(technicianEmail: 'me@switchfiber.ph');
     expect(api.requestedStatuses,
-        ['Scheduled', 'Activated', 'Completed', 'Rescheduled']);
+        ['Scheduled', 'Inprogress', 'Activated', 'Completed', 'Rescheduled']);
   });
 
   test('pulls through status-assigned passing assigned technician email',
@@ -175,6 +175,7 @@ void main() {
     await repository.fetchRemoteJobs(technicianEmail: 'me@switchfiber.ph');
     expect(api.requestedAssigned, [
       ('Scheduled', 'me@switchfiber.ph'),
+      ('Inprogress', 'me@switchfiber.ph'),
       ('Activated', 'me@switchfiber.ph'),
       ('Completed', 'me@switchfiber.ph'),
       ('Rescheduled', 'me@switchfiber.ph'),

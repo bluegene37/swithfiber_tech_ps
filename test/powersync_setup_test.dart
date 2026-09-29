@@ -29,13 +29,13 @@ void main() {
       expect(tableNames, contains('lcp_nap_locations'));
       expect(tableNames, contains('sync_error_logs'));
 
-      // Core business tables replicate with PowerSync; sync_error_logs and lcp_nap remain local-only
+      // Local-only tables while the Switch Fiber REST API handles transport
       final jobOrders =
           powerSyncSchema.tables.firstWhere((t) => t.name == 'job_orders');
       final serviceOrders =
           powerSyncSchema.tables.firstWhere((t) => t.name == 'service_orders');
-      expect(jobOrders.localOnly, isFalse);
-      expect(serviceOrders.localOnly, isFalse);
+      expect(jobOrders.localOnly, isTrue);
+      expect(serviceOrders.localOnly, isTrue);
 
       expect(() => powerSyncSchema.validate(), returnsNormally);
     });

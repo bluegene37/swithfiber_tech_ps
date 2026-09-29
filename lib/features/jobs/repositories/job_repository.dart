@@ -54,6 +54,10 @@ class JobRepository {
         status: JobStatus.scheduled.wireValue,
         assignedEmail: assignedEmail,
       );
+      final inProgress = await _api.fetchByStatusAssigned(
+        status: JobStatus.inProgress.wireValue,
+        assignedEmail: assignedEmail,
+      );
       final activated = await _api.fetchByStatusAssigned(
         status: JobStatus.activated.wireValue,
         assignedEmail: assignedEmail,
@@ -82,6 +86,9 @@ class JobRepository {
       }
 
       for (final item in scheduled) {
+        take(JobOrderDto.fromJson(item));
+      }
+      for (final item in inProgress) {
         take(JobOrderDto.fromJson(item));
       }
       for (final item in activated) {

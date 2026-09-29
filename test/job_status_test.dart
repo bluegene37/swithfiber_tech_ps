@@ -72,8 +72,10 @@ void main() {
       expect(job(status: 'In Progress').jobStatus, JobStatus.inProgress);
       expect(job(status: 'inprogress').jobStatus, JobStatus.inProgress);
       expect(job(status: 'In Progress').isScheduled, isFalse);
-      expect(job(status: 'In Progress').isOpen, isFalse);
+      expect(job(status: 'In Progress').isOpen, isTrue);
       expect(job(status: 'In Progress').isInProgress, isTrue);
+      expect(JobStatus.inProgress.wireValue, 'Inprogress');
+      expect(JobStatus.inProgress.label, 'In Progress');
       // Finished legacy work.
       expect(job(status: 'Completed').jobStatus, JobStatus.completed);
       expect(job(status: 'Completed').isOpen, isFalse);

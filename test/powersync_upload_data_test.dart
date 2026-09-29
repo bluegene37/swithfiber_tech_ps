@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:powersync/powersync.dart';
 import 'package:swithfiber_tech_ps/core/sync/powersync_backend_connector.dart';
-import 'package:swithfiber_tech_ps/core/sync/powersync_schema.dart';
 
 void main() {
   late Directory tempDir;
@@ -25,8 +24,20 @@ void main() {
       tempDir.path,
       'test_${DateTime.now().microsecondsSinceEpoch}.db',
     );
+    const testReplicatedSchema = Schema([
+      Table('job_orders', [
+        Column.text('ticket_number'),
+        Column.text('customer_name'),
+        Column.text('status'),
+      ]),
+      Table('service_orders', [
+        Column.text('account_number'),
+        Column.text('full_name'),
+        Column.text('support_status'),
+      ]),
+    ]);
     final db = PowerSyncDatabase(
-      schema: powerSyncSchema,
+      schema: testReplicatedSchema,
       path: dbPath,
     );
     await db.initialize();
