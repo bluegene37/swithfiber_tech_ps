@@ -35,28 +35,30 @@ To allow GitHub Actions to deploy to the **Internal Testing** track automaticall
 1. **Pre-requisite (Initial manual upload)**:
    Google Play Console requires the first `.aab` or `.apk` to be uploaded manually to the track once so the package name (`dev.genexis.swithfibertech`) and signing key are registered. *(Already completed!)*
 
-2. **Link Google Cloud Project**:
-   - Go to [Google Play Console](https://play.google.com/console).
-   - Navigate to **Developer account** > **API access**.
-   - If not already linked, link an existing Google Cloud project or create a new one.
+2. **Google Cloud Console: Enable API & Create Service Account**:
+   - Open **[Google Cloud Console](https://console.cloud.google.com/)**.
+   - Create a project or select your existing project.
+   - Go to **APIs & Services** > **Library**, search for **Google Play Android Developer API**, and click **Enable**.
+   - Navigate to **IAM & Admin** > **Service Accounts**.
+   - Click **+ Create Service Account**:
+     - Name: `play-actions-deployer`
+     - Click **Create and Continue**, then click **Done**.
+   - Copy the generated email address of the service account (e.g. `play-actions-deployer@<project-id>.iam.gserviceaccount.com`).
+   - Click the service account, go to the **Keys** tab, click **Add Key** > **Create new key**, select **JSON**, and click **Create** (this downloads your `.json` file).
 
-3. **Create Service Account**:
-   - Under **Service accounts** on the API access page, click **Create Service Account**.
-   - Follow the link to the **Google Cloud Console IAM & Admin** > **Service Accounts** page.
-   - Click **+ Create Service Account**, name it (e.g., `play-store-deployer`), and complete creation.
-   - Click the created service account, navigate to the **Keys** tab, click **Add Key** > **Create new key**, select **JSON**, and download the key file.
+3. **Google Play Console: Invite Service Account**:
+   - Open **[Google Play Console](https://play.google.com/console)**.
+   - In the left sidebar, click **Users & permissions**.
+   - Click **Invite new users**.
+   - In **Email address**, paste the service account email from Step 2.
+   - Under **App permissions**, click **Add app** and select **`dev.genexis.swithfibertech`**.
+   - Under **Releases**, ensure these permissions are checked:
+     - ✅ *Create, edit, and roll back releases on internal testing tracks*
+     - ✅ *Manage testing tracks and edit tester lists*
+     - ✅ *View app information and download bulk reports (read-only)*
+   - Click **Invite user** / **Send invite**.
 
-4. **Grant Permissions in Play Console**:
-   - Return to the **API access** page in Google Play Console.
-   - Find your newly created service account in the list and click **Grant access** (or **Manage permissions**).
-   - Under **App permissions**, select `dev.genexis.swithfibertech`.
-   - Under **Account permissions** / **Releases**:
-     - Check **Create, edit, and roll back releases on internal testing tracks**.
-     - Check **Manage testing tracks and edit tester lists**.
-     - Check **View app information and download bulk reports (read-only)**.
-   - Click **Save** / **Invite user**.
-
-5. **Add GitHub Secret**:
+4. **Add GitHub Secret**:
    - In GitHub repository settings, navigate to **Settings** > **Secrets and variables** > **Actions**.
    - Click **New repository secret**.
    - Name: `PLAY_CONFIG_JSON`
