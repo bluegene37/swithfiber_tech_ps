@@ -75,36 +75,45 @@ class JobRepository {
       );
 
       final pending = await _dao.getUnsyncedIds();
+      final existingJobs = await _dao.getAllJobs();
+      final existingMap = {for (final j in existingJobs) j.id: j};
       final fresh = <JobOrderDto>[];
       final keep = <int>{};
 
-      void take(JobOrderDto dto) {
+      void take(JobOrderDto dto, Map<String, dynamic> raw) {
         keep.add(dto.id);
         // A pending local edit is newer than anything the server has.
         if (pending.contains(dto.id)) return;
-        fresh.add(dto);
+        final existing = existingMap[dto.id];
+        if (existing != null) {
+          fresh.add(existing.mergeWithServer(dto, freshJson: raw));
+        } else {
+          fresh.add(dto);
+        }
       }
 
       for (final item in scheduled) {
-        take(JobOrderDto.fromJson(item));
+        take(JobOrderDto.fromJson(item), item);
       }
       for (final item in inProgress) {
-        take(JobOrderDto.fromJson(item));
+        take(JobOrderDto.fromJson(item), item);
       }
       for (final item in activated) {
-        take(JobOrderDto.fromJson(item));
+        take(JobOrderDto.fromJson(item), item);
       }
       for (final item in completed) {
-        take(JobOrderDto.fromJson(item));
+        take(JobOrderDto.fromJson(item), item);
       }
       for (final item in rescheduled) {
-        take(JobOrderDto.fromJson(item));
+        take(JobOrderDto.fromJson(item), item);
       }
 
       if (fresh.isNotEmpty) {
         await _dao.insertAllJobs(fresh, synced: true);
       }
-      await _dao.deleteSyncedJobsNotIn(keep);
+      if (keep.isNotEmpty) {
+        await _dao.deleteSyncedJobsNotIn(keep);
+      }
     } catch (_) {
       // Offline fallback: do not re-seed test data
     }

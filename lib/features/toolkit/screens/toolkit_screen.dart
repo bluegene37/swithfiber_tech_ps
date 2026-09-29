@@ -7,7 +7,6 @@ import 'optical_budget_tool.dart';
 import 'drop_cable_tool.dart';
 import 'network_diagnostic_tool.dart';
 import 'troubleshooting_guide_tool.dart';
-import '../../diagnostics/screens/radius_disconnections_screen.dart';
 
 /// Main Tech Toolkit Hub screen for Field ISP Technicians with iOS styling.
 class ToolkitScreen extends StatelessWidget {
@@ -157,25 +156,6 @@ class ToolkitScreen extends StatelessWidget {
               context,
               MaterialPageRoute(
                   builder: (_) => const TroubleshootingGuideTool()),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // 6. Subscriber Disconnections & RADIUS Control Card
-          _buildToolCard(
-            context: context,
-            title: 'Subscriber Disconnections & RADIUS',
-            subtitle:
-                'Review RADIUS PPPoE accounts and check each line\'s live connection state. Connect / disconnect is admin-only.',
-            icon: CupertinoIcons.wifi_slash,
-            badge: 'Live RADIUS',
-            color: const Color(0xFFEF4444),
-            badgeTextColor: AppTheme.dangerInkOf(context),
-            isDark: isDark,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => const RadiusDisconnectionsScreen()),
             ),
           ),
         ],

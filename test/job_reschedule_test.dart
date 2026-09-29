@@ -5,6 +5,7 @@ import 'package:swithfiber_tech_ps/core/theme/app_theme.dart';
 import 'package:swithfiber_tech_ps/features/jobs/models/job_order_model.dart';
 import 'package:swithfiber_tech_ps/features/jobs/repositories/job_repository.dart';
 import 'package:swithfiber_tech_ps/features/jobs/screens/job_order_detail_screen.dart';
+import 'package:swithfiber_tech_ps/features/jobs/screens/job_orders_screen.dart';
 import 'package:swithfiber_tech_ps/features/jobs/services/job_orders_api.dart';
 import 'package:swithfiber_tech_ps/features/jobs/signals/jobs_signals.dart';
 import 'package:swithfiber_tech_ps/features/jobs/widgets/status_change_sheet.dart';
@@ -14,6 +15,7 @@ import 'package:swithfiber_tech_ps/features/jobs/widgets/status_change_sheet.dar
 /// queued for sync, and the job stays on the Today queue.
 class _RecordingApi implements JobOrdersApi {
   final List<Map<String, dynamic>> updates = [];
+  Map<String, dynamic>? fetchByIdResult;
   @override
   Future<List<Map<String, dynamic>>> fetchByStatus(String status) async => [];
   @override
@@ -25,7 +27,7 @@ class _RecordingApi implements JobOrdersApi {
           {String? status, DateTime? dateFrom, DateTime? dateTo}) async =>
       [];
   @override
-  Future<Map<String, dynamic>?> fetchById(int id) async => null;
+  Future<Map<String, dynamic>?> fetchById(int id) async => fetchByIdResult;
   @override
   Future<void> update(int id, Map<String, dynamic> body) async {
     updates.add(body);
@@ -82,6 +84,10 @@ void main() {
     expect(api.updates, hasLength(1));
     expect(api.updates.single['status'], 'Rescheduled');
     expect(api.updates.single['statusRemarks'], 'No Available Slot');
+    // Vital subscriber details are preserved in the payload even if rawJson had no split names
+    expect(api.updates.single['firstName'], 'Subscriber');
+    expect(api.updates.single['lastName'], 'Santos');
+    expect(api.updates.single['address'], 'Lot 42, Fiber Street');
 
     // Still on the queue, counted as rescheduled, not in the history.
     expect(signals.filteredJobs.value.map((j) => j.id), [42]);
@@ -89,7 +95,52 @@ void main() {
     expect(signals.historyJobs.value, isEmpty);
   });
 
-  test('back to Scheduled clears the reason', () async {
+  test('reschedule does not corrupt local details when server returns blanked names',
+      () async {
+    await setUpJob(_job());
+    // Server responds to fetchById with blank names (as if another tech or API wiped them)
+    api.fetchByIdResult = {
+      'id': 42,
+      'status': 'Rescheduled',
+      'statusRemarks': 'No Available Slot',
+      'firstName': '',
+      'lastName': '',
+      'address': '',
+    };
+
+    await repository.changeStatus(42,
+        status: JobStatus.rescheduled, statusRemarks: 'No Available Slot');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    final row = (await db.jobOrdersDao.getJobById(42))!;
+    expect(row.customerName, 'Subscriber Santos');
+    expect(row.address, 'Lot 42, Fiber Street');
+    expect(row.status, 'Rescheduled');
+  });
+
+  test('pickNext prioritizes scheduled jobs over rescheduled jobs', () async {
+    final scheduledJob = JobOrderDto(
+      id: 1,
+      ticketNumber: 'SF-001',
+      customerName: 'Active Client',
+      address: 'Active Address',
+      status: 'Scheduled',
+    );
+    final rescheduledJob = JobOrderDto(
+      id: 2,
+      ticketNumber: 'SF-002',
+      customerName: 'Rescheduled Client',
+      address: 'Rescheduled Address',
+      status: 'Rescheduled',
+      statusRemarks: 'Bad Weather',
+    );
+
+    final next = JobOrdersScreen.pickNext([rescheduledJob, scheduledJob]);
+    expect(next.id, 1,
+        reason: 'Active scheduled job must be prioritized over rescheduled job');
+  });
+
+  test('back to Scheduled clears the reason and preserves details', () async {
     await setUpJob(_job(status: 'Rescheduled', statusRemarks: 'Bad Weather'));
 
     await repository.changeStatus(42, status: JobStatus.scheduled);
@@ -98,7 +149,10 @@ void main() {
     final row = (await db.jobOrdersDao.getJobById(42))!;
     expect(row.status, 'Scheduled');
     expect(row.statusRemarks, '');
+    expect(row.customerName, 'Subscriber Santos');
     expect(api.updates.single['statusRemarks'], '');
+    expect(api.updates.single['firstName'], 'Subscriber');
+    expect(api.updates.single['lastName'], 'Santos');
   });
 
   group('job detail', () {

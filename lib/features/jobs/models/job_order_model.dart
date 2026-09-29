@@ -439,59 +439,102 @@ class JobOrderDto {
         ? json['id'] as int
         : int.tryParse(json['id']?.toString() ?? '0') ?? 0;
 
-    final firstName = json['firstName']?.toString().trim() ?? '';
-    final lastName = json['lastName']?.toString().trim() ?? '';
+    final firstName = (json['firstName'] ??
+            json['FirstName'] ??
+            json['first_name'])
+        ?.toString()
+        .trim() ??
+        '';
+    final lastName = (json['lastName'] ??
+            json['LastName'] ??
+            json['last_name'])
+        ?.toString()
+        .trim() ??
+        '';
     final name = '$firstName $lastName'.trim();
 
-    final rawAccountNo = json['accountNo']?.toString().trim() ?? '';
-    final rawTicket = json['ticketNumber']?.toString().trim() ?? '';
+    final rawAccountNo = (json['accountNo'] ??
+            json['AccountNo'] ??
+            json['account_no'])
+        ?.toString()
+        .trim() ??
+        '';
+    final rawTicket = (json['ticketNumber'] ??
+            json['TicketNumber'] ??
+            json['ticket_number'])
+        ?.toString()
+        .trim() ??
+        '';
     final ticketNumber = rawAccountNo.isNotEmpty
         ? rawAccountNo
         : (rawTicket.isNotEmpty ? rawTicket : 'JO-$id');
 
+    final rawFullName = (json['fullName'] ??
+            json['FullName'] ??
+            json['customerName'] ??
+            json['CustomerName'] ??
+            json['name'] ??
+            json['Name'])
+        ?.toString()
+        .trim() ??
+        '';
+
     final customerName = name.isNotEmpty
         ? name
-        : (json['fullName']?.toString().trim().isNotEmpty == true
-            ? json['fullName'].toString().trim()
-            : (json['customerName']?.toString().trim().isNotEmpty == true
-                ? json['customerName'].toString().trim()
-                : 'Subscriber #$id'));
+        : (rawFullName.isNotEmpty
+            ? rawFullName
+            : 'Subscriber #$id');
 
     final rawAddr = (json['address']?.toString() ??
+            json['Address']?.toString() ??
             json['installationAddress']?.toString() ??
+            json['InstallationAddress']?.toString() ??
+            json['installation_address']?.toString() ??
             '')
         .trim();
     final address = rawAddr.isNotEmpty ? rawAddr : 'N/A';
 
     final rawEmail = json['applicantEmailAddress']?.toString() ??
-        json['emailAddress']?.toString();
+        json['ApplicantEmailAddress']?.toString() ??
+        json['emailAddress']?.toString() ??
+        json['EmailAddress']?.toString() ??
+        json['email']?.toString();
     final cleanEmail = _cleanValue(rawEmail);
-    final rawSecond = json['secondContactNumber']?.toString();
+    final rawSecond = json['secondContactNumber']?.toString() ??
+        json['SecondContactNumber']?.toString() ??
+        json['second_contact_number']?.toString();
     final cleanSecond = _cleanValue(rawSecond);
 
     return JobOrderDto(
       id: id,
       ticketNumber: ticketNumber,
       customerName: customerName,
-      contactNumber:
-          json['contactNumber']?.toString() ?? json['mobileNumber']?.toString(),
+      contactNumber: (json['contactNumber'] ??
+              json['ContactNumber'] ??
+              json['mobileNumber'] ??
+              json['MobileNumber'] ??
+              json['contact_number'] ??
+              json['mobile_number'])
+          ?.toString(),
       address: address,
-      barangay: json['barangay']?.toString(),
-      city: json['city']?.toString(),
+      barangay: (json['barangay'] ?? json['Barangay'])?.toString(),
+      city: (json['city'] ?? json['City'])?.toString(),
       planName: json['plan']?.toString() ??
+          json['Plan']?.toString() ??
           json['desiredPlan']?.toString() ??
+          json['DesiredPlan']?.toString() ??
           (json['planId'] is String ? json['planId'] as String : null) ??
           json['choose_Plan']?.toString() ??
           '',
-      planId: json['planId'] is int
-          ? json['planId']
-          : int.tryParse(json['planId']?.toString() ?? '0'),
+      planId: (json['planId'] ?? json['PlanId']) is int
+          ? (json['planId'] ?? json['PlanId']) as int
+          : int.tryParse((json['planId'] ?? json['PlanId'])?.toString() ?? '0'),
       subscriberEmail: cleanEmail,
       secondContactNumber: cleanSecond,
       // Preserved verbatim: the API's office-side vocabulary is 'Applied' /
       // 'Confirmed', and lowercasing it silently broke every status comparison.
       status: json['status']?.toString().trim() ?? 'pending',
-      onsiteStatus: json['onsiteStatus']?.toString(),
+      onsiteStatus: (json['onsiteStatus'] ?? json['OnsiteStatus'])?.toString(),
       rawJson: jsonEncode(json),
       onsiteRemarks: json['onsiteRemarks']?.toString(),
       statusRemarks: json['statusRemarks']?.toString(),
@@ -696,6 +739,175 @@ class JobOrderDto {
       'is_synced': boolInt(synced),
       'updated_at': dateText(updatedAt ?? DateTime.now()),
     };
+  }
+
+  /// Merges a fresh server record into this local record, ensuring that
+  /// non-empty local fields (customer name, address, photos, materials, plan)
+  /// are not overwritten by empty strings or placeholder defaults from the server.
+  JobOrderDto mergeWithServer(JobOrderDto server,
+      {Map<String, dynamic>? freshJson}) {
+    // 1. Customer Name
+    final hasValidServerName = server.customerName.trim().isNotEmpty &&
+        !server.customerName.startsWith('Subscriber #') &&
+        server.customerName != 'N/A';
+    final mergedCustomerName = hasValidServerName
+        ? server.customerName
+        : (customerName.trim().isNotEmpty &&
+                !customerName.startsWith('Subscriber #')
+            ? customerName
+            : server.customerName);
+
+    // 2. Address
+    final hasValidServerAddress =
+        server.address.trim().isNotEmpty && server.address != 'N/A';
+    final mergedAddress = hasValidServerAddress
+        ? server.address
+        : (address.trim().isNotEmpty && address != 'N/A'
+            ? address
+            : server.address);
+
+    // 3. Contact Numbers
+    final mergedContactNumber = (server.contactNumber != null &&
+            server.contactNumber!.trim().isNotEmpty)
+        ? server.contactNumber
+        : contactNumber;
+
+    final mergedSecondContact = (server.secondContactNumber != null &&
+            server.secondContactNumber!.trim().isNotEmpty)
+        ? server.secondContactNumber
+        : secondContactNumber;
+
+    // 4. Subscriber Email
+    final mergedEmail = (server.subscriberEmail != null &&
+            server.subscriberEmail!.trim().isNotEmpty)
+        ? server.subscriberEmail
+        : subscriberEmail;
+
+    // 5. Plan Name & Plan ID
+    final mergedPlanName =
+        (server.planName != null && server.planName!.trim().isNotEmpty)
+            ? server.planName
+            : planName;
+    final mergedPlanId = server.planId ?? planId;
+
+    // 6. Barangay & City
+    final mergedBarangay =
+        (server.barangay != null && server.barangay!.trim().isNotEmpty)
+            ? server.barangay
+            : barangay;
+    final mergedCity =
+        (server.city != null && server.city!.trim().isNotEmpty)
+            ? server.city
+            : city;
+
+    // 7. Ticket Number
+    final hasValidServerTicket = server.ticketNumber.trim().isNotEmpty &&
+        !server.ticketNumber.startsWith('JO-');
+    final mergedTicketNumber = hasValidServerTicket
+        ? server.ticketNumber
+        : (ticketNumber.trim().isNotEmpty && !ticketNumber.startsWith('JO-')
+            ? ticketNumber
+            : server.ticketNumber);
+
+    // 8. Photos & Signature: keep local photos if server returns null/empty or placeholder
+    String? mergePhoto(String? localPhoto, String? serverPhoto) {
+      if (localPhoto == null || localPhoto.trim().isEmpty) return serverPhoto;
+      if (serverPhoto == null ||
+          serverPhoto.trim().isEmpty ||
+          serverPhoto.contains('picsum.photos')) {
+        return localPhoto;
+      }
+      return serverPhoto;
+    }
+
+    // 9. Materials Used
+    final mergedMaterials = server.materialsUsed.isNotEmpty
+        ? server.materialsUsed
+        : materialsUsed;
+
+    // 10. Raw JSON
+    String? mergedRawJson = server.rawJson;
+    if (freshJson != null || rawJson != null) {
+      Map<String, dynamic> rawMap = {};
+      if (rawJson != null && rawJson!.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(rawJson!);
+          if (decoded is Map<String, dynamic>) rawMap.addAll(decoded);
+        } catch (_) {}
+      }
+      if (freshJson != null) {
+        rawMap.addAll(freshJson);
+      }
+      if (mergedMaterials.isNotEmpty) {
+        rawMap['materialsUsed'] = mergedMaterials;
+      }
+      mergedRawJson = jsonEncode(rawMap);
+    }
+
+    return JobOrderDto(
+      id: id,
+      ticketNumber: mergedTicketNumber,
+      customerName: mergedCustomerName,
+      contactNumber: mergedContactNumber,
+      address: mergedAddress,
+      barangay: mergedBarangay,
+      city: mergedCity,
+      planName: mergedPlanName,
+      planId: mergedPlanId,
+      subscriberEmail: mergedEmail,
+      secondContactNumber: mergedSecondContact,
+      status: server.status,
+      onsiteStatus: (server.onsiteStatus != null &&
+              server.onsiteStatus!.trim().isNotEmpty)
+          ? server.onsiteStatus
+          : onsiteStatus,
+      rawJson: mergedRawJson,
+      onsiteRemarks: (server.onsiteRemarks != null &&
+              server.onsiteRemarks!.trim().isNotEmpty)
+          ? server.onsiteRemarks
+          : onsiteRemarks,
+      statusRemarks: (server.statusRemarks != null &&
+              server.statusRemarks!.trim().isNotEmpty)
+          ? server.statusRemarks
+          : (server.status == status ? statusRemarks : server.statusRemarks),
+      opticalPower: server.opticalPower ?? opticalPower,
+      modemRouterSN: (server.modemRouterSN != null &&
+              server.modemRouterSN!.trim().isNotEmpty)
+          ? server.modemRouterSN
+          : modemRouterSN,
+      routerModel: (server.routerModel != null &&
+              server.routerModel!.trim().isNotEmpty)
+          ? server.routerModel
+          : routerModel,
+      lcpId: server.lcpId ?? lcpId,
+      napId: server.napId ?? napId,
+      nap: (server.nap != null && server.nap!.trim().isNotEmpty)
+          ? server.nap
+          : nap,
+      portId: (server.portId != null && server.portId!.trim().isNotEmpty)
+          ? server.portId
+          : portId,
+      vlanId: server.vlanId ?? vlanId,
+      dateInstalled: server.dateInstalled ?? dateInstalled,
+      boxReadingImage: mergePhoto(boxReadingImage, server.boxReadingImage),
+      routerReadingImage:
+          mergePhoto(routerReadingImage, server.routerReadingImage),
+      clientSignature: mergePhoto(clientSignature, server.clientSignature),
+      setupImage: mergePhoto(setupImage, server.setupImage),
+      speedtestImage: mergePhoto(speedtestImage, server.speedtestImage),
+      portLabelImage: mergePhoto(portLabelImage, server.portLabelImage),
+      signedContractImage:
+          mergePhoto(signedContractImage, server.signedContractImage),
+      houseFront: mergePhoto(houseFront, server.houseFront),
+      materialsUsed: mergedMaterials,
+      assignedEmail: (server.assignedEmail != null &&
+              server.assignedEmail!.trim().isNotEmpty)
+          ? server.assignedEmail
+          : assignedEmail,
+      modifiedDate: server.modifiedDate ?? modifiedDate,
+      isSynced: true,
+      updatedAt: DateTime.now(),
+    );
   }
 
   /// Every field of `UpdateJobOrderRequest`, exactly as the owner's working
@@ -976,23 +1188,218 @@ class JobOrderDto {
       }.entries) {
         if (e.value != null) fallback[e.key] = e.value;
       }
+      _preserveVitalFields(fallback);
       return normalizeForApi(fallback);
     }
 
     final decoded = json.decode(original);
     if (decoded is! Map<String, dynamic>) {
-      return normalizeForApi(
-          <String, dynamic>{'id': id, ..._technicianEdits()});
+      final fallback = <String, dynamic>{'id': id, ..._technicianEdits()};
+      _preserveVitalFields(fallback);
+      return normalizeForApi(fallback);
     }
 
-    return normalizeForApi(<String, dynamic>{
+    final payload = <String, dynamic>{
       'id': id,
       ...decoded,
       ..._technicianEdits(),
       if (dateInstalled != null)
         'dateInstalled': dateInstalled!.toIso8601String(),
       if (opticalPower != null) 'opticalPower': opticalPower,
-    });
+    };
+    _preserveVitalFields(payload);
+    return normalizeForApi(payload);
+  }
+
+  /// Ensures vital identity fields (subscriber name, address, contact, plan,
+  /// account number) are populated in the payload even if rawJson had different
+  /// casing, alternative key names, or lacked split firstName/lastName fields.
+  void _preserveVitalFields(Map<String, dynamic> payload) {
+    // 1. First & Last Name
+    final curFirst = payload['firstName']?.toString().trim() ?? '';
+    final curLast = payload['lastName']?.toString().trim() ?? '';
+
+    final altFirst = curFirst.isNotEmpty
+        ? curFirst
+        : (payload['FirstName'] ?? payload['first_name'])?.toString().trim() ?? '';
+    final altLast = curLast.isNotEmpty
+        ? curLast
+        : (payload['LastName'] ?? payload['last_name'])?.toString().trim() ?? '';
+
+    if (altFirst.isNotEmpty) payload['firstName'] = altFirst;
+    if (altLast.isNotEmpty) payload['lastName'] = altLast;
+
+    final firstEmpty = payload['firstName'] == null ||
+        payload['firstName'].toString().trim().isEmpty;
+    final lastEmpty = payload['lastName'] == null ||
+        payload['lastName'].toString().trim().isEmpty;
+
+    if (firstEmpty || lastEmpty) {
+      final nameCandidates = [
+        payload['fullName']?.toString(),
+        payload['FullName']?.toString(),
+        payload['customerName']?.toString(),
+        payload['CustomerName']?.toString(),
+        payload['name']?.toString(),
+        payload['Name']?.toString(),
+        customerName,
+      ];
+      String? bestName;
+      for (final candidate in nameCandidates) {
+        if (candidate != null &&
+            candidate.trim().isNotEmpty &&
+            !candidate.startsWith('Subscriber #') &&
+            candidate != 'N/A') {
+          bestName = candidate.trim();
+          break;
+        }
+      }
+      bestName ??= customerName.trim();
+
+      if (bestName.isNotEmpty && !bestName.startsWith('Subscriber #')) {
+        final parts = bestName.split(RegExp(r'\s+'));
+        final derivedFirst = parts.length > 1
+            ? parts.sublist(0, parts.length - 1).join(' ')
+            : parts.first;
+        final derivedLast = parts.length > 1 ? parts.last : parts.first;
+
+        if (firstEmpty) {
+          payload['firstName'] = derivedFirst;
+        }
+        if (lastEmpty) {
+          payload['lastName'] = derivedLast;
+        }
+      }
+    }
+
+    // 2. Address
+    if (payload['address'] == null ||
+        payload['address'].toString().trim().isEmpty) {
+      final addrCandidates = [
+        payload['Address']?.toString(),
+        payload['installationAddress']?.toString(),
+        payload['InstallationAddress']?.toString(),
+        payload['installation_address']?.toString(),
+        address,
+      ];
+      for (final a in addrCandidates) {
+        if (a != null && a.trim().isNotEmpty && a.trim() != 'N/A') {
+          payload['address'] = a.trim();
+          break;
+        }
+      }
+    }
+
+    // 3. Contact Number
+    if (payload['contactNumber'] == null ||
+        payload['contactNumber'].toString().trim().isEmpty) {
+      final contactCandidates = [
+        payload['ContactNumber']?.toString(),
+        payload['mobileNumber']?.toString(),
+        payload['MobileNumber']?.toString(),
+        payload['contact_number']?.toString(),
+        payload['mobile_number']?.toString(),
+        contactNumber,
+      ];
+      for (final c in contactCandidates) {
+        if (c != null && c.trim().isNotEmpty) {
+          payload['contactNumber'] = c.trim();
+          break;
+        }
+      }
+    }
+
+    // 4. Second Contact Number
+    if (payload['secondContactNumber'] == null ||
+        payload['secondContactNumber'].toString().trim().isEmpty) {
+      final secCandidates = [
+        payload['SecondContactNumber']?.toString(),
+        payload['second_contact_number']?.toString(),
+        secondContactNumber,
+      ];
+      for (final s in secCandidates) {
+        if (s != null && s.trim().isNotEmpty) {
+          payload['secondContactNumber'] = s.trim();
+          break;
+        }
+      }
+    }
+
+    // 5. Applicant Email Address & Email Address
+    if (payload['applicantEmailAddress'] == null ||
+        payload['applicantEmailAddress'].toString().trim().isEmpty) {
+      final emailCandidates = [
+        payload['ApplicantEmailAddress']?.toString(),
+        payload['emailAddress']?.toString(),
+        payload['EmailAddress']?.toString(),
+        payload['email']?.toString(),
+        subscriberEmail,
+      ];
+      for (final e in emailCandidates) {
+        if (e != null && e.trim().isNotEmpty) {
+          payload['applicantEmailAddress'] = e.trim();
+          break;
+        }
+      }
+    }
+    if (payload['emailAddress'] == null ||
+        payload['emailAddress'].toString().trim().isEmpty) {
+      final em =
+          payload['applicantEmailAddress']?.toString() ?? subscriberEmail;
+      if (em != null && em.trim().isNotEmpty) {
+        payload['emailAddress'] = em.trim();
+      }
+    }
+
+    // 6. Barangay
+    if (payload['barangay'] == null ||
+        payload['barangay'].toString().trim().isEmpty) {
+      final bgy = payload['Barangay']?.toString() ?? barangay;
+      if (bgy != null && bgy.trim().isNotEmpty) {
+        payload['barangay'] = bgy.trim();
+      }
+    }
+
+    // 7. City
+    if (payload['city'] == null ||
+        payload['city'].toString().trim().isEmpty) {
+      final c = payload['City']?.toString() ?? city;
+      if (c != null && c.trim().isNotEmpty) {
+        payload['city'] = c.trim();
+      }
+    }
+
+    // 8. Plan ID
+    if (payload['planId'] == null ||
+        payload['planId'].toString().trim().isEmpty) {
+      final p = payload['PlanId']?.toString() ??
+          planId?.toString() ??
+          planName;
+      if (p != null && p.trim().isNotEmpty) {
+        payload['planId'] = p.trim();
+      }
+    }
+
+    // 9. Account No
+    if (payload['accountNo'] == null ||
+        payload['accountNo'].toString().trim().isEmpty) {
+      final acc = payload['AccountNo']?.toString() ??
+          payload['ticketNumber']?.toString() ??
+          payload['TicketNumber']?.toString() ??
+          ticketNumber;
+      if (acc.trim().isNotEmpty) {
+        payload['accountNo'] = acc.trim();
+      }
+    }
+
+    // 10. Assigned Email
+    if (payload['assignedEmail'] == null ||
+        payload['assignedEmail'].toString().trim().isEmpty) {
+      final ae = payload['AssignedEmail']?.toString() ?? assignedEmail;
+      if (ae != null && ae.trim().isNotEmpty) {
+        payload['assignedEmail'] = ae.trim();
+      }
+    }
   }
 
   /// Whether `PUT /api/JobOrders/{id}` can take an image inline.

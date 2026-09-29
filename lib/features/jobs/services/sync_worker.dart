@@ -171,7 +171,12 @@ class SyncWorker {
     try {
       final fresh = await _api.fetchById(id);
       if (fresh != null) {
-        await _dao.insertOrUpdateJob(JobOrderDto.fromJson(fresh), synced: true);
+        final existing = await _dao.getJobById(id);
+        final freshDto = JobOrderDto.fromJson(fresh);
+        final toSave = existing != null
+            ? existing.mergeWithServer(freshDto, freshJson: fresh)
+            : freshDto;
+        await _dao.insertOrUpdateJob(toSave, synced: true);
         return;
       }
     } catch (_) {

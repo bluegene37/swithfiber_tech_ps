@@ -62,6 +62,10 @@ class JobOrdersScreen extends StatefulWidget {
     return [jobs, done, if (where != null) 'next $where'].join(' · ');
   }
 
+  /// Exposed for testing and queue calculation.
+  static JobOrderDto pickNext(List<JobOrderDto> jobs) =>
+      _JobOrdersScreenState.pickNext(jobs);
+
   @override
   State<JobOrdersScreen> createState() => _JobOrdersScreenState();
 }
@@ -129,10 +133,14 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
   }
 
   /// The nearest scheduled job when the phone has a fix, else the first.
+  /// Prioritizes active scheduled/in-progress jobs over rescheduled jobs.
   static JobOrderDto pickNext(List<JobOrderDto> jobs) {
-    JobOrderDto best = jobs.first;
+    final active = jobs.where((j) => !j.isRescheduled).toList();
+    final candidates = active.isNotEmpty ? active : jobs;
+
+    JobOrderDto best = candidates.first;
     double? bestMeters;
-    for (final job in jobs) {
+    for (final job in candidates) {
       final meters = distanceMetersFor(job);
       if (meters == null) continue;
       if (bestMeters == null || meters < bestMeters) {
@@ -357,7 +365,9 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
         final ordered = [
           if (next != null) next,
           for (final job in jobs)
-            if (job.id != next?.id) job,
+            if (job.id != next?.id && !job.isRescheduled) job,
+          for (final job in jobs)
+            if (job.id != next?.id && job.isRescheduled) job,
         ];
 
         return RefreshIndicator(

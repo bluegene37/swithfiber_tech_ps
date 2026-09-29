@@ -144,5 +144,36 @@ void main() {
       expect(payload['status'], 'Activated');
       expect(payload['itemName3'], 'original-itemName3');
     });
+
+    test('derives firstName and lastName when rawJson only has fullName', () {
+      final dto = JobOrderDto.fromJson({
+        'id': 100,
+        'status': 'Scheduled',
+        'fullName': 'Juan Dela Cruz',
+        'installationAddress': 'Unit 10, Fiber Tower',
+        'mobileNumber': '09123456789',
+      });
+      final payload = dto.toApiJson();
+      expect(payload['firstName'], 'Juan Dela');
+      expect(payload['lastName'], 'Cruz');
+      expect(payload['address'], 'Unit 10, Fiber Tower');
+      expect(payload['contactNumber'], '09123456789');
+    });
+
+    test('preserves customerName and address when rawJson is null', () {
+      final dto = JobOrderDto(
+        id: 101,
+        ticketNumber: 'SF-101',
+        customerName: 'Maria Clara',
+        address: 'Barangay San Jose, Antipolo',
+        contactNumber: '09987654321',
+        status: 'Scheduled',
+      );
+      final payload = dto.toApiJson();
+      expect(payload['firstName'], 'Maria');
+      expect(payload['lastName'], 'Clara');
+      expect(payload['address'], 'Barangay San Jose, Antipolo');
+      expect(payload['contactNumber'], '09987654321');
+    });
   });
 }
