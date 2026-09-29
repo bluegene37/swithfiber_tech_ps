@@ -26,6 +26,41 @@ For CI, add these repository secrets:
 | `ANDROID_KEYSTORE_PASSWORD` | keystore password |
 | `ANDROID_KEY_ALIAS` | `upload` |
 | `ANDROID_KEY_PASSWORD` | key password |
+| `PLAY_CONFIG_JSON` | Google Play Developer API Service Account JSON key (see below) |
+
+### Google Play Console API access & service account
+
+To allow GitHub Actions to deploy to the **Internal Testing** track automatically:
+
+1. **Pre-requisite (Initial manual upload)**:
+   Google Play Console requires the first `.aab` or `.apk` to be uploaded manually to the track once so the package name (`dev.genexis.swithfibertech`) and signing key are registered. *(Already completed!)*
+
+2. **Link Google Cloud Project**:
+   - Go to [Google Play Console](https://play.google.com/console).
+   - Navigate to **Developer account** > **API access**.
+   - If not already linked, link an existing Google Cloud project or create a new one.
+
+3. **Create Service Account**:
+   - Under **Service accounts** on the API access page, click **Create Service Account**.
+   - Follow the link to the **Google Cloud Console IAM & Admin** > **Service Accounts** page.
+   - Click **+ Create Service Account**, name it (e.g., `play-store-deployer`), and complete creation.
+   - Click the created service account, navigate to the **Keys** tab, click **Add Key** > **Create new key**, select **JSON**, and download the key file.
+
+4. **Grant Permissions in Play Console**:
+   - Return to the **API access** page in Google Play Console.
+   - Find your newly created service account in the list and click **Grant access** (or **Manage permissions**).
+   - Under **App permissions**, select `dev.genexis.swithfibertech`.
+   - Under **Account permissions** / **Releases**:
+     - Check **Create, edit, and roll back releases on internal testing tracks**.
+     - Check **Manage testing tracks and edit tester lists**.
+     - Check **View app information and download bulk reports (read-only)**.
+   - Click **Save** / **Invite user**.
+
+5. **Add GitHub Secret**:
+   - In GitHub repository settings, navigate to **Settings** > **Secrets and variables** > **Actions**.
+   - Click **New repository secret**.
+   - Name: `PLAY_CONFIG_JSON`
+   - Secret: Paste the entire contents of the downloaded service account `.json` key file.
 
 ### Android SDK licenses
 
@@ -70,14 +105,25 @@ package directory under `android/app/src/main/kotlin`, and every
    flutter analyze --fatal-infos && dart format --set-exit-if-changed -o none lib test && flutter test
    ```
 
-4. Tag and push:
+4. Tag and push (Automated Release):
 
    ```bash
-   git tag v1.0.0 && git push origin v1.0.0
+   git tag v1.0.1 && git push origin v1.0.1
    ```
 
-   The release workflow attaches `app-release.aab`, `app-release.apk`, and the
-   obfuscation symbols to a GitHub Release.
+   The release workflow (`.github/workflows/release.yml`):
+   - Runs test checks (`flutter test`).
+   - Restores the upload keystore from secrets.
+   - Builds signed release `.aab` (App Bundle) and `.apk` with obfuscation.
+   - Automatically deploys the `.aab` to Google Play **Internal Testing** track.
+   - Attaches `app-release.aab`, `app-release.apk`, and the obfuscation symbols archive to a GitHub Release.
+
+5. Alternative: Manual Run via GitHub Actions UI (Workflow Dispatch):
+   - In GitHub, go to the **Actions** tab.
+   - Select the **Release** workflow in the left sidebar.
+   - Click **Run workflow**.
+   - Choose target branch (e.g., `main`), track (`internal` by default, or `alpha`/`beta`/`production`), and optionally specify a custom build number.
+   - Click **Run workflow** to initiate deployment to Google Play.
 
 ## 3. Building locally
 
