@@ -1,0 +1,168 @@
+import 'package:flutter/material.dart';
+import '../../../core/theme/app_text.dart';
+import '../../../core/theme/app_theme.dart';
+import '../models/completion_report.dart';
+
+/// Optical Power Meter Gauge widget displaying live signal quality feedback.
+class OpticalPowerGauge extends StatelessWidget {
+  final double? opticalPowerDbm;
+
+  const OpticalPowerGauge({
+    super.key,
+    required this.opticalPowerDbm,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dbm = opticalPowerDbm ?? -19.0;
+    final quality = _evaluateQuality(dbm);
+
+    Color statusColor;
+    Color statusInk;
+    String statusTitle;
+    String statusDescription;
+    IconData statusIcon;
+
+    switch (quality) {
+      case OpticalReadingQuality.optimal:
+        statusColor = AppTheme.success;
+        statusInk = AppTheme.successInkOf(context);
+        statusTitle = 'Optimal Signal (PASS)';
+        statusDescription =
+            'Excellent optical link budget within GPON standard (-12 to -24 dBm).';
+        statusIcon = Icons.check_circle_rounded;
+        break;
+      case OpticalReadingQuality.marginal:
+        statusColor = AppTheme.warning;
+        statusInk = AppTheme.warningInkOf(context);
+        statusTitle = 'Marginal Signal (WARNING)';
+        statusDescription =
+            'Acceptable but near sensitivity threshold (-24.1 to -27 dBm). Verify fiber bend radius.';
+        statusIcon = Icons.warning_amber_rounded;
+        break;
+      case OpticalReadingQuality.outOfSpec:
+        statusColor = AppTheme.danger;
+        statusInk = AppTheme.dangerInkOf(context);
+        statusTitle = 'Out of Spec (FAIL)';
+        statusDescription =
+            'High attenuation (<-27 dBm) or saturation (>-8 dBm). Clean SC/APC connector and check splice.';
+        statusIcon = Icons.error_outline_rounded;
+        break;
+    }
+
+    // Gauge normalized progress from -35 dBm (0.0) to -5 dBm (1.0)
+    final clamped = dbm.clamp(-35.0, -5.0);
+    final progress = (clamped - (-35.0)) / ((-5.0) - (-35.0));
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border:
+            Border.all(color: statusColor.withValues(alpha: 0.3), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) => Row(
+              children: [
+                // The verdict wraps; the reading badge keeps its size. Side by
+                // side with no flex factor they overflowed by 39px on a phone.
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(statusIcon, color: statusColor, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          statusTitle,
+                          style: context.text.labelLarge!.copyWith(
+                            color: statusInk,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // The reading may take up to 60% of the card. Past that (a
+                // 200% text setting on a narrow phone) it scales down rather
+                // than pushing the verdict off the card.
+                ConstrainedBox(
+                  constraints:
+                      BoxConstraints(maxWidth: constraints.maxWidth * 0.6),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${dbm.toStringAsFixed(1)} dBm',
+                        style: context.text.headlineSmall!.copyWith(
+                          fontFamily: 'JetBrains Mono',
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Linear Scale Meter
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor:
+                  isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+              valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+            ),
+          ),
+          const SizedBox(height: 6),
+
+          // Gauge Labels
+          Row(
+            children: [
+              Expanded(
+                child: Text('-35 dBm (Low)', style: context.text.labelSmall),
+              ),
+              Expanded(
+                child: Text('-24 dBm (Threshold)',
+                    textAlign: TextAlign.center,
+                    style: context.text.labelSmall),
+              ),
+              Expanded(
+                child: Text('-12 dBm (Strong)',
+                    textAlign: TextAlign.end, style: context.text.labelSmall),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          Text(
+            statusDescription,
+            style: context.text.bodySmall!.copyWith(color: statusInk),
+          ),
+        ],
+      ),
+    );
+  }
+
+  OpticalReadingQuality _evaluateQuality(double dbm) {
+    if (dbm >= -24.0 && dbm <= -12.0) return OpticalReadingQuality.optimal;
+    if (dbm >= -27.0 && dbm < -24.0) return OpticalReadingQuality.marginal;
+    return OpticalReadingQuality.outOfSpec;
+  }
+}

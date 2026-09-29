@@ -141,3 +141,7 @@ GoogleService-Info.plist
 **/*seed*.json
 **/*demo*.json
 **/*fixture*.json
+
+# Ensure source code under lib/ is never ignored by global gitignore (e.g. ~/.gitignore_global reports/)
+!lib/features/reports/
+!lib/features/reports/**
