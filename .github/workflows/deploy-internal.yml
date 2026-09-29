@@ -55,14 +55,18 @@ jobs:
             echo "::error::PLAY_SERVICE_ACCOUNT_JSON (or PLAY_CONFIG_JSON) secret is not set! Please add it in GitHub repository Settings -> Secrets and variables -> Actions."
             exit 1
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
-          cat > android/key.properties <<EOF
-          storeFile=$RUNNER_TEMP/upload.jks
-          storePassword=$KEYSTORE_PASSWORD
-          keyAlias=${KEY_ALIAS:-upload}
-          keyPassword=$KEY_PASSWORD
-          EOF
-          echo "Keystore setup complete."
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$RUNNER_TEMP/upload.jks" \
+            "$KEYSTORE_PASSWORD" \
+            "${KEY_ALIAS:-upload}" \
+            "$KEY_PASSWORD" > android/key.properties
+
+          if ! keytool -list -keystore "$RUNNER_TEMP/upload.jks" -storepass "$KEYSTORE_PASSWORD" -alias "${KEY_ALIAS:-upload}" > /dev/null 2>&1; then
+            echo "::error::Keystore validation failed! ANDROID_KEYSTORE_PASSWORD does not match ANDROID_KEYSTORE_BASE64. Verify that the correct keystore and password are set in GitHub Secrets."
+            exit 1
+          fi
+          echo "Keystore verified and setup complete."
 
       - name: Build Android App Bundle (.aab)
         run: |

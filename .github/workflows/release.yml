@@ -94,14 +94,24 @@ jobs:
           fi
 
       - name: Restore upload keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/upload.jks"
-          cat > android/key.properties <<PROPS
-          storeFile=$RUNNER_TEMP/upload.jks
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
-          PROPS
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$RUNNER_TEMP/upload.jks" \
+            "$KEYSTORE_PASSWORD" \
+            "${KEY_ALIAS:-upload}" \
+            "$KEY_PASSWORD" > android/key.properties
+
+          if ! keytool -list -keystore "$RUNNER_TEMP/upload.jks" -storepass "$KEYSTORE_PASSWORD" -alias "${KEY_ALIAS:-upload}" > /dev/null 2>&1; then
+            echo "::error::Keystore validation failed! ANDROID_KEYSTORE_PASSWORD does not match ANDROID_KEYSTORE_BASE64. Verify that the correct keystore and password are set in GitHub Secrets."
+            exit 1
+          fi
+          echo "Keystore verified and setup complete."
 
       - name: Build App Bundle (Play Store)
         run: |
