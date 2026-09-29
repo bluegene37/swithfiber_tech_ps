@@ -218,4 +218,67 @@ void main() {
     final inDb = await dao.getOrderById(501);
     expect(inDb!.isSynced, isTrue);
   });
+
+  test('ServiceOrdersSignals fetchRemote scopes to technicianEmail and excludes foreign tickets',
+      () async {
+    final dao = db.serviceOrdersDao;
+    final myOrder = dummyOrder.copyWith(
+      id: 601,
+      accountNumber: 'SO-601',
+      assignedEmail: 'tech@switchfiber.ph',
+    );
+    final foreignOrder = dummyOrder.copyWith(
+      id: 602,
+      accountNumber: 'SO-602',
+      assignedEmail: 'other.tech@switchfiber.ph',
+    );
+    mockApi.remoteOrders = [myOrder, foreignOrder];
+
+    final signals = ServiceOrdersSignals(api: mockApi, dao: dao);
+    addTearDown(signals.dispose);
+
+    await signals.fetchRemote(technicianEmail: 'tech@switchfiber.ph');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(signals.allOrders.value.length, 1);
+    expect(signals.allOrders.value.single.id, 601);
+    expect(signals.filteredOrders.value.length, 1);
+    expect(signals.filteredOrders.value.single.id, 601);
+    expect(signals.totalCount.value, 1);
+
+    // Verify only the technician's order was written to SQLite
+    final fromDbMy = await dao.getOrderById(601);
+    final fromDbOther = await dao.getOrderById(602);
+    expect(fromDbMy, isNotNull);
+    expect(fromDbOther, isNull,
+        reason: 'Foreign technician ticket must not be cached in local db');
+  });
+
+  test('ServiceOrdersSignals filteredOrders filters by technicianEmail when onlyAssignedToMe is true',
+      () {
+    final signals = ServiceOrdersSignals();
+    addTearDown(signals.dispose);
+
+    final myOrder = dummyOrder.copyWith(
+      id: 701,
+      assignedEmail: 'tech@switchfiber.ph',
+    );
+    final foreignOrder = dummyOrder.copyWith(
+      id: 702,
+      assignedEmail: 'someone.else@switchfiber.ph',
+    );
+
+    signals.allOrders.value = [myOrder, foreignOrder];
+    signals.technicianEmail.value = 'tech@switchfiber.ph';
+
+    expect(signals.onlyAssignedToMe.value, isTrue);
+    expect(signals.filteredOrders.value.length, 1);
+    expect(signals.filteredOrders.value.single.id, 701);
+    expect(signals.totalCount.value, 1);
+
+    // When onlyAssignedToMe is disabled, all orders show
+    signals.onlyAssignedToMe.value = false;
+    expect(signals.filteredOrders.value.length, 2);
+    expect(signals.totalCount.value, 2);
+  });
 }

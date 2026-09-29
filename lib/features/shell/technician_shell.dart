@@ -81,19 +81,18 @@ class _TechnicianShellState extends State<TechnicianShell> {
           (email?.isNotEmpty ?? false) && (lastEmail?.isEmpty ?? true);
       lastEmail = email;
       if (becameKnown) {
-        // The one and only initial pull of job orders. It waits for the
-        // email on purpose: a pull without it is not scoped to this
-        // technician, and the repository refuses to make one.
+        // The one and only initial pull of job orders and repair tickets.
+        // It waits for the email on purpose: a pull without it is not scoped to this
+        // technician, and foreign records would otherwise conflict with PowerSync.
         widget.jobsSignals.fetchRemote(initial: true);
-        _serviceOrdersSignals.fetchRemote();
+        _serviceOrdersSignals.fetchRemote(technicianEmail: email);
       }
     });
-    // Initial fetch / local seed. Runs here rather than at construction time so
-    // that requests are only made once the technician is authenticated.
+    // Initial fetch / local seed for plant sites. Runs here rather than at construction
+    // time so that requests are only made once the technician is authenticated.
     // `initial` walks each screen through downloading -> skeleton -> data.
     widget.lcpNapSignals.fetchRemote(initial: true);
-    _serviceOrdersSignals.fetchRemote();
-    // The login response carries no email, and the job history is matched on
+    // The login response carries no email, and the job history/repairs are matched on
     // it, so the full profile is pulled as soon as the shell appears rather
     // than only when the technician happens to open Settings.
     widget.authSignals.refreshProfile();
@@ -106,7 +105,9 @@ class _TechnicianShellState extends State<TechnicianShell> {
       await widget.jobsSignals.repository.syncWorker.syncPendingJobs();
       await _serviceOrdersSignals.syncWorker?.syncPendingOrders();
       await widget.jobsSignals.fetchRemote();
-      await _serviceOrdersSignals.fetchRemote();
+      await _serviceOrdersSignals.fetchRemote(
+        technicianEmail: widget.authSignals.currentUser.value?.email,
+      );
     });
 
     // Periodic background auto-sync timer (every 30 seconds) ensuring
@@ -116,7 +117,9 @@ class _TechnicianShellState extends State<TechnicianShell> {
       _autoSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
         if (mounted && !widget.jobsSignals.isRefreshing.value) {
           await widget.jobsSignals.fetchRemote();
-          await _serviceOrdersSignals.fetchRemote();
+          await _serviceOrdersSignals.fetchRemote(
+            technicianEmail: widget.authSignals.currentUser.value?.email,
+          );
         }
       });
     }

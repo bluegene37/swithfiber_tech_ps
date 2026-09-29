@@ -64,7 +64,9 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                 onPressed: syncing
                     ? null
                     : () async {
-                        await signals.fetchRemote();
+                        await signals.fetchRemote(
+                          technicianEmail: signals.technicianEmail.value,
+                        );
                         if (!context.mounted) return;
                         final error = signals.syncError.value;
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -388,7 +390,9 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                 }
 
                 return RefreshIndicator(
-                  onRefresh: () => signals.fetchRemote(),
+                  onRefresh: () => signals.fetchRemote(
+                    technicianEmail: signals.technicianEmail.value,
+                  ),
                   color: AppTheme.primary,
                   child: ListView.builder(
                     padding: const EdgeInsets.symmetric(vertical: 12),

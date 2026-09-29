@@ -57,18 +57,18 @@ class ServiceOrdersSignals {
   final concernFilter = signal<String>('All');
 
   /// Filter to only tickets assigned to the logged-in technician
-  final onlyAssignedToMe = signal<bool>(false);
+  final onlyAssignedToMe = signal<bool>(true);
 
   /// Logged-in technician email for matching
   final technicianEmail = signal<String?>(null);
 
-  /// Total count of all service orders
+  /// Total count of service orders visible to technician
   late final ReadonlySignal<int> totalCount =
-      computed(() => allOrders.value.length);
+      computed(() => filteredOrders.value.length);
 
   /// Urgent service orders count
   late final ReadonlySignal<int> urgentCount =
-      computed(() => allOrders.value.where((o) => o.isUrgent).length);
+      computed(() => filteredOrders.value.where((o) => o.isUrgent).length);
 
   /// Filtered and sorted service orders
   late final ReadonlySignal<List<ServiceOrderDto>> filteredOrders =
@@ -77,10 +77,10 @@ class ServiceOrdersSignals {
     final priority = priorityFilter.value.trim().toLowerCase();
     final concern = concernFilter.value.trim().toLowerCase();
     final onlyMe = onlyAssignedToMe.value;
-    final email = technicianEmail.value;
+    final email = technicianEmail.value?.trim();
 
     return allOrders.value.where((order) {
-      if (onlyMe && !order.isAssignedTo(email)) {
+      if (onlyMe && (email != null && email.isNotEmpty) && !order.isAssignedTo(email)) {
         return false;
       }
 
@@ -118,10 +118,12 @@ class ServiceOrdersSignals {
       });
   });
 
-  /// Fetch latest service orders from the server
+  /// Fetch latest service orders from the server scoped to the logged-in technician
   Future<void> fetchRemote({String? technicianEmail}) async {
-    if (technicianEmail != null) {
-      this.technicianEmail.value = technicianEmail;
+    final effectiveEmail =
+        (technicianEmail ?? this.technicianEmail.value)?.trim();
+    if (effectiveEmail != null && effectiveEmail.isNotEmpty) {
+      this.technicianEmail.value = effectiveEmail;
     }
     isSyncing.value = true;
     syncError.value = null;
@@ -131,11 +133,15 @@ class ServiceOrdersSignals {
         await syncWorker!.syncPendingOrders();
       }
       final remoteList = await api.fetchServiceOrders();
+      final scopedList = (effectiveEmail != null && effectiveEmail.isNotEmpty)
+          ? remoteList.where((dto) => dto.isAssignedTo(effectiveEmail)).toList()
+          : remoteList;
+
       if (dao != null) {
         final pending = await dao!.getUnsyncedIds();
         final fresh = <ServiceOrderDto>[];
         final keep = <int>{};
-        for (final dto in remoteList) {
+        for (final dto in scopedList) {
           keep.add(dto.id);
           if (pending.contains(dto.id)) continue;
           fresh.add(dto);
@@ -145,7 +151,7 @@ class ServiceOrdersSignals {
         }
         await dao!.deleteSyncedOrdersNotIn(keep);
       } else {
-        allOrders.value = remoteList;
+        allOrders.value = scopedList;
       }
     } catch (e) {
       syncError.value = 'Failed to load service orders: $e';
