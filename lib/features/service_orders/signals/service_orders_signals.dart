@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/services.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/database/daos/service_orders_dao.dart';
 import '../../../core/services/photo_storage_service.dart';
@@ -8,6 +9,7 @@ import '../services/service_orders_sync_worker.dart';
 
 /// Signals state container for Service Orders (repairs, maintenance, swaps).
 /// Connects reactive local persistence and the background sync worker.
+/*
 class ServiceOrdersSignals {
   final ServiceOrdersApi api;
   final ServiceOrdersDao? dao;
@@ -32,6 +34,121 @@ class ServiceOrdersSignals {
     _driftSubscription = dao!.watchAllOrders().listen((rows) {
       allOrders.value = rows;
     });
+  }
+*/
+// Gene - Oct, 1, 2026: Added onNewOrderAlert callback, newOrderAlert signal, and reactive new service order detection with sound/haptic triggers.
+class ServiceOrdersSignals {
+  final ServiceOrdersApi api;
+  final ServiceOrdersDao? dao;
+  late final ServiceOrdersSyncWorker? syncWorker;
+
+  /// Optional notification hook for audio/vibration; injectable for tests.
+  final void Function(ServiceOrderDto order)? onNewOrderAlert;
+
+  StreamSubscription<List<ServiceOrderDto>>? _driftSubscription;
+
+  ServiceOrdersSignals({
+    ServiceOrdersApi? api,
+    this.dao,
+    this.onNewOrderAlert,
+  }) : api = api ?? ServiceOrdersApi() {
+    if (dao != null) {
+      syncWorker = ServiceOrdersSyncWorker(dao!, api: this.api);
+      _initDriftStream();
+    } else {
+      syncWorker = null;
+    }
+  }
+
+  /// Surfaced when a new open Service Order is synced or assigned to the technician.
+  final newOrderAlert = signal<ServiceOrderDto?>(null);
+
+  bool _hasInitialSnapshot = false;
+  final Set<int> _knownOrderIds = <int>{};
+  final Set<int> _myAssignedOrderIds = <int>{};
+
+  void _initDriftStream() {
+    if (dao == null) return;
+    _driftSubscription?.cancel();
+    _driftSubscription = dao!.watchAllOrders().listen((rows) {
+      final email = technicianEmail.value?.trim();
+
+      // Prune cached IDs if orders were removed from local cache
+      _knownOrderIds.retainAll(rows.map((o) => o.id));
+      _myAssignedOrderIds.retainAll(rows.map((o) => o.id));
+
+      if (!_hasInitialSnapshot) {
+        _hasInitialSnapshot = true;
+        _knownOrderIds.addAll(rows.map((o) => o.id));
+        for (final order in rows) {
+          final matchesTech =
+              email == null || email.isEmpty || order.isAssignedTo(email);
+          if (matchesTech) {
+            _myAssignedOrderIds.add(order.id);
+          }
+        }
+        allOrders.value = rows;
+        return;
+      }
+
+      // Check for newly added open orders or newly assigned orders
+      final newOpenOrders = <ServiceOrderDto>[];
+      for (final order in rows) {
+        final matchesTech =
+            email == null || email.isEmpty || order.isAssignedTo(email);
+        final isNewSynced = !_knownOrderIds.contains(order.id);
+        final isNewlyAssigned = _knownOrderIds.contains(order.id) &&
+            !_myAssignedOrderIds.contains(order.id) &&
+            matchesTech;
+
+        if (order.isOpen && matchesTech && (isNewSynced || isNewlyAssigned)) {
+          newOpenOrders.add(order);
+        }
+
+        _knownOrderIds.add(order.id);
+        if (matchesTech) {
+          _myAssignedOrderIds.add(order.id);
+        } else {
+          _myAssignedOrderIds.remove(order.id);
+        }
+      }
+
+      allOrders.value = rows;
+
+      if (newOpenOrders.isNotEmpty) {
+        _triggerAlert(newOpenOrders.last);
+      }
+    });
+  }
+
+  void _triggerAlert(ServiceOrderDto order) {
+    newOrderAlert.value = order;
+    if (onNewOrderAlert != null) {
+      onNewOrderAlert!(order);
+    } else {
+      try {
+        SystemSound.play(SystemSoundType.alert);
+        HapticFeedback.heavyImpact();
+      } catch (_) {
+        // Ignored when platform channels are unavailable (e.g. headless tests)
+      }
+    }
+  }
+
+  /// Dismisses active top banner alert
+  void dismissAlert() {
+    newOrderAlert.value = null;
+  }
+
+  /// Scopes the service orders to technician and resets alert snapshot caches if changed
+  void setTechnicianEmail(String? email) {
+    if (technicianEmail.value != email) {
+      _hasInitialSnapshot = false;
+      _knownOrderIds.clear();
+      _myAssignedOrderIds.clear();
+      newOrderAlert.value = null;
+    }
+    technicianEmail.value = email;
   }
 
   void dispose() {

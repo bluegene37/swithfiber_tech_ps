@@ -18,6 +18,9 @@ import '../reports/screens/create_report_screen.dart';
 import '../reports/signals/report_signals.dart';
 import '../service_orders/screens/service_orders_screen.dart';
 import '../service_orders/signals/service_orders_signals.dart';
+// Gene - Oct, 1, 2026: Added imports for ServiceOrderDto and ServiceOrderDetailScreen for service order alert navigation.
+import '../service_orders/models/service_order_model.dart';
+import '../service_orders/screens/service_order_detail_screen.dart';
 import '../settings/screens/settings_screen.dart';
 import '../toolkit/screens/toolkit_screen.dart';
 
@@ -59,6 +62,10 @@ class _TechnicianShellState extends State<TechnicianShell> {
   late final void Function() _disposeAlertEffect;
   Timer? _autoSyncTimer;
   Timer? _bannerDismissTimer;
+  // Gene - Oct, 1, 2026: Added tracking for most recent alert between Job Orders and Service Orders.
+  JobOrderDto? _lastSeenJobAlert;
+  ServiceOrderDto? _lastSeenOrderAlert;
+  bool _lastAlertIsJob = true;
 
   @override
   void initState() {
@@ -73,7 +80,9 @@ class _TechnicianShellState extends State<TechnicianShell> {
     _disposeEmailSync = effect(() {
       final email = widget.authSignals.currentUser.value?.email.trim();
       widget.jobsSignals.setTechnicianEmail(email);
-      _serviceOrdersSignals.technicianEmail.value = email;
+      // _serviceOrdersSignals.technicianEmail.value = email;
+      // Gene - Oct, 1, 2026: Use setTechnicianEmail to reset snapshot cache when technician changes.
+      _serviceOrdersSignals.setTechnicianEmail(email);
       // The activated history is fetched per technician, so the first time
       // the email becomes known (the login response lacks it) the jobs are
       // pulled again to fill it in.
@@ -125,12 +134,34 @@ class _TechnicianShellState extends State<TechnicianShell> {
     }
 
     // Auto-dismiss the new job alert banner after 7 seconds.
+    /*
     _disposeAlertEffect = effect(() {
       final alert = widget.jobsSignals.newJobAlert.value;
       _bannerDismissTimer?.cancel();
       if (alert != null) {
         _bannerDismissTimer = Timer(const Duration(seconds: 7), () {
           widget.jobsSignals.dismissAlert();
+        });
+      }
+    });
+    */
+    // Gene - Oct, 1, 2026: Auto-dismiss alert banner for either Job Orders or Service Orders after 7 seconds.
+    _disposeAlertEffect = effect(() {
+      final jobAlert = widget.jobsSignals.newJobAlert.value;
+      final orderAlert = _serviceOrdersSignals.newOrderAlert.value;
+      if (jobAlert != null && jobAlert != _lastSeenJobAlert) {
+        _lastSeenJobAlert = jobAlert;
+        _lastAlertIsJob = true;
+      }
+      if (orderAlert != null && orderAlert != _lastSeenOrderAlert) {
+        _lastSeenOrderAlert = orderAlert;
+        _lastAlertIsJob = false;
+      }
+      _bannerDismissTimer?.cancel();
+      if (jobAlert != null || orderAlert != null) {
+        _bannerDismissTimer = Timer(const Duration(seconds: 7), () {
+          widget.jobsSignals.dismissAlert();
+          _serviceOrdersSignals.dismissAlert();
         });
       }
     });
@@ -181,6 +212,22 @@ class _TechnicianShellState extends State<TechnicianShell> {
     );
   }
 
+  // Gene - Oct, 1, 2026: Navigates to ServiceOrderDetailScreen from service order alert banner and switches tab to Repairs.
+  void _viewAlertServiceOrder(ServiceOrderDto order) {
+    _serviceOrdersSignals.dismissAlert();
+    if (_currentIndex != _tabRepairs) {
+      setState(() => _currentIndex = _tabRepairs);
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ServiceOrderDetailScreen(
+          orderId: order.id,
+          signals: _serviceOrdersSignals,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final jobs = widget.jobsSignals;
@@ -218,6 +265,7 @@ class _TechnicianShellState extends State<TechnicianShell> {
     );
   }
 
+  /*
   Widget _buildNewJobAlertBanner(BuildContext context) {
     return SignalBuilder(
       builder: (context) {
@@ -345,6 +393,169 @@ class _TechnicianShellState extends State<TechnicianShell> {
                         const BoxConstraints(minWidth: 32, minHeight: 32),
                     tooltip: 'Dismiss',
                     onPressed: widget.jobsSignals.dismissAlert,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+  */
+  // Gene - Oct, 1, 2026: Enhanced alert banner to display either New Dispatch (Job Order) or New Service Order with direct View navigation and auto-dismiss.
+  Widget _buildNewJobAlertBanner(BuildContext context) {
+    return SignalBuilder(
+      builder: (context) {
+        final job = widget.jobsSignals.newJobAlert.value;
+        final order = _serviceOrdersSignals.newOrderAlert.value;
+        if (job == null && order == null) return const SizedBox.shrink();
+
+        final isJob =
+            (_lastAlertIsJob && job != null) || (order == null && job != null);
+        final currentOrder = isJob ? null : order;
+        final currentJob = isJob ? job : null;
+
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final topPadding = MediaQuery.paddingOf(context).top;
+
+        final badgeTitle = isJob ? 'NEW DISPATCH' : 'NEW SERVICE ORDER';
+        final ticketOrAccount = isJob
+            ? currentJob!.ticketNumber
+            : (currentOrder!.accountNumber.isNotEmpty
+                ? currentOrder.accountNumber
+                : 'SO #${currentOrder.id}');
+        final clientName =
+            isJob ? currentJob!.customerName : currentOrder!.fullName;
+        final subtitleText = isJob
+            ? [
+                currentJob!.address,
+                if (currentJob.barangay?.isNotEmpty == true)
+                  currentJob.barangay!,
+              ].join(', ')
+            : [
+                currentOrder!.concern,
+                if (currentOrder.address.isNotEmpty) currentOrder.address,
+              ].join(' • ');
+
+        return Positioned(
+          top: topPadding + 10,
+          left: 16,
+          right: 16,
+          child: Material(
+            elevation: 8,
+            shadowColor: Colors.black38,
+            borderRadius: BorderRadius.circular(16),
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+                  width: 1,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isJob ? CupertinoIcons.bell_fill : CupertinoIcons.wrench_fill,
+                      color: AppTheme.primary,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primary,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                badgeTitle,
+                                style: context.text.labelSmall!.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                ticketOrAccount,
+                                style: context.text.labelMedium!.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          clientName,
+                          style: context.text.bodyMedium!.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (subtitleText.isNotEmpty)
+                          Text(
+                            subtitleText,
+                            style: context.text.bodySmall!.copyWith(
+                              color: AppTheme.secondaryInkOf(context),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: isJob
+                        ? () => _viewAlertJob(currentJob!)
+                        : () => _viewAlertServiceOrder(currentOrder!),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                    ),
+                    child: Text(
+                      'View',
+                      style: context.text.labelLarge!.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(CupertinoIcons.xmark, size: 20),
+                    color: AppTheme.secondaryInkOf(context),
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints(minWidth: 32, minHeight: 32),
+                    tooltip: 'Dismiss',
+                    onPressed: isJob
+                        ? widget.jobsSignals.dismissAlert
+                        : _serviceOrdersSignals.dismissAlert,
                   ),
                 ],
               ),

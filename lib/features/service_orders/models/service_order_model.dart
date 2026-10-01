@@ -370,8 +370,15 @@ class ServiceOrderDto {
     return null;
   }
 
+  // bool get isDone => (visitStatus ?? '').trim().toLowerCase() == 'done';
+  // bool get isUrgent => (priorityLevel ?? '').trim().toLowerCase() == 'urgent';
+  // Gene - Oct, 1, 2026: Added isOpen helper to determine whether a service order is active/actionable.
   bool get isDone => (visitStatus ?? '').trim().toLowerCase() == 'done';
   bool get isUrgent => (priorityLevel ?? '').trim().toLowerCase() == 'urgent';
+  bool get isOpen =>
+      !isDone &&
+      supportStatus.trim().toLowerCase() != 'resolved' &&
+      supportStatus.trim().toLowerCase() != 'closed';
 
   bool isAssignedTo(String? email) {
     if (email == null || email.trim().isEmpty) return false;
