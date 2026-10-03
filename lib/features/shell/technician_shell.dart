@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../core/network/network_connectivity_service.dart';
+import '../../core/services/badge_service.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/signals/auth_signals.dart';
@@ -63,6 +64,8 @@ class _TechnicianShellState extends State<TechnicianShell>
   late final void Function() _disposeEmailSync;
   late final void Function() _removeOnlineListener;
   late final void Function() _disposeAlertEffect;
+  // Gene - Oct 3, 2026: Disposer for reactive launcher icon badge count updates.
+  late final void Function() _disposeBadgeEffect;
   Timer? _autoSyncTimer;
   Timer? _bannerDismissTimer;
   // Gene - Oct, 1, 2026: Added tracking for most recent alert between Job Orders and Service Orders.
@@ -181,6 +184,14 @@ class _TechnicianShellState extends State<TechnicianShell>
         });
       }
     });
+
+    // Gene - Oct 3, 2026: Synchronize launcher icon badge count with total active open work (scheduled jobs + repair service orders).
+    _disposeBadgeEffect = effect(() {
+      final scheduled = widget.jobsSignals.scheduledCount.value;
+      final repairs = _serviceOrdersSignals.totalCount.value;
+      final totalOpen = scheduled + repairs;
+      BadgeService.instance.updateBadgeCount(totalOpen).catchError((_) {});
+    });
   }
 
   /*
@@ -235,6 +246,15 @@ class _TechnicianShellState extends State<TechnicianShell>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _triggerBackgroundSync(force: true);
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      // Gene - Oct 3, 2026: Update launcher icon badge count when app is minimized, closed, or paused.
+      final scheduled = widget.jobsSignals.scheduledCount.value;
+      final repairs = _serviceOrdersSignals.totalCount.value;
+      BadgeService.instance
+          .updateBadgeCount(scheduled + repairs)
+          .catchError((_) {});
     }
   }
 
@@ -245,6 +265,8 @@ class _TechnicianShellState extends State<TechnicianShell>
     _autoSyncTimer?.cancel();
     _bannerDismissTimer?.cancel();
     _disposeAlertEffect();
+    // Gene - Oct 3, 2026: Dispose launcher badge effect.
+    _disposeBadgeEffect();
     _removeOnlineListener();
     _disposeEmailSync();
     if (widget.serviceOrdersSignals == null) {
