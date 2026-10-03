@@ -702,12 +702,37 @@ class _ContactLines extends StatelessWidget {
 }
 
 /// The one status word for a scheduled job and its rail and ink colours.
+/*
 (String, Color, Color) jobStatusWord(BuildContext context, JobOrderDto j) {
   if (!j.isSynced) {
     return ('Pending sync', AppTheme.warning, AppTheme.warningInkOf(context));
   }
   if (j.isRescheduled) {
     return ('Rescheduled', AppTheme.warning, AppTheme.warningInkOf(context));
+  }
+  switch (j.onsiteStatus?.trim().toLowerCase()) {
+    case 'failed':
+      return ('Failed', AppTheme.danger, AppTheme.dangerInkOf(context));
+    case 'reschedule':
+      return ('Reschedule', AppTheme.warning, AppTheme.warningInkOf(context));
+    case 'in progress':
+    case 'inprogress':
+      return ('In progress', AppTheme.info, AppTheme.infoInkOf(context));
+    default:
+      return ('Scheduled', AppTheme.info, AppTheme.infoInkOf(context));
+  }
+}
+*/
+// Gene - Oct 3, 2026: Check j.isInProgress before falling back to onsiteStatus so office status 'In Progress' / 'Inprogress' displays 'In progress' badge rather than falling through to 'Scheduled' when onsiteStatus is null or empty.
+(String, Color, Color) jobStatusWord(BuildContext context, JobOrderDto j) {
+  if (!j.isSynced) {
+    return ('Pending sync', AppTheme.warning, AppTheme.warningInkOf(context));
+  }
+  if (j.isRescheduled) {
+    return ('Rescheduled', AppTheme.warning, AppTheme.warningInkOf(context));
+  }
+  if (j.isInProgress) {
+    return ('In progress', AppTheme.info, AppTheme.infoInkOf(context));
   }
   switch (j.onsiteStatus?.trim().toLowerCase()) {
     case 'failed':

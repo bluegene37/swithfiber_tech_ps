@@ -149,4 +149,29 @@ void main() {
       await db.close();
     });
   });
+
+  // Gene - Oct 3, 2026: Verifies jobStatusWord returns 'In progress' for In Progress jobs regardless of onsiteStatus.
+  testWidgets('jobStatusWord displays In progress when jobStatus is inProgress',
+      (WidgetTester tester) async {
+    late (String, Color, Color) result;
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: Builder(
+        builder: (context) {
+          final job = JobOrderDto(
+            id: 4152,
+            ticketNumber: 'JO-4152',
+            customerName: 'Gene 2 Medel',
+            address: 'Kaysakat',
+            status: 'Inprogress',
+            onsiteStatus: 'Done',
+          );
+          result = jobStatusWord(context, job);
+          return Container();
+        },
+      ),
+    ));
+
+    expect(result.$1, 'In progress');
+  });
 }

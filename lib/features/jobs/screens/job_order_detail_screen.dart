@@ -474,8 +474,18 @@ class JobOrderDetailScreen extends StatelessWidget {
         status == JobStatus.activated || status == JobStatus.completed;
     final terminalLabel =
         status == JobStatus.activated ? 'Activated' : 'Completed';
+    /*
     final steps = [
       {'label': 'Scheduled', 'active': true},
+      {'label': terminalLabel, 'active': isFinished},
+    ];
+    */
+    // Gene - Oct 3, 2026: Dynamic step 1 label based on job status so In Progress or Rescheduled jobs do not display hardcoded 'Scheduled'.
+    final initialLabel = status == JobStatus.inProgress
+        ? 'In Progress'
+        : (status == JobStatus.rescheduled ? 'Rescheduled' : 'Scheduled');
+    final steps = [
+      {'label': initialLabel, 'active': true},
       {'label': terminalLabel, 'active': isFinished},
     ];
 
