@@ -69,6 +69,9 @@ class _TechnicianShellState extends State<TechnicianShell>
   JobOrderDto? _lastSeenJobAlert;
   ServiceOrderDto? _lastSeenOrderAlert;
   bool _lastAlertIsJob = true;
+  // Gene - Oct 3, 2026: Single-flight mutex and sync completion tracking to throttle auto-sync and prevent overlapping network storms.
+  bool _isBackgroundSyncing = false;
+  DateTime? _lastSyncCompletedAt;
 
   @override
   void initState() {
@@ -180,6 +183,7 @@ class _TechnicianShellState extends State<TechnicianShell>
     });
   }
 
+  /*
   // Gene - Oct, 3, 2026: Centralized background sync method with try/catch to protect periodic timer and trigger immediately on app resume or tab selection.
   Future<void> _triggerBackgroundSync() async {
     if (!mounted) return;
@@ -196,11 +200,41 @@ class _TechnicianShellState extends State<TechnicianShell>
       // Ignored: silent background refresh
     }
   }
+  */
+  // Gene - Oct 3, 2026: Single-flight coordinator with cooldown to prevent network storms, race conditions, and duplicate simultaneous syncs.
+  Future<void> _triggerBackgroundSync({bool force = false}) async {
+    if (!mounted || _isBackgroundSyncing) return;
+    final now = DateTime.now();
+    if (!force &&
+        _lastSyncCompletedAt != null &&
+        now.difference(_lastSyncCompletedAt!) < const Duration(seconds: 10)) {
+      return;
+    }
+    _isBackgroundSyncing = true;
+    try {
+      if (!widget.jobsSignals.isRefreshing.value) {
+        await widget.jobsSignals.fetchRemote();
+      }
+      final email = widget.authSignals.currentUser.value?.email.trim();
+      if (!_serviceOrdersSignals.isSyncing.value &&
+          email != null &&
+          email.isNotEmpty) {
+        await _serviceOrdersSignals.fetchRemote(
+          technicianEmail: email,
+        );
+      }
+      _lastSyncCompletedAt = DateTime.now();
+    } catch (_) {
+      // Ignored: silent background refresh
+    } finally {
+      _isBackgroundSyncing = false;
+    }
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _triggerBackgroundSync();
+      _triggerBackgroundSync(force: true);
     }
   }
 
@@ -505,7 +539,9 @@ class _TechnicianShellState extends State<TechnicianShell>
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      isJob ? CupertinoIcons.bell_fill : CupertinoIcons.wrench_fill,
+                      isJob
+                          ? CupertinoIcons.bell_fill
+                          : CupertinoIcons.wrench_fill,
                       color: AppTheme.primary,
                       size: 20,
                     ),
@@ -717,7 +753,7 @@ class _TechnicianShellState extends State<TechnicianShell>
             }
           },
           */
-          // Gene - Oct, 3, 2026: Trigger background sync on tab switch or re-tapping current tab so data stays fresh.
+          /*
           onTap: () {
             if (_currentIndex != index) {
               HapticFeedback.selectionClick();
@@ -725,6 +761,17 @@ class _TechnicianShellState extends State<TechnicianShell>
               _triggerBackgroundSync();
             } else if (index == _tabScheduled || index == _tabRepairs) {
               _triggerBackgroundSync();
+            }
+          },
+          */
+          // Gene - Oct 3, 2026: Pass force: true on user tap to bypass throttling cooldown while respecting the single-flight lock.
+          onTap: () {
+            if (_currentIndex != index) {
+              HapticFeedback.selectionClick();
+              setState(() => _currentIndex = index);
+              _triggerBackgroundSync(force: true);
+            } else if (index == _tabScheduled || index == _tabRepairs) {
+              _triggerBackgroundSync(force: true);
             }
           },
           child: ConstrainedBox(

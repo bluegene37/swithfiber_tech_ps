@@ -120,7 +120,8 @@ void main() {
       await tester.pump();
 
       await tester.runAsync(() async {
-        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
         await Future<void>.delayed(const Duration(milliseconds: 200));
       });
       await tester.pump();

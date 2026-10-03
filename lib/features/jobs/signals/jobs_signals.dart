@@ -118,11 +118,14 @@ class JobsSignals {
   late final ReadonlySignal<int> rescheduledCount =
       computed(() => _countOf(JobStatus.rescheduled));
 
-  // late final ReadonlySignal<int> scheduledCount =
-  //     computed(() => _countOf(JobStatus.scheduled) + _countOf(JobStatus.inProgress));
+  /*
   // Gene - Oct, 3, 2026: Exclude inProgress from scheduledCount so only strictly scheduled jobs are counted.
   late final ReadonlySignal<int> scheduledCount =
       computed(() => _countOf(JobStatus.scheduled));
+  */
+  // Gene - Oct 3, 2026: Include inProgress in scheduledCount so the Today queue badge and summary line accurately reflect all open dispatch work.
+  late final ReadonlySignal<int> scheduledCount = computed(
+      () => _countOf(JobStatus.scheduled) + _countOf(JobStatus.inProgress));
 
   late final ReadonlySignal<int> activatedCount =
       computed(() => _countOf(JobStatus.activated));
@@ -255,8 +258,12 @@ class JobsSignals {
     _driftSubscription = repository.watchJobs().listen((jobs) {
       final email = technicianEmail.value?.trim();
 
+      /*
       // Prune cached IDs if jobs were removed from local cache
       _knownJobIds.retainAll(jobs.map((j) => j.id));
+      _myAssignedJobIds.retainAll(jobs.map((j) => j.id));
+      */
+      // Gene - Oct 3, 2026: Retain _knownJobIds cumulatively to eliminate phantom alert storms and haptic triggers when cached jobs re-emit.
       _myAssignedJobIds.retainAll(jobs.map((j) => j.id));
 
       if (!_hasInitialSnapshot ||

@@ -95,7 +95,8 @@ void main() {
     expect(signals.historyJobs.value, isEmpty);
   });
 
-  test('reschedule does not corrupt local details when server returns blanked names',
+  test(
+      'reschedule does not corrupt local details when server returns blanked names',
       () async {
     await setUpJob(_job());
     // Server responds to fetchById with blank names (as if another tech or API wiped them)
@@ -137,7 +138,8 @@ void main() {
 
     final next = JobOrdersScreen.pickNext([rescheduledJob, scheduledJob]);
     expect(next.id, 1,
-        reason: 'Active scheduled job must be prioritized over rescheduled job');
+        reason:
+            'Active scheduled job must be prioritized over rescheduled job');
   });
 
   test('back to Scheduled clears the reason and preserves details', () async {

@@ -73,8 +73,12 @@ class ServiceOrdersSignals {
     _driftSubscription = dao!.watchAllOrders().listen((rows) {
       final email = technicianEmail.value?.trim();
 
+      /*
       // Prune cached IDs if orders were removed from local cache
       _knownOrderIds.retainAll(rows.map((o) => o.id));
+      _myAssignedOrderIds.retainAll(rows.map((o) => o.id));
+      */
+      // Gene - Oct 3, 2026: Retain _knownOrderIds cumulatively to eliminate phantom alert storms when cached repair orders re-emit.
       _myAssignedOrderIds.retainAll(rows.map((o) => o.id));
 
       if (!_hasInitialSnapshot) {
@@ -283,7 +287,13 @@ class ServiceOrdersSignals {
         if (fresh.isNotEmpty) {
           await dao!.insertAllOrders(fresh, synced: true);
         }
+        /*
         await dao!.deleteSyncedOrdersNotIn(keep);
+        */
+        // Gene - Oct 3, 2026: Guard deleteSyncedOrdersNotIn with keep.isNotEmpty to prevent wiping all service orders on empty responses.
+        if (keep.isNotEmpty) {
+          await dao!.deleteSyncedOrdersNotIn(keep);
+        }
       } else {
         allOrders.value = scopedList;
       }

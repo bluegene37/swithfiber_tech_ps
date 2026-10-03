@@ -274,11 +274,14 @@ class JobOrderDto {
   bool get isRescheduled => jobStatus == JobStatus.rescheduled;
   bool get isHistory => isActivated || isCompleted;
 
-  /// Open work on the technician's queue: strictly scheduled, or
-  /// rescheduled and waiting for a new visit.
-  // bool get isOpen => isScheduled || isRescheduled || isInProgress;
+  /// Open work on the technician's queue: scheduled, rescheduled and waiting
+  /// for a new visit, or in progress.
+  /*
   // Gene - Oct, 3, 2026: Restrict isOpen to strictly 2 statuses (isScheduled or isRescheduled). Do not show isInProgress in technician open queue as it undergoes admin checks before being dispatched.
   bool get isOpen => isScheduled || isRescheduled;
+  */
+  // Gene - Oct 3, 2026: Include isInProgress in isOpen so active dispatched work orders undergoing execution remain visible and actionable in the technician queue.
+  bool get isOpen => isScheduled || isRescheduled || isInProgress;
 
   /// Anything not yet in history can be activated.
   bool get canActivate => !isHistory;
@@ -441,51 +444,44 @@ class JobOrderDto {
         ? json['id'] as int
         : int.tryParse(json['id']?.toString() ?? '0') ?? 0;
 
-    final firstName = (json['firstName'] ??
-            json['FirstName'] ??
-            json['first_name'])
-        ?.toString()
-        .trim() ??
-        '';
-    final lastName = (json['lastName'] ??
-            json['LastName'] ??
-            json['last_name'])
-        ?.toString()
-        .trim() ??
+    final firstName =
+        (json['firstName'] ?? json['FirstName'] ?? json['first_name'])
+                ?.toString()
+                .trim() ??
+            '';
+    final lastName = (json['lastName'] ?? json['LastName'] ?? json['last_name'])
+            ?.toString()
+            .trim() ??
         '';
     final name = '$firstName $lastName'.trim();
 
-    final rawAccountNo = (json['accountNo'] ??
-            json['AccountNo'] ??
-            json['account_no'])
-        ?.toString()
-        .trim() ??
-        '';
-    final rawTicket = (json['ticketNumber'] ??
-            json['TicketNumber'] ??
-            json['ticket_number'])
-        ?.toString()
-        .trim() ??
-        '';
+    final rawAccountNo =
+        (json['accountNo'] ?? json['AccountNo'] ?? json['account_no'])
+                ?.toString()
+                .trim() ??
+            '';
+    final rawTicket =
+        (json['ticketNumber'] ?? json['TicketNumber'] ?? json['ticket_number'])
+                ?.toString()
+                .trim() ??
+            '';
     final ticketNumber = rawAccountNo.isNotEmpty
         ? rawAccountNo
         : (rawTicket.isNotEmpty ? rawTicket : 'JO-$id');
 
     final rawFullName = (json['fullName'] ??
-            json['FullName'] ??
-            json['customerName'] ??
-            json['CustomerName'] ??
-            json['name'] ??
-            json['Name'])
-        ?.toString()
-        .trim() ??
+                json['FullName'] ??
+                json['customerName'] ??
+                json['CustomerName'] ??
+                json['name'] ??
+                json['Name'])
+            ?.toString()
+            .trim() ??
         '';
 
     final customerName = name.isNotEmpty
         ? name
-        : (rawFullName.isNotEmpty
-            ? rawFullName
-            : 'Subscriber #$id');
+        : (rawFullName.isNotEmpty ? rawFullName : 'Subscriber #$id');
 
     final rawAddr = (json['address']?.toString() ??
             json['Address']?.toString() ??
@@ -797,10 +793,9 @@ class JobOrderDto {
         (server.barangay != null && server.barangay!.trim().isNotEmpty)
             ? server.barangay
             : barangay;
-    final mergedCity =
-        (server.city != null && server.city!.trim().isNotEmpty)
-            ? server.city
-            : city;
+    final mergedCity = (server.city != null && server.city!.trim().isNotEmpty)
+        ? server.city
+        : city;
 
     // 7. Ticket Number
     final hasValidServerTicket = server.ticketNumber.trim().isNotEmpty &&
@@ -823,9 +818,8 @@ class JobOrderDto {
     }
 
     // 9. Materials Used
-    final mergedMaterials = server.materialsUsed.isNotEmpty
-        ? server.materialsUsed
-        : materialsUsed;
+    final mergedMaterials =
+        server.materialsUsed.isNotEmpty ? server.materialsUsed : materialsUsed;
 
     // 10. Raw JSON
     String? mergedRawJson = server.rawJson;
@@ -877,10 +871,10 @@ class JobOrderDto {
               server.modemRouterSN!.trim().isNotEmpty)
           ? server.modemRouterSN
           : modemRouterSN,
-      routerModel: (server.routerModel != null &&
-              server.routerModel!.trim().isNotEmpty)
-          ? server.routerModel
-          : routerModel,
+      routerModel:
+          (server.routerModel != null && server.routerModel!.trim().isNotEmpty)
+              ? server.routerModel
+              : routerModel,
       lcpId: server.lcpId ?? lcpId,
       napId: server.napId ?? napId,
       nap: (server.nap != null && server.nap!.trim().isNotEmpty)
@@ -1223,10 +1217,12 @@ class JobOrderDto {
 
     final altFirst = curFirst.isNotEmpty
         ? curFirst
-        : (payload['FirstName'] ?? payload['first_name'])?.toString().trim() ?? '';
+        : (payload['FirstName'] ?? payload['first_name'])?.toString().trim() ??
+            '';
     final altLast = curLast.isNotEmpty
         ? curLast
-        : (payload['LastName'] ?? payload['last_name'])?.toString().trim() ?? '';
+        : (payload['LastName'] ?? payload['last_name'])?.toString().trim() ??
+            '';
 
     if (altFirst.isNotEmpty) payload['firstName'] = altFirst;
     if (altLast.isNotEmpty) payload['lastName'] = altLast;
@@ -1363,8 +1359,7 @@ class JobOrderDto {
     }
 
     // 7. City
-    if (payload['city'] == null ||
-        payload['city'].toString().trim().isEmpty) {
+    if (payload['city'] == null || payload['city'].toString().trim().isEmpty) {
       final c = payload['City']?.toString() ?? city;
       if (c != null && c.trim().isNotEmpty) {
         payload['city'] = c.trim();
@@ -1374,9 +1369,7 @@ class JobOrderDto {
     // 8. Plan ID
     if (payload['planId'] == null ||
         payload['planId'].toString().trim().isEmpty) {
-      final p = payload['PlanId']?.toString() ??
-          planId?.toString() ??
-          planName;
+      final p = payload['PlanId']?.toString() ?? planId?.toString() ?? planName;
       if (p != null && p.trim().isNotEmpty) {
         payload['planId'] = p.trim();
       }

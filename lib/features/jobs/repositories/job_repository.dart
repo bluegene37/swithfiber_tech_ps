@@ -141,6 +141,12 @@ class JobRepository {
       if (fresh.isNotEmpty) {
         await _dao.insertAllJobs(fresh, synced: true);
       }
+      /*
+      if (keep.isNotEmpty) {
+        await _dao.deleteSyncedJobsNotIn(keep);
+      }
+      */
+      // Gene - Oct 3, 2026: Guard deleteSyncedJobsNotIn with keep.isNotEmpty to prevent accidental cache wipe when remote responses are empty.
       if (keep.isNotEmpty) {
         await _dao.deleteSyncedJobsNotIn(keep);
       }

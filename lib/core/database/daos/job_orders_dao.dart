@@ -237,7 +237,31 @@ class JobOrdersDao {
 
   /// Drop cached rows the server no longer returns, keeping any row with a
   /// local edit still waiting to sync so nothing the technician did is lost.
+  /*
   Future<int> deleteSyncedJobsNotIn(Set<int> keepIds) async {
+    final synced =
+        await _db.getAll('SELECT id FROM $table WHERE is_synced = 1');
+    final toDelete = [
+      for (final r in synced)
+        if (!keepIds.contains(rowInt(r['id']))) r['id'],
+    ];
+    if (toDelete.isEmpty) return 0;
+    await _db.writeTransaction((tx) async {
+      for (var i = 0; i < toDelete.length; i += 200) {
+        final chunk = toDelete.sublist(
+            i, (i + 200 > toDelete.length) ? toDelete.length : i + 200);
+        await tx.execute(
+          'DELETE FROM $table WHERE id IN (${placeholders(chunk.length)})',
+          chunk,
+        );
+      }
+    });
+    return toDelete.length;
+  }
+  */
+  // Gene - Oct 3, 2026: Guard deleteSyncedJobsNotIn against empty keepIds to prevent accidental full cache wipes when remote calls return empty.
+  Future<int> deleteSyncedJobsNotIn(Set<int> keepIds) async {
+    if (keepIds.isEmpty) return 0;
     final synced =
         await _db.getAll('SELECT id FROM $table WHERE is_synced = 1');
     final toDelete = [
