@@ -118,8 +118,11 @@ class JobsSignals {
   late final ReadonlySignal<int> rescheduledCount =
       computed(() => _countOf(JobStatus.rescheduled));
 
+  // late final ReadonlySignal<int> scheduledCount =
+  //     computed(() => _countOf(JobStatus.scheduled) + _countOf(JobStatus.inProgress));
+  // Gene - Oct, 3, 2026: Exclude inProgress from scheduledCount so only strictly scheduled jobs are counted.
   late final ReadonlySignal<int> scheduledCount =
-      computed(() => _countOf(JobStatus.scheduled) + _countOf(JobStatus.inProgress));
+      computed(() => _countOf(JobStatus.scheduled));
 
   late final ReadonlySignal<int> activatedCount =
       computed(() => _countOf(JobStatus.activated));
