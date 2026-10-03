@@ -119,13 +119,13 @@ class JobsSignals {
       computed(() => _countOf(JobStatus.rescheduled));
 
   /*
-  // Gene - Oct, 3, 2026: Exclude inProgress from scheduledCount so only strictly scheduled jobs are counted.
-  late final ReadonlySignal<int> scheduledCount =
-      computed(() => _countOf(JobStatus.scheduled));
-  */
   // Gene - Oct 3, 2026: Include inProgress in scheduledCount so the Today queue badge and summary line accurately reflect all open dispatch work.
   late final ReadonlySignal<int> scheduledCount = computed(
       () => _countOf(JobStatus.scheduled) + _countOf(JobStatus.inProgress));
+  */
+  // Gene - Oct 3, 2026: Exclude inProgress from scheduledCount per user request so only strictly scheduled jobs are counted in Today queue badge and summary.
+  late final ReadonlySignal<int> scheduledCount =
+      computed(() => _countOf(JobStatus.scheduled));
 
   late final ReadonlySignal<int> activatedCount =
       computed(() => _countOf(JobStatus.activated));

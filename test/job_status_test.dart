@@ -73,11 +73,11 @@ void main() {
       expect(job(status: 'inprogress').jobStatus, JobStatus.inProgress);
       expect(job(status: 'In Progress').isScheduled, isFalse);
       /*
-      // Gene - Oct, 3, 2026: In Progress is not open work on tech queue (under admin review).
-      expect(job(status: 'In Progress').isOpen, isFalse);
-      */
       // Gene - Oct 3, 2026: In Progress is active open work that remains visible and actionable on the technician queue.
       expect(job(status: 'In Progress').isOpen, isTrue);
+      */
+      // Gene - Oct 3, 2026: In Progress status is hidden from technician record list / open queue (under admin review).
+      expect(job(status: 'In Progress').isOpen, isFalse);
       expect(job(status: 'In Progress').isInProgress, isTrue);
       expect(JobStatus.inProgress.wireValue, 'Inprogress');
       expect(JobStatus.inProgress.label, 'In Progress');

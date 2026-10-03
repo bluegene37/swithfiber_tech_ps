@@ -277,11 +277,11 @@ class JobOrderDto {
   /// Open work on the technician's queue: scheduled, rescheduled and waiting
   /// for a new visit, or in progress.
   /*
-  // Gene - Oct, 3, 2026: Restrict isOpen to strictly 2 statuses (isScheduled or isRescheduled). Do not show isInProgress in technician open queue as it undergoes admin checks before being dispatched.
-  bool get isOpen => isScheduled || isRescheduled;
-  */
   // Gene - Oct 3, 2026: Include isInProgress in isOpen so active dispatched work orders undergoing execution remain visible and actionable in the technician queue.
   bool get isOpen => isScheduled || isRescheduled || isInProgress;
+  */
+  // Gene - Oct 3, 2026: Hide In Progress from open record list per user request (under admin checks before being dispatched).
+  bool get isOpen => isScheduled || isRescheduled;
 
   /// Anything not yet in history can be activated.
   bool get canActivate => !isHistory;
