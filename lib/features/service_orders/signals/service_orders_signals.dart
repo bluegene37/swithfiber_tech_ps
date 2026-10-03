@@ -1,6 +1,8 @@
 import 'dart:async';
-import 'package:flutter/services.dart';
+// Gene - Oct 3, 2026: Commented out unused services.dart import now that sound and haptics are encapsulated in SoundService.
+// import 'package:flutter/services.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+import '../../../core/services/sound_service.dart';
 import '../../../core/database/daos/service_orders_dao.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../models/service_order_model.dart';
@@ -138,6 +140,7 @@ class ServiceOrdersSignals {
         // Ignored when platform channels are unavailable (e.g. headless tests)
       }
       */
+      /*
       // Gene - Oct 3, 2026: Added .catchError to unawaited SystemSound and HapticFeedback futures to prevent unhandled async exceptions in headless test environments.
       try {
         SystemSound.play(SystemSoundType.alert).catchError((_) {});
@@ -145,6 +148,9 @@ class ServiceOrdersSignals {
       } catch (_) {
         // Ignored when platform channels are unavailable (e.g. headless tests)
       }
+      */
+      // Gene - Oct 3, 2026: Trigger audible chime alert and haptics via SoundService for newly added or assigned service orders.
+      SoundService.instance.playAlertSound().catchError((_) {});
     }
   }
 
