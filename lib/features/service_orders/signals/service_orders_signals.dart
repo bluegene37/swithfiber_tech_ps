@@ -126,9 +126,18 @@ class ServiceOrdersSignals {
     if (onNewOrderAlert != null) {
       onNewOrderAlert!(order);
     } else {
+      /*
       try {
         SystemSound.play(SystemSoundType.alert);
         HapticFeedback.heavyImpact();
+      } catch (_) {
+        // Ignored when platform channels are unavailable (e.g. headless tests)
+      }
+      */
+      // Gene - Oct 3, 2026: Added .catchError to unawaited SystemSound and HapticFeedback futures to prevent unhandled async exceptions in headless test environments.
+      try {
+        SystemSound.play(SystemSoundType.alert).catchError((_) {});
+        HapticFeedback.heavyImpact().catchError((_) {});
       } catch (_) {
         // Ignored when platform channels are unavailable (e.g. headless tests)
       }
@@ -241,8 +250,14 @@ class ServiceOrdersSignals {
   Future<void> fetchRemote({String? technicianEmail}) async {
     final effectiveEmail =
         (technicianEmail ?? this.technicianEmail.value)?.trim();
+    /*
     if (effectiveEmail != null && effectiveEmail.isNotEmpty) {
       this.technicianEmail.value = effectiveEmail;
+    }
+    */
+    // Gene - Oct 3, 2026: Used setTechnicianEmail to reset snapshot and assigned caches when scoping to an email on fetch.
+    if (effectiveEmail != null && effectiveEmail.isNotEmpty) {
+      setTechnicianEmail(effectiveEmail);
     }
     isSyncing.value = true;
     syncError.value = null;

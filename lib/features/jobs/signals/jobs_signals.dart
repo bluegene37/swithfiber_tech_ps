@@ -312,9 +312,18 @@ class JobsSignals {
     if (onNewJobAlert != null) {
       onNewJobAlert!(job);
     } else {
+      /*
       try {
         SystemSound.play(SystemSoundType.alert);
         HapticFeedback.heavyImpact();
+      } catch (_) {
+        // Ignored when platform channels are unavailable (e.g. headless tests)
+      }
+      */
+      // Gene - Oct 3, 2026: Added .catchError to unawaited SystemSound and HapticFeedback calls to prevent unhandled async exceptions in headless test environments.
+      try {
+        SystemSound.play(SystemSoundType.alert).catchError((_) {});
+        HapticFeedback.heavyImpact().catchError((_) {});
       } catch (_) {
         // Ignored when platform channels are unavailable (e.g. headless tests)
       }

@@ -32,9 +32,29 @@ class _MockServiceOrdersApi extends ServiceOrdersApi {
 }
 
 void main() {
+  /*
   late AppDatabase db;
   late _MockServiceOrdersApi mockApi;
   late Directory tempDir;
+  */
+  // Gene - Oct 3, 2026: Ensure TestWidgetsFlutterBinding is initialized and add condition-based waiting helper to prevent race conditions during DB stream emissions.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late AppDatabase db;
+  late _MockServiceOrdersApi mockApi;
+  late Directory tempDir;
+
+  Future<void> waitForCondition(
+    bool Function() condition, {
+    Duration timeout = const Duration(seconds: 3),
+    Duration pollInterval = const Duration(milliseconds: 10),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (!condition()) {
+      if (DateTime.now().isAfter(deadline)) break;
+      await Future<void>.delayed(pollInterval);
+    }
+  }
 
   setUp(() {
     db = AppDatabase.forTesting();
@@ -123,7 +143,11 @@ void main() {
     addTearDown(signals.dispose);
 
     await signals.fetchRemote();
+    /*
     await Future<void>.delayed(const Duration(milliseconds: 50));
+    */
+    // Gene - Oct 3, 2026: Replaced fixed 50ms delay with condition-based waiting for DB stream emission to eliminate CI runner flakiness.
+    await waitForCondition(() => signals.allOrders.value.isNotEmpty);
 
     expect(signals.allOrders.value.length, 1);
     expect(signals.allOrders.value.single.id, 501);
@@ -206,7 +230,11 @@ void main() {
     mockApi.remoteOrders = [pending.copyWith(isSynced: true)];
 
     await signals.fetchRemote();
+    /*
     await Future<void>.delayed(const Duration(milliseconds: 50));
+    */
+    // Gene - Oct 3, 2026: Replaced fixed 50ms delay with condition-based waiting for pending queue flush.
+    await waitForCondition(() => signals.syncWorker!.pendingCount.value == 0);
 
     expect(signals.syncWorker!.pendingCount.value, 0);
     expect(mockApi.callLog, contains('updateServiceOrder:501'));
@@ -240,7 +268,11 @@ void main() {
     addTearDown(signals.dispose);
 
     await signals.fetchRemote(technicianEmail: 'tech@switchfiber.ph');
+    /*
     await Future<void>.delayed(const Duration(milliseconds: 50));
+    */
+    // Gene - Oct 3, 2026: Replaced fixed 50ms delay with condition-based waiting for reactive DB stream emission to populate allOrders.
+    await waitForCondition(() => signals.allOrders.value.isNotEmpty);
 
     expect(signals.allOrders.value.length, 1);
     expect(signals.allOrders.value.single.id, 601);
