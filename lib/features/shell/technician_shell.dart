@@ -47,7 +47,10 @@ class TechnicianShell extends StatefulWidget {
   State<TechnicianShell> createState() => _TechnicianShellState();
 }
 
-class _TechnicianShellState extends State<TechnicianShell> {
+// class _TechnicianShellState extends State<TechnicianShell> {
+// Gene - Oct, 3, 2026: Add WidgetsBindingObserver mixin to detect app resume and trigger immediate auto-sync without manual refresh.
+class _TechnicianShellState extends State<TechnicianShell>
+    with WidgetsBindingObserver {
   static const int _tabScheduled = 0;
   static const int _tabRepairs = 1;
   static const int _tabLcpNap = 2;
@@ -70,6 +73,8 @@ class _TechnicianShellState extends State<TechnicianShell> {
   @override
   void initState() {
     super.initState();
+    // Gene - Oct, 3, 2026: Register lifecycle observer for auto-sync on app resume.
+    WidgetsBinding.instance.addObserver(this);
     _reportSignals = ReportSignals();
     _serviceOrdersSignals =
         widget.serviceOrdersSignals ?? ServiceOrdersSignals();
@@ -119,6 +124,7 @@ class _TechnicianShellState extends State<TechnicianShell> {
       );
     });
 
+    /*
     // Periodic background auto-sync timer (every 30 seconds) ensuring
     // newly scheduled work orders and repair tickets are automatically refreshed
     // without requiring manual pull-to-refresh.
@@ -130,6 +136,13 @@ class _TechnicianShellState extends State<TechnicianShell> {
             technicianEmail: widget.authSignals.currentUser.value?.email,
           );
         }
+      });
+    }
+    */
+    // Gene - Oct, 3, 2026: Periodic auto-sync runs every 15s guarded by try-catch so network drops don't halt the timer, ensuring status hide/show transitions reflect automatically without manual refresh.
+    if (widget.enableAutoSync) {
+      _autoSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+        await _triggerBackgroundSync();
       });
     }
 
@@ -167,8 +180,34 @@ class _TechnicianShellState extends State<TechnicianShell> {
     });
   }
 
+  // Gene - Oct, 3, 2026: Centralized background sync method with try/catch to protect periodic timer and trigger immediately on app resume or tab selection.
+  Future<void> _triggerBackgroundSync() async {
+    if (!mounted) return;
+    try {
+      if (!widget.jobsSignals.isRefreshing.value) {
+        await widget.jobsSignals.fetchRemote();
+      }
+      if (!_serviceOrdersSignals.isSyncing.value) {
+        await _serviceOrdersSignals.fetchRemote(
+          technicianEmail: widget.authSignals.currentUser.value?.email,
+        );
+      }
+    } catch (_) {
+      // Ignored: silent background refresh
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _triggerBackgroundSync();
+    }
+  }
+
   @override
   void dispose() {
+    // Gene - Oct, 3, 2026: Unregister lifecycle observer on disposal.
+    WidgetsBinding.instance.removeObserver(this);
     _autoSyncTimer?.cancel();
     _bannerDismissTimer?.cancel();
     _disposeAlertEffect();
@@ -670,10 +709,22 @@ class _TechnicianShellState extends State<TechnicianShell> {
         button: true,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
+          /*
           onTap: () {
             if (_currentIndex != index) {
               HapticFeedback.selectionClick();
               setState(() => _currentIndex = index);
+            }
+          },
+          */
+          // Gene - Oct, 3, 2026: Trigger background sync on tab switch or re-tapping current tab so data stays fresh.
+          onTap: () {
+            if (_currentIndex != index) {
+              HapticFeedback.selectionClick();
+              setState(() => _currentIndex = index);
+              _triggerBackgroundSync();
+            } else if (index == _tabScheduled || index == _tabRepairs) {
+              _triggerBackgroundSync();
             }
           },
           child: ConstrainedBox(
