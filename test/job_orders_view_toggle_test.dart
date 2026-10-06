@@ -69,6 +69,13 @@ void main() {
     // List first: the only job is one card with its three actions.
     expect(find.byType(StatusRailRow), findsOneWidget);
     expect(find.text('Juan Dela Cruz'), findsOneWidget);
+    /*
+    expect(find.text('NAVIGATE'), findsOneWidget);
+    */
+    // Gene - Oct 6, 2026: Job cards start collapsed; expand to reveal action buttons.
+    expect(find.byKey(const ValueKey('job_expand_toggle_101')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('job_expand_toggle_101')));
+    await tester.pump();
     expect(find.text('NAVIGATE'), findsOneWidget);
     expect(find.byType(JobsMapView), findsNothing);
 

@@ -106,6 +106,7 @@ void main() {
     expect(find.text('NEXT'), findsOneWidget);
     expect(find.text('THEN'), findsOneWidget);
     expect(find.byType(StatusRailRow), findsNWidgets(3));
+    /*
     expect(find.text('NAVIGATE'), findsNWidgets(3));
     expect(find.text('CALL'), findsNWidgets(3));
     expect(find.text('SMS'), findsNWidgets(3));
@@ -113,6 +114,21 @@ void main() {
         reason: 'no red verb on the list; the sticky verb is on the detail');
     // Phone and email sit on every card with one copy button, so a number
     // can be read back to a caller without opening the job.
+    expect(find.text('09171234567 · 09181234567'), findsNWidgets(3));
+    expect(find.text('sub1@example.com'), findsOneWidget);
+    expect(find.byTooltip('Copy contact'), findsNWidgets(3));
+    */
+    // Gene - Oct 6, 2026: Cards start collapsed; expanding reveals secondary contact lines and action buttons.
+    expect(find.byTooltip('Expand details'), findsNWidgets(3));
+    for (final toggle in find.byTooltip('Expand details').evaluate().toList()) {
+      await tester.tap(find.byWidget(toggle.widget));
+    }
+    await tester.pump();
+    expect(find.text('NAVIGATE'), findsNWidgets(3));
+    expect(find.text('CALL'), findsNWidgets(3));
+    expect(find.text('SMS'), findsNWidgets(3));
+    expect(find.byType(ElevatedButton), findsNothing,
+        reason: 'no red verb on the list; the sticky verb is on the detail');
     expect(find.text('09171234567 · 09181234567'), findsNWidgets(3));
     expect(find.text('sub1@example.com'), findsOneWidget);
     expect(find.byTooltip('Copy contact'), findsNWidgets(3));

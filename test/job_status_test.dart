@@ -16,6 +16,7 @@ void main() {
       expect(job(status: 'Completed').jobStatus, JobStatus.completed);
     });
 
+    /*
     test('Rescheduled is open work that can still be completed', () {
       final j = job(status: 'Rescheduled');
       expect(j.jobStatus, JobStatus.rescheduled);
@@ -25,6 +26,20 @@ void main() {
       expect(j.isScheduled, isFalse);
       expect(j.isHistory, isFalse);
       expect(j.canActivate, isTrue);
+      expect(j.nextStatus, JobStatus.completed);
+      expect(JobStatus.rescheduled.wireValue, 'Rescheduled');
+    });
+    */
+    // Gene - Oct 6, 2026: Rescheduled jobs are view-only and cannot be activated (canActivate is false).
+    test('Rescheduled is open work that is view-only and cannot be activated', () {
+      final j = job(status: 'Rescheduled');
+      expect(j.jobStatus, JobStatus.rescheduled);
+      expect(job(status: 'reschedule').jobStatus, JobStatus.rescheduled);
+      expect(j.isRescheduled, isTrue);
+      expect(j.isOpen, isTrue);
+      expect(j.isScheduled, isFalse);
+      expect(j.isHistory, isFalse);
+      expect(j.canActivate, isFalse);
       expect(j.nextStatus, JobStatus.completed);
       expect(JobStatus.rescheduled.wireValue, 'Rescheduled');
     });

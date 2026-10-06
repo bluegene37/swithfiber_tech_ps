@@ -521,6 +521,7 @@ class _Kicker extends StatelessWidget {
 /// phone, email) with a copy button for the contact, the status word, and
 /// the same three actions on every card: Navigate, Call, SMS. Tapping the
 /// card opens the job.
+/*
 class _JobRow extends StatelessWidget {
   final JobOrderDto job;
   final VoidCallback onTap;
@@ -597,6 +598,110 @@ class _JobRow extends StatelessWidget {
           onTap: () => smsJob(context, job),
         ),
       ],
+    );
+  }
+}
+*/
+// Gene - Oct 6, 2026: Made _JobRow expandable so secondary details (address, plant, contact, actions) are collapsed by default and toggleable via trailing chevron button.
+class _JobRow extends StatefulWidget {
+  final JobOrderDto job;
+  final VoidCallback onTap;
+
+  const _JobRow({required this.job, required this.onTap});
+
+  /// A plant value the server left blank or wrote as "0" is unassigned.
+  static String? _assigned(String? raw) {
+    final v = raw?.trim();
+    return v == null || v.isEmpty || v == '0' ? null : v;
+  }
+
+  /// `202609051153198108414 (3980)`: the application ticket and the record id.
+  static String ticketLine(JobOrderDto job) =>
+      '${job.ticketNumber} (${job.id})';
+
+  @override
+  State<_JobRow> createState() => _JobRowState();
+}
+
+class _JobRowState extends State<_JobRow> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final job = widget.job;
+    final (label, rail, ink) = jobStatusWord(context, job);
+    final place = [
+      job.address.trim(),
+      if (job.barangay?.isNotEmpty == true) job.barangay!,
+      if (job.city?.isNotEmpty == true) job.city!,
+    ].where((s) => s.isNotEmpty).join(', ');
+    final napText = _JobRow._assigned(job.nap) ??
+        (job.napId != null && job.napId! > 0 ? 'NAP ${job.napId}' : null);
+    final plant = [
+      if (job.lcpId != null && job.lcpId! > 0) 'LCP ${job.lcpId}',
+      if (napText != null) napText,
+      if (_JobRow._assigned(job.portId) != null) _JobRow._assigned(job.portId)!,
+    ].join(' · ');
+    final phone = [
+      if (job.contactNumber?.trim().isNotEmpty == true)
+        job.contactNumber!.trim(),
+      if (job.secondContactNumber != null) job.secondContactNumber!,
+    ].join(' · ');
+    final email = job.subscriberEmail;
+
+    return StatusRailRow(
+      leading: distanceLabelFor(job),
+      railColor: rail,
+      statusInk: ink,
+      title: job.customerName,
+      data: _JobRow.ticketLine(job),
+      trailing: IconButton(
+        key: ValueKey('job_expand_toggle_${job.id}'),
+        icon: Icon(
+          _isExpanded
+              ? Icons.keyboard_arrow_up_rounded
+              : Icons.keyboard_arrow_down_rounded,
+          color: AppTheme.secondaryInkOf(context),
+        ),
+        tooltip: _isExpanded ? 'Collapse details' : 'Expand details',
+        onPressed: () => setState(() => _isExpanded = !_isExpanded),
+      ),
+      extra: _isExpanded
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (place.isNotEmpty)
+                  _DetailLine(icon: Icons.location_on_outlined, text: place),
+                if (plant.isNotEmpty)
+                  _DetailLine(icon: Icons.hub_outlined, text: plant, mono: true),
+                if (job.planName?.isNotEmpty == true)
+                  _DetailLine(icon: Icons.wifi_rounded, text: job.planName!),
+                _ContactLines(phone: phone, email: email, job: job),
+              ],
+            )
+          : null,
+      statusLabel: label,
+      onTap: widget.onTap,
+      actions: _isExpanded
+          ? [
+              StatusRailAction(
+                icon: Icons.navigation_rounded,
+                label: 'Navigate',
+                onTap: () => navigateToJob(job),
+              ),
+              StatusRailAction(
+                icon: Icons.call_rounded,
+                label: 'Call',
+                onTap: () => callJob(context, job),
+              ),
+              StatusRailAction(
+                icon: Icons.sms_rounded,
+                label: 'SMS',
+                onTap: () => smsJob(context, job),
+              ),
+            ]
+          : null,
     );
   }
 }

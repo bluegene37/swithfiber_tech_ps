@@ -284,7 +284,11 @@ class JobOrderDto {
   bool get isOpen => isScheduled || isRescheduled;
 
   /// Anything not yet in history can be activated.
+  /*
   bool get canActivate => !isHistory;
+  */
+  // Gene - Oct 6, 2026: Made rescheduled job orders view-only so they cannot be activated or reported on.
+  bool get canActivate => !isHistory && !isRescheduled;
 
   /// The next stage when the technician advances this job. A job outside the
   /// workflow goes straight to Completed.

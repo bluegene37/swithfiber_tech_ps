@@ -244,15 +244,24 @@ void main() {
       expect(banner, findsOneWidget);
       expect(find.descendant(of: banner, matching: find.text('Not Available')),
           findsOneWidget);
+      /*
       // The status row lives in the workflow card at the end of the list.
       await tester.scrollUntilVisible(change, 300,
           scrollable: find.byType(Scrollable).first);
       expect(find.text('Rescheduled · Not Available'), findsOneWidget);
+      */
+      // Gene - Oct 6, 2026: Scroll to status text since the Change button is locked/hidden once marked Rescheduled.
+      final statusRowText = find.text('Rescheduled · Not Available');
+      await tester.scrollUntilVisible(statusRowText, 300,
+          scrollable: find.byType(Scrollable).first);
+      expect(statusRowText, findsOneWidget);
+      expect(find.byKey(const ValueKey('job_status_change')), findsNothing);
       expect(tester.takeException(), isNull);
       // Let the confirmation snackbar's timer expire before the test ends.
       await tester.pump(const Duration(seconds: 5));
     });
 
+    /*
     testWidgets('a rescheduled job still offers the completion report',
         (tester) async {
       await pumpDetail(
@@ -262,6 +271,26 @@ void main() {
           find.byKey(const ValueKey('job_status_change')), 300,
           scrollable: find.byType(Scrollable).first);
       expect(find.text('Rescheduled · Bad Weather'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+    */
+    // Gene - Oct 6, 2026: Rescheduled jobs are view-only: no completion report button and no Change status button.
+    testWidgets(
+        'a rescheduled job is view-only and does not offer completion report or status editing',
+        (tester) async {
+      await pumpDetail(
+          tester, _job(status: 'Rescheduled', statusRemarks: 'Bad Weather'));
+      expect(find.text('Fill completion report'), findsNothing);
+      expect(find.text('Complete job'), findsNothing);
+      final rescheduledStatusText = find.text('Rescheduled · Bad Weather');
+      await tester.scrollUntilVisible(rescheduledStatusText, 300,
+          scrollable: find.byType(Scrollable).first);
+      expect(rescheduledStatusText, findsOneWidget);
+      expect(find.byKey(const ValueKey('job_status_change')), findsNothing);
+      expect(
+          find.text(
+              'View only. This job order is rescheduled and cannot be completed or reported on.'),
+          findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

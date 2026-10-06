@@ -126,7 +126,26 @@ class JobOrderDetailScreen extends StatelessWidget {
           ),
           // The screen's one red verb (DESIGN.md): fill the report, then
           // complete the job. The line above it says which step this is.
+          /*
           bottomNavigationBar: readOnly || !job.canActivate
+              ? null
+              : StickyActionBar(
+                  label: job.hasCompletedReport
+                      ? 'Complete job'
+                      : 'Fill completion report',
+                  icon: job.hasCompletedReport
+                      ? Icons.check_circle_rounded
+                      : Icons.assignment_turned_in_rounded,
+                  why: job.hasCompletedReport
+                      ? 'Report filed · ready to complete'
+                      : 'Step 1 of 2 · a completion report is required',
+                  onPressed: job.hasCompletedReport
+                      ? () => _handleComplete(context, job, isDark)
+                      : () => _handleOpenReport(context, job),
+                ),
+          */
+          // Gene - Oct 6, 2026: Explicitly hide the action bar for rescheduled jobs so completion reports cannot be filed.
+          bottomNavigationBar: readOnly || !job.canActivate || job.isRescheduled
               ? null
               : StickyActionBar(
                   label: job.hasCompletedReport
@@ -357,6 +376,7 @@ class JobOrderDetailScreen extends StatelessWidget {
             _buildAssignmentRow(context, job, isDark),
             const SizedBox(height: 12),
 
+            /*
             // Scheduled or Rescheduled, changed from a sheet. Finished jobs
             // and the history never offer it.
             if (!readOnly && job.canActivate) ...[
@@ -366,6 +386,24 @@ class JobOrderDetailScreen extends StatelessWidget {
 
             // The one field action: Scheduled -> Completed.
             if (readOnly)
+              _buildViewOnlyNote(context, isDark)
+            else if (job.canActivate) ...[
+              if (!job.hasCompletedReport)
+                _buildReportRequiredNote(context, isDark)
+              else
+                _buildReportReadyNote(context, isDark),
+            ] else
+              _buildActivatedNote(context, job, isDark),
+            */
+            // Gene - Oct 6, 2026: Keep status row visible for rescheduled jobs and show view-only note without offering reporting.
+            if (!readOnly && (job.canActivate || job.isRescheduled)) ...[
+              _buildStatusRow(context, job),
+              const SizedBox(height: 12),
+            ],
+
+            if (job.isRescheduled)
+              _buildRescheduledNote(context, isDark)
+            else if (readOnly)
               _buildViewOnlyNote(context, isDark)
             else if (job.canActivate) ...[
               if (!job.hasCompletedReport)
@@ -407,12 +445,22 @@ class JobOrderDetailScreen extends StatelessWidget {
             ],
           ),
         ),
+        /*
         TextButton.icon(
           key: const ValueKey('job_status_change'),
           onPressed: () => _handleChangeStatus(context, job),
           icon: const Icon(Icons.edit_calendar_rounded, size: 20),
           label: const Text('Change'),
         ),
+        */
+        // Gene - Oct 6, 2026: Lock status editing on rescheduled jobs by hiding the Change button.
+        if (!job.isRescheduled)
+          TextButton.icon(
+            key: const ValueKey('job_status_change'),
+            onPressed: () => _handleChangeStatus(context, job),
+            icon: const Icon(Icons.edit_calendar_rounded, size: 20),
+            label: const Text('Change'),
+          ),
       ],
     );
   }
@@ -1637,6 +1685,40 @@ class JobOrderDetailScreen extends StatelessWidget {
             child: Text(
               'View only. This job is in your history and cannot be changed.',
               style: context.text.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Gene - Oct 6, 2026: Notice explaining that a rescheduled job is view-only and cannot be reported on or completed.
+  Widget _buildRescheduledNote(BuildContext context, bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark
+            ? const Color(0xFF3B2506)
+            : AppTheme.warningSubtle,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark
+              ? const Color(0xFF78350F)
+              : const Color(0xFFFDE68A),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.event_repeat_rounded,
+              size: 20, color: AppTheme.warningInkOf(context)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'View only. This job order is rescheduled and cannot be completed or reported on.',
+              style: context.text.bodySmall!.copyWith(
+                color: AppTheme.warningInkOf(context),
+              ),
             ),
           ),
         ],
