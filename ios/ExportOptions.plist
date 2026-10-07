@@ -13,7 +13,10 @@
     <key>stripSwiftSymbols</key>
     <true/>
     <key>teamID</key>
+    <!-- Gene - Oct 08, 2026: Updated Apple Development Team ID to personal account T7LB768N2Z.
     <string>8AD458D2K2</string>
+    -->
+    <string>T7LB768N2Z</string>
     <key>testFlightInternalTestingOnly</key>
     <false/>
     <key>uploadSymbols</key>

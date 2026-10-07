@@ -95,7 +95,10 @@ Connect before the first upload.
 
 Switch Fiber Tech uses manual App Store distribution signing for CI and local automated releases, configured via `ios/ExportOptions.plist`.
 - **Bundle Identifier**: `dev.genexis.swithfibertech` (must exist in Apple Developer Portal and App Store Connect)
+<!-- Gene - Oct 08, 2026: Updated Apple Team ID to personal account T7LB768N2Z.
 - **Apple Team ID**: `8AD458D2K2`
+-->
+- **Apple Team ID**: `T7LB768N2Z`
 - **Distribution Method**: `app-store`
 
 #### Step 1: Export Apple Distribution Certificate (`.p12`)
@@ -116,7 +119,10 @@ Switch Fiber Tech uses manual App Store distribution signing for CI and local au
 12. Enter a strong password to protect the exported `.p12` file. Store this password securely; it will be used for `APPLE_CERTIFICATE_PASSWORD`.
 
 #### Step 2: Create & download App Store Provisioning Profile (`.mobileprovision`)
+<!-- Gene - Oct 08, 2026: Updated Team ID to personal account T7LB768N2Z.
 1. In [Apple Developer Portal - Identifiers](https://developer.apple.com/account/resources/identifiers/list), ensure the App ID `dev.genexis.swithfibertech` is registered under Team ID `8AD458D2K2`.
+-->
+1. In [Apple Developer Portal - Identifiers](https://developer.apple.com/account/resources/identifiers/list), ensure the App ID `dev.genexis.swithfibertech` is registered under Team ID `T7LB768N2Z`.
 2. Navigate to [Apple Developer Portal - Profiles](https://developer.apple.com/account/resources/profiles/list).
 3. Click the **+** button next to Profiles.
 4. Under **Distribution**, select **App Store** and click **Continue**.
