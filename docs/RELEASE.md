@@ -1,9 +1,18 @@
 # Release guide
 
+<!-- Gene - Oct 08, 2026: Updated release overview to reflect automated TestFlight CI deployment and local deploy script alongside Google Play releases.
 How to cut a store-ready build of Switch Fiber Tech. The CI pipeline
 (`.github/workflows/ci.yml`) gates every pull request; the release pipeline
 (`.github/workflows/release.yml`) builds signed Android artifacts when a `v*`
 tag is pushed. iOS is built and uploaded from a Mac with Xcode signing.
+-->
+How to cut a store-ready build of Switch Fiber Tech. The CI pipeline
+(`.github/workflows/ci.yml`) gates every pull request; the release pipeline
+(`.github/workflows/release.yml`) builds signed Android artifacts (deployed to Google Play)
+and signed iOS IPAs (deployed directly to Apple TestFlight) when a `v*` tag is pushed or
+when triggered via workflow dispatch. Releases can also be built and deployed locally using
+`./scripts/deploy_testflight.sh` or standard Flutter build commands.
+
 
 ## 1. One-time setup
 
@@ -73,12 +82,94 @@ This is interactive and must be run once by a person:
 flutter doctor --android-licenses
 ```
 
+<!-- Gene - Oct 08, 2026: Expanded iOS signing documentation into comprehensive step-by-step Apple Developer Portal, certificates, provisioning profiles, API keys, and GitHub Secrets guide.
 ### iOS signing
 
 Open `ios/Runner.xcworkspace` in Xcode, select the Runner target, and enable
 *Automatically manage signing* with the Switch Fiber team. The bundle
 identifier is `dev.genexis.swithfibertech`; it must exist in App Store
 Connect before the first upload.
+-->
+<!-- Gene - Oct 08, 2026: Added complete Apple signing setup, certificates/profiles export, App Store Connect API keys, and GitHub Secrets reference. -->
+### iOS signing & TestFlight setup
+
+Switch Fiber Tech uses manual App Store distribution signing for CI and local automated releases, configured via `ios/ExportOptions.plist`.
+- **Bundle Identifier**: `dev.genexis.swithfibertech` (must exist in Apple Developer Portal and App Store Connect)
+- **Apple Team ID**: `8AD458D2K2`
+- **Distribution Method**: `app-store`
+
+#### Step 1: Export Apple Distribution Certificate (`.p12`)
+1. Open **Keychain Access** on your macOS machine.
+2. From the application menu, select **Keychain Access** > **Certificate Assistant** > **Request a Certificate from a Certificate Authority...**.
+   - User Email Address: Your Apple ID email address.
+   - Common Name: e.g., `Switch Fiber Tech Distribution`.
+   - Request is: Choose **Saved to disk** and save `CertificateSigningRequest.certSigningRequest`.
+3. Sign in to the [Apple Developer Portal - Certificates](https://developer.apple.com/account/resources/certificates/list).
+4. Click the **+** button next to Certificates.
+5. Under **Software**, select **Apple Distribution** (or iOS Distribution) and click **Continue**.
+6. Upload your `.certSigningRequest` file and click **Generate**.
+7. Download the resulting certificate (`distribution.cer`).
+8. Double-click `distribution.cer` to install it into Keychain Access (under the `login` keychain).
+9. In Keychain Access, find the installed certificate under **My Certificates** (`Apple Distribution: ...`). Expand it to verify the private key is nested under the certificate.
+10. Select both the certificate and its private key, right-click, and choose **Export 2 items...**.
+11. Choose file format **Personal Information Exchange (.p12)** and save as `switchfiber-distribution.p12`.
+12. Enter a strong password to protect the exported `.p12` file. Store this password securely; it will be used for `APPLE_CERTIFICATE_PASSWORD`.
+
+#### Step 2: Create & download App Store Provisioning Profile (`.mobileprovision`)
+1. In [Apple Developer Portal - Identifiers](https://developer.apple.com/account/resources/identifiers/list), ensure the App ID `dev.genexis.swithfibertech` is registered under Team ID `8AD458D2K2`.
+2. Navigate to [Apple Developer Portal - Profiles](https://developer.apple.com/account/resources/profiles/list).
+3. Click the **+** button next to Profiles.
+4. Under **Distribution**, select **App Store** and click **Continue**.
+5. Select the App ID `dev.genexis.swithfibertech` and click **Continue**.
+6. Select the **Apple Distribution Certificate** created in Step 1 and click **Continue**.
+7. Name the provisioning profile (e.g. `Switch Fiber Tech App Store Distribution`) and click **Generate**.
+8. Download the profile (`Switch_Fiber_Tech_App_Store_Distribution.mobileprovision`).
+
+#### Step 3: Create App Store Connect API Key (`.p8`)
+An App Store Connect API Key allows CI runners and local command-line scripts to upload builds to TestFlight without 2-factor authentication prompts.
+1. Sign in to [App Store Connect](https://appstoreconnect.apple.com/).
+2. Navigate to **Users and Access** > **Integrations** tab > **App Store Connect API**.
+3. Click the **+** button to generate a new API key.
+4. Fill in the details:
+   - **Name**: e.g. `SwitchFiber-CI-Deployer`
+   - **Access**: Select **App Manager** or **Admin** (required for TestFlight binary uploads and build processing).
+5. Click **Generate**.
+6. Note down the displayed **Key ID** (10 alphanumeric characters, e.g. `ABCD1234EF`).
+7. Copy the **Issuer ID** (UUID at the top of the keys table, e.g. `69a6de70-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
+8. Click **Download API Key** to download `AuthKey_<KEY_ID>.p8`.
+   > [!IMPORTANT]
+   > The `.p8` private key file can only be downloaded once from App Store Connect. Store it securely.
+9. For local release script usage, place the key in your home directory:
+   ```bash
+   mkdir -p ~/.appstoreconnect/private_keys
+   cp path/to/AuthKey_<KEY_ID>.p8 ~/.appstoreconnect/private_keys/
+   ```
+
+#### Step 4: Base64 encoding & GitHub Secrets configuration
+To configure GitHub Actions for automated iOS builds and TestFlight releases, encode each binary asset to Base64 on macOS:
+
+```bash
+# 1. Distribution Certificate (.p12)
+base64 -i switchfiber-distribution.p12 | pbcopy
+
+# 2. Provisioning Profile (.mobileprovision)
+base64 -i Switch_Fiber_Tech_App_Store_Distribution.mobileprovision | pbcopy
+
+# 3. App Store Connect API Key (.p8)
+base64 -i ~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8 | pbcopy
+```
+
+In GitHub, go to **Settings** > **Secrets and variables** > **Actions** and add these repository secrets:
+
+| Secret | Value | Description |
+|---|---|---|
+| `APPLE_CERTIFICATE_BASE64` | `base64 -i switchfiber-distribution.p12` | Base64-encoded `.p12` distribution certificate with private key |
+| `APPLE_CERTIFICATE_PASSWORD` | `<certificate-password>` | Password set when exporting the `.p12` file |
+| `APPLE_PROVISIONING_PROFILE_BASE64` | `base64 -i profile.mobileprovision` | Base64-encoded `.mobileprovision` App Store distribution profile |
+| `APP_STORE_CONNECT_API_KEY_BASE64` | `base64 -i AuthKey_<KEY_ID>.p8` | Base64-encoded App Store Connect API private key (`.p8`) |
+| `APP_STORE_CONNECT_KEY_ID` | e.g. `ABCD1234EF` | App Store Connect API 10-character Key ID |
+| `APP_STORE_CONNECT_ISSUER_ID` | e.g. `69a6de70-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | App Store Connect API Issuer ID UUID |
+
 
 ### Application identifiers
 
@@ -113,6 +204,7 @@ package directory under `android/app/src/main/kotlin`, and every
    git tag v1.0.1 && git push origin v1.0.1
    ```
 
+<!-- Gene - Oct 08, 2026: Updated release pipeline description to reflect simultaneous Android and iOS TestFlight builds and new workflow_dispatch platform input.
    The release workflow (`.github/workflows/release.yml`):
    - Runs test checks (`flutter test`).
    - Restores the upload keystore from secrets.
@@ -126,6 +218,34 @@ package directory under `android/app/src/main/kotlin`, and every
    - Click **Run workflow**.
    - Choose target branch (e.g., `main`), track (`internal` by default, or `alpha`/`beta`/`production`), and optionally specify a custom build number.
    - Click **Run workflow** to initiate deployment to Google Play.
+-->
+<!-- Gene - Oct 08, 2026: Documented concurrent Android and iOS TestFlight CI release jobs, symbol archiving, and workflow_dispatch platform targeting. -->
+   The release workflow (`.github/workflows/release.yml`) executes two parallel jobs:
+   - **Android Job (`android`)**:
+     - Runs test checks (`flutter test`).
+     - Restores the upload keystore from `ANDROID_KEYSTORE_BASE64`.
+     - Compiles signed release `.aab` (App Bundle) and `.apk` with Dart obfuscation (`--split-debug-info=build/symbols/android`).
+     - Automatically deploys the `.aab` to Google Play (**Internal Testing** track by default).
+     - Archives obfuscation symbols (`symbols-android-<tag>.tar.gz`) and attaches artifacts (`.aab`, `.apk`, symbols) to the GitHub Release.
+   - **iOS Job (`ios`)**:
+     - Runs on `macos-latest`.
+     - Runs test checks (`flutter test`).
+     - Creates an ephemeral keychain and imports the distribution certificate and provisioning profile.
+     - Compiles signed release `.ipa` with Dart obfuscation using `ios/ExportOptions.plist` (`--split-debug-info=build/symbols/ios`).
+     - Deploys the `.ipa` to Apple TestFlight via `xcrun altool` using App Store Connect API credentials (`.p8`).
+     - Archives obfuscation symbols (`symbols-ios-<tag>.tar.gz`) and attaches artifacts (`.ipa`, symbols) to the GitHub Release.
+     - Cleans up the temporary keychain and credentials.
+
+5. Alternative: Manual Run via GitHub Actions UI (Workflow Dispatch):
+   - In GitHub, go to the **Actions** tab.
+   - Select the **Release** workflow in the left sidebar.
+   - Click **Run workflow**.
+   - Configure workflow inputs:
+     - **Target platform to release** (`platform`): `all` (default), `android`, or `ios`. Allows deploying only Android or only iOS independently.
+     - **Google Play track** (`track`): `internal` (default), `alpha`, `beta`, or `production` (applies to Android).
+     - **Override build number** (`build_number`): Integer override (leave blank to use the sequential GitHub run number).
+   - Click **Run workflow** to initiate automated deployment to Google Play, TestFlight, or both.
+
 
 ## 3. Building locally
 
@@ -141,6 +261,7 @@ Direct-install APK for technicians outside the Play Store:
 flutter build apk --release --obfuscate --split-debug-info=build/symbols/android
 ```
 
+<!-- Gene - Oct 08, 2026: Replaced basic iOS build snippet with comprehensive instructions for ./scripts/deploy_testflight.sh local release script and manual IPA build with export options.
 iOS:
 
 ```bash
@@ -149,6 +270,58 @@ flutter build ipa --release --obfuscate --split-debug-info=build/symbols/ios
 
 Then upload `build/ios/ipa/*.ipa` with Transporter or
 `xcrun altool --upload-app`.
+-->
+<!-- Gene - Oct 08, 2026: Documented automated local TestFlight deploy script (options, env vars, examples) and manual export-options build commands. -->
+iOS (Local TestFlight Automation Script):
+
+The repository provides `./scripts/deploy_testflight.sh`, a turnkey macOS release script that verifies prerequisites, executes static analysis and unit tests, compiles an obfuscated release IPA with `ios/ExportOptions.plist`, archives debug symbols, and uploads directly to Apple TestFlight.
+
+```bash
+# 1. Standard build, test, and upload to TestFlight (using env vars or stored .p8 key):
+./scripts/deploy_testflight.sh
+
+# 2. Build and upload with explicit build number and API credentials:
+./scripts/deploy_testflight.sh \
+  --build-number 105 \
+  --api-key ABCD1234EF \
+  --api-issuer 69a6de70-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# 3. Build signed IPA and archive symbols only (skip upload, for Transporter manual delivery):
+./scripts/deploy_testflight.sh --skip-upload
+
+# 4. Fast development build skipping test suite:
+./scripts/deploy_testflight.sh --skip-tests --skip-upload
+```
+
+**Script Options & Environment Variables:**
+- `--build-number <num>`: Integer build number override.
+- `--skip-tests`: Skip `flutter analyze --fatal-infos` and `flutter test`.
+- `--skip-upload`: Build the IPA and symbols archive without uploading to TestFlight.
+- `--api-key <key-id>`: App Store Connect API Key ID (defaults to `$APP_STORE_CONNECT_KEY_ID`).
+- `--api-issuer <uuid>`: App Store Connect Issuer ID UUID (defaults to `$APP_STORE_CONNECT_ISSUER_ID`).
+- `-h`, `--help`: Display usage and prerequisites help.
+
+**Manual iOS build:**
+
+If you prefer building manually without the script:
+
+```bash
+flutter build ipa --release \
+  --obfuscate --split-debug-info=build/symbols/ios \
+  --export-options-plist=ios/ExportOptions.plist
+```
+
+Then upload the resulting `build/ios/ipa/*.ipa` using:
+1. **Apple Transporter App**: Download "Transporter" from the Mac App Store, sign in, and drag-and-drop the generated `.ipa` file to deliver.
+2. **`xcrun altool` Command Line**:
+   ```bash
+   xcrun altool --upload-app \
+     -f build/ios/ipa/*.ipa \
+     -t ios \
+     --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+     --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+   ```
+
 
 **Keep the `build/symbols` directory for every release.** Without it, crash
 stack traces from obfuscated builds cannot be read, and the symbols cannot be
