@@ -27,7 +27,12 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    # Gene - Oct 08, 2026: Extended tags trigger to support platform-specific tags (ios-v*, android-v*) alongside v*.
+    # tags: ['v*']
+    tags:
+      - 'v*'
+      - 'ios-v*'
+      - 'android-v*'
   workflow_dispatch:
     # Gene - Oct 08, 2026: Extended workflow_dispatch inputs to allow selecting target platform (all, android, ios) for TestFlight support.
     # inputs:
@@ -83,7 +88,9 @@ jobs:
   android:
     name: Android App Bundle + APK
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'android'
+    # Gene - Oct 08, 2026: Gated android job to skip when pushing ios-v* tags.
+    # if: github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'android'
+    if: (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/ios-v')) || inputs.platform == 'all' || inputs.platform == 'android'
     steps:
       - uses: actions/checkout@v4
 
@@ -181,7 +188,9 @@ jobs:
           status: completed
 
       - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        # Gene - Oct 08, 2026: Allow attaching Android artifacts for v* and android-v* tags.
+        # if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/android-v')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
@@ -198,7 +207,9 @@ jobs:
   ios:
     name: iOS IPA + TestFlight
     runs-on: macos-latest
-    if: github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'ios'
+    # Gene - Oct 08, 2026: Gated ios job to skip when pushing android-v* tags.
+    # if: github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'ios'
+    if: (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/android-v')) || inputs.platform == 'all' || inputs.platform == 'ios'
     steps:
       - uses: actions/checkout@v4
 
@@ -298,7 +309,9 @@ jobs:
             --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
 
       - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        # Gene - Oct 08, 2026: Allow attaching iOS artifacts for v* and ios-v* tags.
+        # if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/ios-v')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
