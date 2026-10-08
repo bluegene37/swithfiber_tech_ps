@@ -16,16 +16,20 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<!-- Gene - Oct 08, 2026: Updated CFBundleDisplayName from SF Tech to SwitchFiber Tech -->
 	<key>CFBundleDisplayName</key>
-	<string>SF Tech</string>
+	<!-- <string>SF Tech</string> -->
+	<string>SwitchFiber Tech</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<!-- Gene - Oct 08, 2026: Updated CFBundleName from SF Tech to SwitchFiber Tech -->
 	<key>CFBundleName</key>
-	<string>SF Tech</string>
+	<!-- <string>SF Tech</string> -->
+	<string>SwitchFiber Tech</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

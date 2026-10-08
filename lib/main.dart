@@ -91,7 +91,9 @@ class SwitchFiberTechApp extends StatelessWidget {
     return SignalBuilder(
       builder: (context) {
         return MaterialApp(
-          title: 'Switch Fiber Tech',
+          // Gene - Oct 08, 2026: Updated MaterialApp title from 'Switch Fiber Tech' to 'SwitchFiber Tech'
+          // title: 'Switch Fiber Tech',
+          title: 'SwitchFiber Tech',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,

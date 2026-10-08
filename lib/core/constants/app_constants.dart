@@ -1,6 +1,8 @@
 /// Application constants and storage keys.
 class AppConstants {
-  static const String appName = 'Switch Fiber Tech';
+  // Gene - Oct 08, 2026: Updated appName from 'Switch Fiber Tech' to 'SwitchFiber Tech'
+  // static const String appName = 'Switch Fiber Tech';
+  static const String appName = 'SwitchFiber Tech';
   static const String appVersion = '1.0.0';
   static const String companyName = 'Switch Fiber';
   static const String appTagline = 'Distributed Fiber Network Management';
