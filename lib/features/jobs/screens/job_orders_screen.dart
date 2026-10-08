@@ -674,7 +674,8 @@ class _JobRowState extends State<_JobRow> {
                 if (place.isNotEmpty)
                   _DetailLine(icon: Icons.location_on_outlined, text: place),
                 if (plant.isNotEmpty)
-                  _DetailLine(icon: Icons.hub_outlined, text: plant, mono: true),
+                  _DetailLine(
+                      icon: Icons.hub_outlined, text: plant, mono: true),
                 if (job.planName?.isNotEmpty == true)
                   _DetailLine(icon: Icons.wifi_rounded, text: job.planName!),
                 _ContactLines(phone: phone, email: email, job: job),

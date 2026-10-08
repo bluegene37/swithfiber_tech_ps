@@ -2,7 +2,9 @@ name: swithfiber_tech_ps
 description: "Native mobile application for Switch Fiber Field Technicians (PowerSync Architecture)."
 publish_to: 'none'
 
-version: 1.0.0+1
+# Gene - Oct 08, 2026: Bumped build number to 25 for Closed Testing release.
+# version: 1.0.0+1
+version: 1.0.0+25
 
 environment:
   sdk: ^3.5.0

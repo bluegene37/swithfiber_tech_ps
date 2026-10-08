@@ -60,7 +60,8 @@ void main() {
     expect(find.text('SCHEDULED'), findsOneWidget);
 
     // Secondary details and actions should be collapsed (hidden)
-    expect(find.text('123 Sampaguita Street, San Antonio, Pasig City'), findsNothing);
+    expect(find.text('123 Sampaguita Street, San Antonio, Pasig City'),
+        findsNothing);
     expect(find.text('Fiber 200 Mbps'), findsNothing);
     expect(find.text('09171234567'), findsNothing);
     expect(find.text('NAVIGATE'), findsNothing);
@@ -76,7 +77,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Secondary details and action buttons should now be visible
-    expect(find.text('123 Sampaguita Street, San Antonio, Pasig City'), findsOneWidget);
+    expect(find.text('123 Sampaguita Street, San Antonio, Pasig City'),
+        findsOneWidget);
     expect(find.text('Fiber 200 Mbps'), findsOneWidget);
     expect(find.text('09171234567'), findsOneWidget);
     expect(find.text('NAVIGATE'), findsOneWidget);
@@ -88,7 +90,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Details are hidden once more
-    expect(find.text('123 Sampaguita Street, San Antonio, Pasig City'), findsNothing);
+    expect(find.text('123 Sampaguita Street, San Antonio, Pasig City'),
+        findsNothing);
     expect(find.text('Fiber 200 Mbps'), findsNothing);
     expect(find.text('NAVIGATE'), findsNothing);
 

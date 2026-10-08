@@ -31,7 +31,8 @@ void main() {
     });
     */
     // Gene - Oct 6, 2026: Rescheduled jobs are view-only and cannot be activated (canActivate is false).
-    test('Rescheduled is open work that is view-only and cannot be activated', () {
+    test('Rescheduled is open work that is view-only and cannot be activated',
+        () {
       final j = job(status: 'Rescheduled');
       expect(j.jobStatus, JobStatus.rescheduled);
       expect(job(status: 'reschedule').jobStatus, JobStatus.rescheduled);

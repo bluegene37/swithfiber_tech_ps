@@ -1698,14 +1698,10 @@ class JobOrderDetailScreen extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF3B2506)
-            : AppTheme.warningSubtle,
+        color: isDark ? const Color(0xFF3B2506) : AppTheme.warningSubtle,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: isDark
-              ? const Color(0xFF78350F)
-              : const Color(0xFFFDE68A),
+          color: isDark ? const Color(0xFF78350F) : const Color(0xFFFDE68A),
         ),
       ),
       child: Row(
