@@ -101,10 +101,16 @@ void main() {
     expect(
         find.textContaining('3 jobs · 1 done today · next '), findsOneWidget);
 
+    /*
     // Every job is the same card with the same three actions, so the
     // technician picks freely; the nearest leads under a NEXT kicker.
     expect(find.text('NEXT'), findsOneWidget);
     expect(find.text('THEN'), findsOneWidget);
+    */
+    // Gene - Oct 8, 2026: Jobs are now grouped by scheduled date instead of NEXT and THEN kickers.
+    final todayGroupLabel =
+        JobOrdersScreen.dateGroupLabel(DateTime.now()).toUpperCase();
+    expect(find.text(todayGroupLabel), findsOneWidget);
     expect(find.byType(StatusRailRow), findsNWidgets(3));
     /*
     expect(find.text('NAVIGATE'), findsNWidgets(3));
@@ -227,4 +233,32 @@ void main() {
       'No scheduled jobs · 6 done today',
     );
   });
+
+  // Gene - Oct 8, 2026: Verifies that jobs scheduled across multiple days are grouped under their respective date kickers.
+  testWidgets('groups jobs by scheduled date under distinct date kickers',
+      (tester) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day, 9);
+    final tomorrow = today.add(const Duration(days: 1));
+
+    final multiDateJobs = [
+      job(10, 'Today Client One', installed: today),
+      job(11, 'Today Client Two', installed: today),
+      job(12, 'Tomorrow Client', installed: tomorrow),
+    ];
+
+    await seed(tester, multiDateJobs);
+    await pumpHome(tester, height: 1600);
+
+    final todayLabel = JobOrdersScreen.dateGroupLabel(today).toUpperCase();
+    final tomorrowLabel =
+        JobOrdersScreen.dateGroupLabel(tomorrow).toUpperCase();
+
+    expect(find.text(todayLabel), findsOneWidget);
+    expect(find.text(tomorrowLabel), findsOneWidget);
+    expect(find.text('Today Client One'), findsOneWidget);
+    expect(find.text('Today Client Two'), findsOneWidget);
+    expect(find.text('Tomorrow Client'), findsOneWidget);
+  });
 }
+

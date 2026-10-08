@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+// Gene - Oct 8, 2026: Added intl import for date group formatting on the Jobs list.
+import 'package:intl/intl.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
@@ -65,6 +67,11 @@ class JobOrdersScreen extends StatefulWidget {
   /// Exposed for testing and queue calculation.
   static JobOrderDto pickNext(List<JobOrderDto> jobs) =>
       _JobOrdersScreenState.pickNext(jobs);
+
+  // Gene - Oct 8, 2026: Exposed dateGroupLabel to format date headers (e.g. 'Today · Oct 8, 2026' or 'Oct 9, 2026').
+  static String dateGroupLabel(DateTime? date, {int? count}) =>
+      _JobOrdersScreenState.dateGroupLabel(date, count: count);
+
 
   @override
   State<JobOrdersScreen> createState() => _JobOrdersScreenState();
@@ -159,6 +166,35 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
         local.month == now.month &&
         local.day == now.day;
   }
+
+  // Gene - Oct 8, 2026: Formats a date into a human-readable section label (e.g. 'Today · Oct 8, 2026', 'Tomorrow · Oct 9, 2026', etc.).
+  static final DateFormat _groupDateFormat = DateFormat('MMM d, yyyy');
+
+  static String dateGroupLabel(DateTime? date, {int? count}) {
+    if (date == null) return 'No Scheduled Date';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(date.year, date.month, date.day);
+    final diff = target.difference(today).inDays;
+
+    final formatted = _groupDateFormat.format(date);
+    final String dayPrefix;
+    if (diff == 0) {
+      dayPrefix = 'Today · $formatted';
+    } else if (diff == 1) {
+      dayPrefix = 'Tomorrow · $formatted';
+    } else if (diff == -1) {
+      dayPrefix = 'Yesterday · $formatted';
+    } else {
+      dayPrefix = formatted;
+    }
+
+    if (count != null && count > 1) {
+      return '$dayPrefix ($count jobs)';
+    }
+    return dayPrefix;
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -357,6 +393,7 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
           return _buildEmptyState(signals);
         }
 
+        /*
         // Every job is the same card with the same three actions, so the
         // technician picks freely. The nearest job leads under a NEXT kicker;
         // a search shows plain matches in their own order.
@@ -384,6 +421,65 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
                   onTap: () => _openDetails(ordered[i]),
                 ),
                 const SizedBox(height: 8),
+              ],
+            ],
+          ),
+        );
+        */
+        // Gene - Oct 8, 2026: Group jobs by scheduled Date instead of Next and Then kickers.
+        // Orders groups chronologically and keeps nearest GPS dispatch prioritized within its date.
+        final searching = _searchController.text.trim().isNotEmpty;
+        final next = searching ? null : pickNext(jobs);
+        final prioritized = [
+          if (next != null) next,
+          for (final job in jobs)
+            if (job.id != next?.id && !job.isRescheduled) job,
+          for (final job in jobs)
+            if (job.id != next?.id && job.isRescheduled) job,
+        ];
+
+        // Group prioritized jobs by scheduled calendar day
+        final Map<String, List<JobOrderDto>> groupedJobs = {};
+        final Map<String, DateTime?> groupDates = {};
+
+        for (final job in prioritized) {
+          final date = job.scheduledDate;
+          final key = date != null
+              ? '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}'
+              : 'unscheduled';
+          groupedJobs.putIfAbsent(key, () => []).add(job);
+          if (!groupDates.containsKey(key)) {
+            groupDates[key] =
+                date != null ? DateTime(date.year, date.month, date.day) : null;
+          }
+        }
+
+        // Sort groups chronologically: past/today first, future dates following, unscheduled last
+        final sortedKeys = groupedJobs.keys.toList()
+          ..sort((a, b) {
+            final dateA = groupDates[a];
+            final dateB = groupDates[b];
+            if (dateA == null && dateB == null) return 0;
+            if (dateA == null) return 1;
+            if (dateB == null) return -1;
+            return dateA.compareTo(dateB);
+          });
+
+        return RefreshIndicator(
+          onRefresh: signals.fetchRemote,
+          color: AppTheme.primary,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            children: [
+              for (final key in sortedKeys) ...[
+                _Kicker(dateGroupLabel(groupDates[key])),
+                for (final job in groupedJobs[key]!) ...[
+                  _JobRow(
+                    job: job,
+                    onTap: () => _openDetails(job),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ],
             ],
           ),

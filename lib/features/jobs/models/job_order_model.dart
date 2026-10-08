@@ -340,6 +340,17 @@ class JobOrderDto {
   /// happened.
   DateTime? get historyDate => dateInstalled ?? modifiedDate;
 
+  // Gene - Oct 8, 2026: Added scheduledDate getter to provide the best operational date for grouping scheduled jobs.
+  // Prioritizes dateInstalled (the backend's official appointment/target installation date),
+  // falling back to modifiedDate, and then updatedAt or DateTime.now().
+  DateTime? get scheduledDate {
+    if (dateInstalled != null) return dateInstalled;
+    if (modifiedDate != null) return modifiedDate;
+    return updatedAt ?? DateTime.now();
+  }
+
+
+
   /// The decoded server record, or null when there is none or it is not an
   /// object. Fields the app does not model (subscriber email, second number)
   /// are read from here so the schema stays the API's.
