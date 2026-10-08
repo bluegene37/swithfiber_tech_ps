@@ -165,8 +165,7 @@ base64 -i Switch_Fiber_Tech_App_Store_Distribution.mobileprovision | pbcopy
 base64 -i ~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8 | pbcopy
 ```
 
-In GitHub, go to **Settings** > **Secrets and variables** > **Actions** and add these repository secrets:
-
+<!-- Gene - Oct 08, 2026: Updated secrets table to reflect standard names used in activity_timer and offline_bible with backwards-compatible aliases.
 | Secret | Value | Description |
 |---|---|---|
 | `APPLE_CERTIFICATE_BASE64` | `base64 -i switchfiber-distribution.p12` | Base64-encoded `.p12` distribution certificate with private key |
@@ -175,6 +174,15 @@ In GitHub, go to **Settings** > **Secrets and variables** > **Actions** and add 
 | `APP_STORE_CONNECT_API_KEY_BASE64` | `base64 -i AuthKey_<KEY_ID>.p8` | Base64-encoded App Store Connect API private key (`.p8`) |
 | `APP_STORE_CONNECT_KEY_ID` | e.g. `ABCD1234EF` | App Store Connect API 10-character Key ID |
 | `APP_STORE_CONNECT_ISSUER_ID` | e.g. `69a6de70-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | App Store Connect API Issuer ID UUID |
+-->
+| Secret Name (Standard) | Alternative Alias | Description |
+|---|---|---|
+| `BUILD_CERTIFICATE_BASE64` | `APPLE_CERTIFICATE_BASE64` | Base64-encoded `.p12` distribution certificate with private key |
+| `P12_PASSWORD` | `APPLE_CERTIFICATE_PASSWORD` | Password set when exporting the `.p12` file |
+| `BUILD_PROVISION_PROFILE_BASE64` | `APPLE_PROVISIONING_PROFILE_BASE64` | Base64-encoded `.mobileprovision` App Store distribution profile |
+| `APPSTORE_PRIVATE_KEY` | `APP_STORE_CONNECT_API_KEY_BASE64` | Base64-encoded App Store Connect API private key (`.p8`) |
+| `APPSTORE_KEY_ID` | `APP_STORE_CONNECT_KEY_ID` | App Store Connect API 10-character Key ID |
+| `APPSTORE_ISSUER_ID` | `APP_STORE_CONNECT_ISSUER_ID` | App Store Connect API Issuer ID UUID |
 
 
 ### Application identifiers
