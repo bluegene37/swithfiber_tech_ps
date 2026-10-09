@@ -19,7 +19,9 @@
 	<!-- Gene - Oct 08, 2026: Updated CFBundleDisplayName from SF Tech to SwitchFiber Tech -->
 	<key>CFBundleDisplayName</key>
 	<!-- <string>SF Tech</string> -->
-	<string>SwitchFiber Tech</string>
+	<!-- Gene - Oct 09, 2026: Updated CFBundleDisplayName to SF Tech for installed app label -->
+	<!-- <string>SwitchFiber Tech</string> -->
+	<string>SF Tech</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -29,7 +31,9 @@
 	<!-- Gene - Oct 08, 2026: Updated CFBundleName from SF Tech to SwitchFiber Tech -->
 	<key>CFBundleName</key>
 	<!-- <string>SF Tech</string> -->
-	<string>SwitchFiber Tech</string>
+	<!-- Gene - Oct 09, 2026: Updated CFBundleName to SF Tech for installed app label -->
+	<!-- <string>SwitchFiber Tech</string> -->
+	<string>SF Tech</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

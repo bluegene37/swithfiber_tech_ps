@@ -16,8 +16,13 @@
     <application
         android:label="SF Tech"
     -->
+    <!-- Gene - Oct 09, 2026: Updated installed app label to SF Tech -->
+    <!--
     <application
         android:label="SwitchFiber Tech"
+    -->
+    <application
+        android:label="SF Tech"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
