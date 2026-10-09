@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gene - Oct 09, 2026: Terminal dispatch script to manually trigger iOS (TestFlight), Android (Play Store), and Release CI/CD workflows on demand.
+# Gene - Oct 09, 2026: Terminal dispatch script to manually trigger iOS (TestFlight), Android (Play Store), and unified Release CI/CD workflows via release.yml.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,26 +10,27 @@ show_help() {
   cat << 'EOF'
 Usage: ./scripts/deploy.sh [COMMAND] [OPTIONS]
 
-Trigger cloud CI/CD deployments or local release builds from your terminal.
+Unified release & deployment dispatcher via GitHub Actions ('release.yml').
 
 Commands:
-  ios          Deploy iOS app to Apple TestFlight via GitHub Actions
-  android      Deploy Android App Bundle to Google Play Internal Testing via GitHub Actions
-  all          Deploy both iOS & Android via GitHub Actions Release workflow
-  ci           Run static analysis, formatting, and unit tests via GitHub Actions
-  local-ios    Build and upload iOS IPA locally using ./scripts/deploy_testflight.sh
-  status       Check status of recent GitHub Actions workflow runs
+  all                  Deploy both Apple TestFlight and Google Play (Closed Testing)
+  all-internal         Deploy both Apple TestFlight and Google Play (Internal Testing)
+  ios                  Deploy only to Apple TestFlight
+  android              Deploy only to Google Play Closed Testing (alpha track default)
+  android-internal     Deploy only to Google Play Internal Testing (internal track)
+  ci                   Run static analysis, formatting, and unit tests (ci.yml)
+  local-ios            Build and upload iOS IPA locally using ./scripts/deploy_testflight.sh
+  status               Check status of recent GitHub Actions workflow runs
 
 Options:
-  -w, --watch  Follow live workflow logs in the terminal after dispatching
-  -h, --help   Show this help message
+  -w, --watch          Follow live workflow logs in the terminal after dispatching
+  -h, --help           Show this help message
 
-Examples:
-  ./scripts/deploy.sh ios              # Trigger TestFlight deployment in GitHub Actions
-  ./scripts/deploy.sh android --watch  # Trigger Play Store deployment and stream logs
-  ./scripts/deploy.sh all              # Trigger both iOS and Android releases
-  ./scripts/deploy.sh status           # View recent workflow runs
-  ./scripts/deploy.sh                  # Interactive menu
+Direct 'gh' CLI equivalents:
+  gh workflow run release.yml -f platform=all
+  gh workflow run release.yml -f platform=ios
+  gh workflow run release.yml -f platform=android
+  gh workflow run release.yml -f platform=android -f track=internal
 EOF
 }
 
@@ -51,7 +52,7 @@ dispatch_workflow() {
   local extra_args=("$@")
 
   check_gh
-  echo "🚀 Dispatching GitHub Actions workflow: $workflow..."
+  echo "🚀 Dispatching GitHub Actions workflow: $workflow ${extra_args[*]:-}..."
   gh workflow run "$workflow" "${extra_args[@]}"
   echo "✅ Workflow dispatched successfully!"
   sleep 3
@@ -82,7 +83,7 @@ while [[ $# -gt 0 ]]; do
       WATCH_LOGS=true
       shift
       ;;
-    ios|android|all|ci|local-ios|status)
+    all|all-internal|ios|android|android-internal|ci|local-ios|status)
       TARGET="$1"
       shift
       ;;
@@ -96,39 +97,49 @@ done
 
 if [ -z "$TARGET" ]; then
   echo "=================================================="
-  echo "  Switch Fiber Tech - Deployment & CI Dispatcher  "
+  echo "   Switch Fiber Tech - Unified Release Dispatch   "
   echo "=================================================="
-  echo "1) iOS (Apple TestFlight via GitHub Actions)"
-  echo "2) Android (Google Play Internal via GitHub Actions)"
-  echo "3) Both iOS & Android (GitHub Actions Release)"
-  echo "4) CI Checks (Analyze & Test via GitHub Actions)"
-  echo "5) Local iOS Build & Upload (deploy_testflight.sh)"
-  echo "6) Check workflow status"
-  echo "7) Exit"
+  echo "1) Both Apple TestFlight & Google Play (Closed Testing / alpha)"
+  echo "2) Both Apple TestFlight & Google Play (Internal Testing)"
+  echo "3) Apple TestFlight only"
+  echo "4) Google Play Closed Testing only (alpha default)"
+  echo "5) Google Play Internal Testing only (internal track)"
+  echo "6) CI Checks (Analyze & Test)"
+  echo "7) Local iOS Build & Upload (deploy_testflight.sh)"
+  echo "8) Check recent workflow statuses"
+  echo "9) Exit"
   echo ""
-  read -r -p "Select an option [1-7]: " CHOICE
+  read -r -p "Select an option [1-9]: " CHOICE
 
   case "$CHOICE" in
-    1) TARGET="ios" ;;
-    2) TARGET="android" ;;
-    3) TARGET="all" ;;
-    4) TARGET="ci" ;;
-    5) TARGET="local-ios" ;;
-    6) TARGET="status" ;;
-    7) exit 0 ;;
+    1) TARGET="all" ;;
+    2) TARGET="all-internal" ;;
+    3) TARGET="ios" ;;
+    4) TARGET="android" ;;
+    5) TARGET="android-internal" ;;
+    6) TARGET="ci" ;;
+    7) TARGET="local-ios" ;;
+    8) TARGET="status" ;;
+    9) exit 0 ;;
     *) echo "Invalid choice."; exit 1 ;;
   esac
 fi
 
 case "$TARGET" in
+  all)
+    dispatch_workflow "release.yml" -f platform=all
+    ;;
+  all-internal)
+    dispatch_workflow "release.yml" -f platform=all -f track=internal
+    ;;
   ios)
-    dispatch_workflow "deploy-testflight.yml"
+    dispatch_workflow "release.yml" -f platform=ios
     ;;
   android)
-    dispatch_workflow "deploy-internal.yml"
+    dispatch_workflow "release.yml" -f platform=android
     ;;
-  all)
-    dispatch_workflow "release.yml" -f platform=all -f track=internal
+  android-internal)
+    dispatch_workflow "release.yml" -f platform=android -f track=internal
     ;;
   ci)
     dispatch_workflow "ci.yml"

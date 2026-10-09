@@ -61,10 +61,21 @@ on:
           - all
           - android
           - ios
+      # Gene - Oct 09, 2026: Set default Google Play track to 'alpha' (Closed Testing) so running without track defaults to Closed Testing.
+      # track:
+      #   description: 'Google Play track'
+      #   required: true
+      #   default: 'internal'
+      #   type: choice
+      #   options:
+      #     - internal
+      #     - alpha
+      #     - beta
+      #     - production
       track:
-        description: 'Google Play track'
+        description: 'Google Play track (alpha = Closed Testing, internal = Internal Testing)'
         required: true
-        default: 'internal'
+        default: 'alpha'
         type: choice
         options:
           - internal
@@ -111,16 +122,35 @@ jobs:
       - name: Gate on tests
         run: flutter test
 
+      # Gene - Oct 09, 2026: Updated build parameter resolution to use pubspec.yaml build offset to prevent duplicate/lower version codes, and default track to alpha (Closed Testing).
+      # - name: Resolve build parameters
+      #   id: params
+      #   run: |
+      #     BUILD_NUM="${{ inputs.build_number }}"
+      #     if [ -z "$BUILD_NUM" ]; then
+      #       BUILD_NUM="${{ github.run_number }}"
+      #     fi
+      #     TRACK="${{ inputs.track }}"
+      #     if [ -z "$TRACK" ]; then
+      #       TRACK="internal"
+      #     fi
+      #     echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"
+      #     echo "track=$TRACK" >> "$GITHUB_OUTPUT"
       - name: Resolve build parameters
         id: params
         run: |
           BUILD_NUM="${{ inputs.build_number }}"
           if [ -z "$BUILD_NUM" ]; then
-            BUILD_NUM="${{ github.run_number }}"
+            PUBSPEC_BUILD=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -s -f2)
+            if [ -n "$PUBSPEC_BUILD" ]; then
+              BUILD_NUM=$(( PUBSPEC_BUILD + ${{ github.run_number }} ))
+            else
+              BUILD_NUM="${{ github.run_number }}"
+            fi
           fi
           TRACK="${{ inputs.track }}"
           if [ -z "$TRACK" ]; then
-            TRACK="internal"
+            TRACK="alpha"
           fi
           echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"
           echo "track=$TRACK" >> "$GITHUB_OUTPUT"
@@ -224,12 +254,26 @@ jobs:
       - name: Gate on tests
         run: flutter test
 
+      # Gene - Oct 09, 2026: Updated build parameter resolution to use pubspec.yaml build offset to ensure CFBundleVersion always increments and avoids duplicate version codes.
+      # - name: Resolve build parameters
+      #   id: params
+      #   run: |
+      #     BUILD_NUM="${{ inputs.build_number }}"
+      #     if [ -z "$BUILD_NUM" ]; then
+      #       BUILD_NUM="${{ github.run_number }}"
+      #     fi
+      #     echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"
       - name: Resolve build parameters
         id: params
         run: |
           BUILD_NUM="${{ inputs.build_number }}"
           if [ -z "$BUILD_NUM" ]; then
-            BUILD_NUM="${{ github.run_number }}"
+            PUBSPEC_BUILD=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -s -f2)
+            if [ -n "$PUBSPEC_BUILD" ]; then
+              BUILD_NUM=$(( PUBSPEC_BUILD + ${{ github.run_number }} ))
+            else
+              BUILD_NUM="${{ github.run_number }}"
+            fi
           fi
           echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"
 

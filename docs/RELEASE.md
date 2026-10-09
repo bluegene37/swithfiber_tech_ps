@@ -262,7 +262,7 @@ package directory under `android/app/src/main/kotlin`, and every
    - Click **Run workflow** to initiate automated deployment to Google Play, TestFlight, or both.
 
 -->
-<!-- Gene - Oct 09, 2026: Documented terminal deployment instructions via ./scripts/deploy.sh, gh workflow run, and GitHub Actions UI. -->
+<!-- Gene - Oct 09, 2026: Updated terminal deployment instructions to prioritize unified release.yml dispatching across both platforms and tracks.
 5. Triggering Deployments from the Terminal (On-Demand):
 
    Auto-triggering on `push` to `main` is disabled for all deployment workflows to prevent unintentional builds. You can trigger deployments anytime from your terminal:
@@ -303,6 +303,44 @@ package directory under `android/app/src/main/kotlin`, and every
    - In GitHub, navigate to the **Actions** tab.
    - Select **Deploy to Apple TestFlight**, **Deploy to Google Play Internal Testing**, or **Release** in the left sidebar.
    - Click **Run workflow** -> select branch (`main`) -> click **Run workflow**.
+-->
+<!-- Gene - Oct 09, 2026: Documented unified release.yml terminal dispatch commands for Apple TestFlight, Google Play Closed Testing, and Internal Testing. -->
+5. Triggering Deployments from the Terminal (On-Demand):
+
+   Auto-triggering on `push` to `main` is disabled across all workflows to prevent unintentional builds. You can trigger deployments anytime directly from your terminal using the unified `release.yml` workflow:
+
+   **Unified GitHub CLI (`gh`) Commands**:
+   ```bash
+   # 🚀 Deploy both Apple TestFlight and Google Play:
+   gh workflow run release.yml -f platform=all
+
+   # 🍏 Deploy only to Apple TestFlight:
+   gh workflow run release.yml -f platform=ios
+
+   # 🤖 Deploy only to Google Play Internal Testing:
+   gh workflow run release.yml -f platform=android -f track=internal
+
+   # 🤖 Deploy only to Google Play Closed Testing (alpha default):
+   gh workflow run release.yml -f platform=android
+   ```
+
+   **Alternative: Using `./scripts/deploy.sh` wrapper**:
+   ```bash
+   ./scripts/deploy.sh all               # Deploy both TestFlight & Play Closed Testing
+   ./scripts/deploy.sh all-internal      # Deploy both TestFlight & Play Internal Testing
+   ./scripts/deploy.sh ios               # Deploy only to TestFlight
+   ./scripts/deploy.sh android           # Deploy to Google Play Closed Testing (alpha)
+   ./scripts/deploy.sh android-internal  # Deploy to Google Play Internal Testing
+   ./scripts/deploy.sh                   # Interactive selection menu
+   ```
+
+6. Alternative: Manual Run via GitHub Actions Web UI (Workflow Dispatch):
+   - In GitHub, navigate to the **Actions** tab.
+   - Select **Release** in the left sidebar.
+   - Click **Run workflow**:
+     - **Target platform to release**: `all`, `ios`, or `android`
+     - **Google Play track**: `alpha` (Closed Testing, default), `internal`, `beta`, or `production`
+   - Click **Run workflow**.
 
 
 ## 3. Building locally
