@@ -1,10 +1,19 @@
 # Gene - Oct 08, 2026: Created Deploy to Apple TestFlight workflow matching offline_bible and activity_timer configuration design.
 name: Deploy to Apple TestFlight
 
+# Gene - Oct 09, 2026: Disabled automatic trigger on push to main so TestFlight builds only run on manual terminal/UI trigger (workflow_dispatch) or version tags.
+# on:
+#   push:
+#     branches:
+#       - main
+#     tags:
+#       - "v*"
+#       - "ios-v*"
+#     paths-ignore:
+#       - "**.md"
+#       - ".gitignore"
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*"
       - "ios-v*"

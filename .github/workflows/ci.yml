@@ -1,8 +1,12 @@
 name: CI
 
+# Gene - Oct 09, 2026: Disabled automatic CI runs on push to main branch to prevent automatic android/test execution on push. Added workflow_dispatch for manual CLI execution.
+# on:
+#   push:
+#     branches: [main]
+#   pull_request:
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
   pull_request:
 
 concurrency:
