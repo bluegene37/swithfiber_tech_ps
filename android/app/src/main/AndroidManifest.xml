@@ -27,8 +27,14 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:usesCleartextTraffic="true">
+        <!-- Gene - Oct 09, 2026: Explicitly set MainActivity launcher label to SF Tech -->
+        <!--
         <activity
             android:name=".MainActivity"
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:label="SF Tech"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
