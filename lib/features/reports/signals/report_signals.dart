@@ -11,6 +11,11 @@ class ReportSignals {
   final routerModel = signal<String>('Huawei 5v5');
   final napPort = signal<String>('PORT 001');
   final nap = signal<String?>(null);
+/*
+  final lcp = signal<String?>(null);
+*/
+  // Gene - Oct 12, 2026: Default LCP to Central Cabinet (LCP 01) if not explicitly set on job order.
+  final lcp = signal<String?>('LCP 01');
   final remarks = signal<String>('');
 
   /// Materials consumed on site (e.g. Drop Cable, SC/APC Fast Connectors, S-Clamps).
@@ -87,6 +92,21 @@ class ReportSignals {
       nap.value = 'NAP-${job.napId}';
     } else {
       nap.value = null;
+    }
+/*
+    if (job.lcpId != null) {
+      lcp.value = 'LCP 0${job.lcpId}';
+    } else if (job.nap != null && job.nap!.isNotEmpty) {
+      lcp.value = 'LCP 01';
+    } else {
+      lcp.value = null;
+    }
+*/
+    // Gene - Oct 12, 2026: Pre-fill LCP from job order, defaulting to Central Cabinet (LCP 01) if unspecified.
+    if (job.lcpId != null && job.lcpId! > 0) {
+      lcp.value = 'LCP 0${job.lcpId}';
+    } else {
+      lcp.value = 'LCP 01';
     }
     remarks.value = job.onsiteRemarks ?? '';
     materialsUsed.value = Map<String, int>.from(job.materialsUsed);

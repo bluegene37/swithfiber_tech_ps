@@ -174,6 +174,12 @@ class JobOrderDetailScreen extends StatelessWidget {
               _buildPlantLine(context, job),
               const SizedBox(height: 14),
 
+/*
+              if (job.siteException != null || job.isRescheduled) ...[
+                _buildExceptionBanner(context, job, isDark),
+                const SizedBox(height: 14),
+              ],
+*/
               if (job.siteException != null || job.isRescheduled) ...[
                 _buildExceptionBanner(context, job, isDark),
                 const SizedBox(height: 14),
@@ -194,6 +200,10 @@ class JobOrderDetailScreen extends StatelessWidget {
               const SizedBox(height: 14),
 
               _buildPlantAndHardwareCard(context, job, isDark),
+              const SizedBox(height: 14),
+
+              // Gene - Oct 12, 2026: Placed answering flow card after plant & hardware card so optical power card stays at original scroll offset.
+              _buildAnsweringFlowCard(context, job, isDark),
               const SizedBox(height: 14),
 
               if (job.materialsUsed.isNotEmpty) ...[
@@ -334,6 +344,123 @@ class JobOrderDetailScreen extends StatelessWidget {
     );
   }
 
+  // Gene - Oct 12, 2026: Visual flow card showing the top-to-bottom installation answering sequence matching AppSheet.
+  Widget _buildAnsweringFlowCard(
+      BuildContext context, JobOrderDto job, bool isDark) {
+    const steps = [
+      ('1', 'Optical Reading', 'Validate power level (-19.5 dBm target)'),
+      ('2', 'Hardware & Port', 'LCP cabinet → NAP box → port → serial → ONT model'),
+      ('3', 'Materials (BOM)', 'Drop cable length & connector counts'),
+      ('4', 'Photo Proofs', '7 standard photo attachments'),
+      ('5', 'Status Remarks', 'Office & field dispatch notes'),
+      ('6', 'Sign-Off', 'Customer electronic signature'),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.checklist_rtl_rounded,
+                        size: 20, color: AppTheme.primary),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Answering Flow',
+                      style: context.text.titleMedium,
+                    ),
+                  ],
+                ),
+                // Gene - Oct 12, 2026: Changed action icon to standard 20px size floor.
+                if (!readOnly && !job.isRescheduled)
+                  TextButton.icon(
+                    onPressed: () => _handleOpenReport(context, job),
+                    icon: const Icon(Icons.edit_note_rounded, size: 20),
+                    label: const Text('Fill Report'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Sequential steps to answer and complete this dispatch:',
+              style: context.text.bodySmall!
+                  .copyWith(color: AppTheme.secondaryInkOf(context)),
+            ),
+            const SizedBox(height: 12),
+            for (var i = 0; i < steps.length; i++) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primarySubtleBgOf(context),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppTheme.primary, width: 1.5),
+                      ),
+                      child: Center(
+                        // Gene - Oct 12, 2026: Used theme labelSmall token without fontSize literal.
+                        child: Text(
+                          steps[i].$1,
+                          style: context.text.labelSmall!.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            steps[i].$2,
+                            style: context.text.titleSmall!.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          // Gene - Oct 12, 2026: Used bodySmall token without fontSize literal.
+                          Text(
+                            steps[i].$3,
+                            style: context.text.bodySmall!.copyWith(
+                              color: AppTheme.secondaryInkOf(context),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (i < steps.length - 1)
+                Padding(
+                  padding: const EdgeInsets.only(left: 10),
+                  child: Container(
+                    width: 1.5,
+                    height: 8,
+                    color: AppTheme.hairlineOf(context),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Interactive Workflow Card showing stages and stage advancement
   Widget _buildWorkflowCard(
       BuildContext context, JobOrderDto job, bool isDark) {
@@ -422,8 +549,13 @@ class JobOrderDetailScreen extends StatelessWidget {
   /// hidden gestures). The sheet it opens is the only place the technician
   /// can mark a job Rescheduled.
   Widget _buildStatusRow(BuildContext context, JobOrderDto job) {
+/*
     final status =
         job.isRescheduled ? JobStatus.rescheduled : JobStatus.scheduled;
+*/
+    // Gene - Oct 12, 2026: Resolve current job status including In Progress.
+    final status =
+        job.isRescheduled ? JobStatus.rescheduled : (job.jobStatus ?? JobStatus.scheduled);
     final reason = job.isRescheduled ? job.statusRemarks?.trim() : null;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -483,10 +615,20 @@ class JobOrderDetailScreen extends StatelessWidget {
       status: change.status,
       statusRemarks: change.statusRemarks,
     );
+/*
     messenger.showSnackBar(SnackBar(
       content: Text(change.status == JobStatus.rescheduled
           ? 'Marked Rescheduled · ${change.statusRemarks}'
           : 'Back to Scheduled'),
+    ));
+*/
+    // Gene - Oct 12, 2026: Added feedback message for In Progress status.
+    messenger.showSnackBar(SnackBar(
+      content: Text(change.status == JobStatus.rescheduled
+          ? 'Marked Rescheduled · ${change.statusRemarks}'
+          : (change.status == JobStatus.inProgress
+              ? 'Marked In Progress'
+              : 'Back to Scheduled')),
     ));
   }
 

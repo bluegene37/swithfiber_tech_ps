@@ -57,9 +57,16 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   late final TextEditingController _serialController;
   late final TextEditingController _remarksController;
   late final TextEditingController _dbmController;
+/*
   List<RouterDto> _availableRouters = CatalogService.fallbackRouters;
   List<NapDto> _availableNaps = CatalogService.fallbackNaps;
   List<PortDto> _availablePorts = CatalogService.fallbackPorts;
+*/
+  // Gene - Oct 12, 2026: Added _availableLcps for LCP-first hierarchical workflow.
+  List<RouterDto> _availableRouters = CatalogService.fallbackRouters;
+  List<NapDto> _availableNaps = CatalogService.fallbackNaps;
+  List<PortDto> _availablePorts = CatalogService.fallbackPorts;
+  List<LcpOptionDto> _availableLcps = CatalogService.fallbackLcps;
 
   /// Whether the NAP port tiles are open. Closed by default: the header
   /// already names the port the job arrived with, and sixteen tiles pushed
@@ -92,6 +99,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     }
   }
 
+/*
   Future<void> _loadCatalog() async {
     final routersFuture = CatalogService.instance.getRouters();
     final napsFuture = CatalogService.instance.getNaps();
@@ -102,6 +110,22 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       _availableRouters = results[0] as List<RouterDto>;
       _availableNaps = results[1] as List<NapDto>;
       _availablePorts = results[2] as List<PortDto>;
+    });
+  }
+*/
+  // Gene - Oct 12, 2026: Also load available LCP cabinets in catalog fetch.
+  Future<void> _loadCatalog() async {
+    final routersFuture = CatalogService.instance.getRouters();
+    final napsFuture = CatalogService.instance.getNaps();
+    final portsFuture = CatalogService.instance.getPorts();
+    final lcpsFuture = CatalogService.instance.getLcps();
+    final results = await Future.wait([routersFuture, napsFuture, portsFuture, lcpsFuture]);
+    if (!mounted) return;
+    setState(() {
+      _availableRouters = results[0] as List<RouterDto>;
+      _availableNaps = results[1] as List<NapDto>;
+      _availablePorts = results[2] as List<PortDto>;
+      _availableLcps = results[3] as List<LcpOptionDto>;
     });
   }
 
@@ -503,6 +527,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     );
   }
 
+/*
   Widget _buildHardwareSection(ReportSignals rep) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
@@ -595,9 +620,220 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               },
             ),
             const SizedBox(height: 14),
-            // The port line reads like the rest of the form when closed:
-            // label, the current port in mono, and one visible text button
-            // that opens the tiles (DESIGN.md: no hidden gestures).
+            SignalBuilder(
+              builder: (context) {
+                final port = rep.napPort.value;
+                return Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'NAP PORT',
+                            style: context.text.labelMedium!.copyWith(
+                                color: AppTheme.secondaryInkOf(context)),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            port.isEmpty ? 'Not selected' : port,
+                            style: context.text.bodyLarge!.copyWith(
+                              fontWeight: FontWeight.w500,
+                              color: port.isEmpty
+                                   ? AppTheme.secondaryInkOf(context)
+                                  : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Semantics(
+                      button: true,
+                      expanded: _portsExpanded,
+                      label: _portsExpanded
+                          ? 'Close port tiles'
+                          : 'Change NAP port',
+                      child: TextButton.icon(
+                        key: const ValueKey('nap_port_toggle'),
+                        onPressed: () =>
+                            setState(() => _portsExpanded = !_portsExpanded),
+                        icon: Icon(
+                          _portsExpanded
+                              ? Icons.expand_less_rounded
+                              : Icons.expand_more_rounded,
+                          size: 20,
+                        ),
+                        label: Text(_portsExpanded ? 'Done' : 'Change'),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: _portsExpanded
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: SignalBuilder(
+                        builder: (context) {
+                          final names =
+                              _availablePorts.map((p) => p.name).toList();
+                          return PortTileGrid(
+                            ports: names,
+                            selected: rep.napPort.value,
+                            onSelected: (port) {
+                              rep.napPort.value = port;
+                              setState(() => _portsExpanded = false);
+                            },
+                          );
+                        },
+                      ),
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showNapFilterDialog(
+      BuildContext context, ReportSignals rep, bool isDark) async {
+    final picked = await SearchablePickerSheet.show<NapDto>(
+      context,
+      title: 'Select NAP Box',
+      icon: Icons.hub_rounded,
+      searchHint: 'Filter NAP list (e.g. 001, test)...',
+      items: _availableNaps,
+      titleOf: (n) => n.name,
+      subtitleOf: (n) => n.description,
+      matches: (n, q) =>
+          n.name.toLowerCase().contains(q) ||
+          n.description.toLowerCase().contains(q),
+      isSelected: (n) => n.name == rep.nap.value,
+      emptyMessage: (q) => 'No NAP matching "$q"',
+    );
+    if (picked != null) rep.nap.value = picked.name;
+  }
+*/
+  // Gene - Oct 12, 2026: Calculate ports already in use on this NAP by other subscriber job orders so they are disabled in PortTileGrid.
+  Set<String> _getUsedPorts(ReportSignals rep) {
+    final used = <String>{};
+    final currentJobId = rep.selectedJobOrder.value?.id;
+    final currentNap = rep.nap.value;
+    if (currentNap == null || currentNap.trim().isEmpty) return used;
+
+    for (final job in widget.jobsSignals.allJobs.value) {
+      if (job.id != currentJobId &&
+          job.portId != null &&
+          job.portId!.trim().isNotEmpty) {
+        final jobNap = job.nap?.trim();
+        if (jobNap != null &&
+            jobNap.toLowerCase() == currentNap.trim().toLowerCase()) {
+          used.add(job.portId!.trim());
+        }
+      }
+    }
+    return used;
+  }
+
+  // Gene - Oct 12, 2026: Show LCP Cabinet selection sheet with search and filter.
+  Future<void> _showLcpFilterDialog(
+      BuildContext context, ReportSignals rep, bool isDark) async {
+    final picked = await SearchablePickerSheet.show<LcpOptionDto>(
+      context,
+      title: 'Select LCP Cabinet',
+      icon: Icons.account_tree_rounded,
+      searchHint: 'Filter LCP (e.g. 01, Batingan)...',
+      items: _availableLcps,
+      titleOf: (l) => l.name,
+      subtitleOf: (l) => l.description,
+      matches: (l, q) =>
+          l.name.toLowerCase().contains(q) ||
+          l.description.toLowerCase().contains(q),
+      isSelected: (l) => l.name == rep.lcp.value,
+      emptyMessage: (q) => 'No LCP matching "$q"',
+    );
+    if (picked != null) {
+      final prev = rep.lcp.value;
+      rep.lcp.value = picked.name;
+      // If LCP was changed, reset NAP so tech chooses from this LCP
+      if (prev != null && prev != picked.name) {
+        rep.nap.value = null;
+      }
+    }
+  }
+
+  // Gene - Oct 12, 2026: Reordered hardware answering flow matching AppSheet:
+  // 1. LCP Cabinet (Picker)
+  // 2. NAP Box (Picker: requires LCP first; 8 or 16 NAPs)
+  // 3. NAP Port (PortTileGrid: used ports disabled)
+  // 4. Modem / ONT Serial Number (Text input + Barcode scanner)
+  // 5. Approved ONT Model (Picker)
+  Widget _buildHardwareSection(ReportSignals rep) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _serialController,
+                    builder: (context, serial, _) => StepHeader(
+                      number: 2,
+                      title: 'Hardware & port',
+                      done: serial.text.trim().isNotEmpty,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // 1. LCP Cabinet: Searchable sheet, required before NAP
+            SignalBuilder(
+              builder: (context) {
+                final selectedLcp = rep.lcp.value;
+                return PickerField(
+                  key: const ValueKey('lcp_dropdown_field'),
+                  label: 'LCP Cabinet',
+                  value: selectedLcp,
+                  placeholder: 'Select or filter LCP (e.g. LCP 01)...',
+                  icon: Icons.account_tree_rounded,
+                  onTap: () => _showLcpFilterDialog(context, rep, isDark),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // 2. NAP Box: Searchable sheet, requires LCP selection first (8 or 16 NAPs)
+            SignalBuilder(
+              builder: (context) {
+                final selectedNap = rep.nap.value;
+                final lcpSelected =
+                    rep.lcp.value != null && rep.lcp.value!.trim().isNotEmpty;
+                return PickerField(
+                  key: const ValueKey('nap_dropdown_field'),
+                  label: 'NAP Box',
+                  value: selectedNap,
+                  placeholder: lcpSelected
+                      ? 'Select or filter NAP (e.g. NAP 001)...'
+                      : 'Select LCP Cabinet first...',
+                  icon: Icons.hub_rounded,
+                  onTap: () => _showNapFilterDialog(context, rep, isDark),
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+
+            // 3. NAP Port: 8 or 16 port grid with used ports disabled
             SignalBuilder(
               builder: (context) {
                 final port = rep.napPort.value;
@@ -648,9 +884,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 );
               },
             ),
-            // Every port visible, one tap to pick (DESIGN.md), instead of a
-            // dropdown that hides fifteen of the sixteen. Picking closes the
-            // grid so the header shows what was chosen.
             AnimatedSize(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOut,
@@ -662,18 +895,101 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                         builder: (context) {
                           final names =
                               _availablePorts.map((p) => p.name).toList();
-                          return PortTileGrid(
-                            ports: names,
-                            selected: rep.napPort.value,
-                            onSelected: (port) {
-                              rep.napPort.value = port;
-                              setState(() => _portsExpanded = false);
-                            },
+                          final usedPorts = _getUsedPorts(rep);
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              PortTileGrid(
+                                ports: names,
+                                selected: rep.napPort.value,
+                                unavailable: usedPorts,
+                                onSelected: (port) {
+                                  rep.napPort.value = port;
+                                  setState(() => _portsExpanded = false);
+                                },
+                              ),
+                              if (usedPorts.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: Row(
+                                    children: [
+                                      // Gene - Oct 12, 2026: Updated icon to 20px and styled label using theme tokens without fontSize literal.
+                                      Icon(Icons.info_outline_rounded,
+                                          size: 20,
+                                          color: AppTheme.secondaryInkOf(
+                                              context)),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          'Struck-through ports (${usedPorts.length}) are in use by other subscribers',
+                                          style:
+                                              context.text.bodySmall!.copyWith(
+                                            color: AppTheme.secondaryInkOf(
+                                                context),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
                           );
                         },
                       ),
                     )
                   : const SizedBox(width: double.infinity),
+            ),
+            const SizedBox(height: 14),
+
+            // 4. Modem / ONT Serial Number: text box with barcode scanner button
+            TextFormField(
+              controller: _serialController,
+              style: const TextStyle(fontFamily: 'JetBrains Mono'),
+              onChanged: (val) => widget.reportSignals.routerSerial.value = val,
+              decoration: InputDecoration(
+                labelText: 'Modem / ONT Serial Number (SN)',
+                prefixIcon: const Icon(Icons.qr_code_rounded, size: 20),
+                suffixIcon: IconButton(
+                  key: const ValueKey('scan_router_serial_button'),
+                  tooltip: 'Scan Serial Barcode',
+                  icon: const Icon(
+                    Icons.qr_code_scanner_rounded,
+                    color: AppTheme.primary,
+                    size: 22,
+                  ),
+                  onPressed: _handleScanRouterSerial,
+                ),
+                hintText: 'e.g. HWTC12345678 or ZTE8839001',
+              ),
+              validator: (val) {
+                if (val == null || val.trim().isEmpty) {
+                  return 'Please enter modem/router serial number';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // 5. Approved ONT Model: searchable picker sheet
+            SignalBuilder(
+              builder: (context) {
+                final model = rep.routerModel.value;
+                return PickerField(
+                  key: const ValueKey('router_model_field'),
+                  label: 'Approved ONT Model',
+                  value: model,
+                  placeholder: 'Select or filter model...',
+                  icon: Icons.router_rounded,
+                  onTap: () async {
+                    final picked = await RouterModelPicker.show(
+                      context,
+                      routers: _availableRouters,
+                      selected: model,
+                    );
+                    if (picked != null) rep.routerModel.value = picked;
+                  },
+                );
+              },
             ),
           ],
         ),
@@ -681,8 +997,30 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     );
   }
 
+  // Gene - Oct 12, 2026: Enforce LCP selection before allowing NAP Box picker sheet.
   Future<void> _showNapFilterDialog(
       BuildContext context, ReportSignals rep, bool isDark) async {
+    if (rep.lcp.value == null || rep.lcp.value!.trim().isEmpty) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                    'Please select an LCP Cabinet first before choosing a NAP Box.'),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.brandInkOf(context),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     final picked = await SearchablePickerSheet.show<NapDto>(
       context,
       title: 'Select NAP Box',
@@ -712,6 +1050,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
   /// Step 4, collapsible. Closed: the remark text (or "No remarks") and an
   /// Add / Edit button. Open: the text box and a Done button.
+/*
   Widget _buildRemarksSection() {
     return Card(
       child: Padding(
@@ -767,6 +1106,141 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                               hintText:
                                   'Enter fiber splice details, cable distance, speedtest results...',
                             ),
+                          ),
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            text.isEmpty ? 'No remarks' : text,
+                            key: const ValueKey('remarks_preview'),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.text.bodyMedium!.copyWith(
+                              color: text.isEmpty
+                                  ? AppTheme.secondaryInkOf(context)
+                                  : null,
+                            ),
+                          ),
+                        ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+*/
+  // Gene - Oct 12, 2026: Added quick-select status remarks chips matching AppSheet options.
+  Widget _buildRemarksSection() {
+    const quickRemarks = [
+      'Office',
+      'Customer Not Around',
+      'Customer Requested',
+      'No Available Port',
+      'High Attenuation / Low Signal',
+      'Bad Weather',
+      'No Materials',
+      'Address Not Found',
+      'Completed Normal',
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: ValueListenableBuilder<TextEditingValue>(
+          valueListenable: _remarksController,
+          builder: (context, value, _) {
+            final text = value.text.trim();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: StepHeader(
+                          number: 4, title: 'Remarks', hint: 'optional'),
+                    ),
+                    Semantics(
+                      button: true,
+                      expanded: _remarksExpanded,
+                      label: _remarksExpanded
+                          ? 'Close remarks'
+                          : (text.isEmpty ? 'Add remarks' : 'Edit remarks'),
+                      child: TextButton.icon(
+                        key: const ValueKey('remarks_toggle'),
+                        onPressed: () => setState(
+                            () => _remarksExpanded = !_remarksExpanded),
+                        icon: Icon(
+                          _remarksExpanded
+                              ? Icons.expand_less_rounded
+                              : Icons.expand_more_rounded,
+                          size: 20,
+                        ),
+                        label: Text(_remarksExpanded
+                            ? 'Done'
+                            : (text.isEmpty ? 'Add' : 'Edit')),
+                      ),
+                    ),
+                  ],
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                  alignment: Alignment.topCenter,
+                  child: _remarksExpanded
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              TextFormField(
+                                controller: _remarksController,
+                                maxLines: 4,
+                                minLines: 3,
+                                decoration: const InputDecoration(
+                                  hintText:
+                                      'Enter fiber splice details, cable distance, speedtest results...',
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Text(
+                                  'QUICK STATUS REMARKS',
+                                  style: context.text.labelSmall!.copyWith(
+                                    color: AppTheme.secondaryInkOf(context),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                children: [
+                                  for (final remark in quickRemarks)
+                                    // Gene - Oct 12, 2026: Removed compact visual density and literal fontSize to obey field standard guidelines.
+                                    ActionChip(
+                                      key: ValueKey('quick_remark_$remark'),
+                                      label: Text(remark,
+                                          style: context.text.labelSmall),
+                                      padding: EdgeInsets.zero,
+                                      onPressed: () {
+                                        final cur =
+                                            _remarksController.text.trim();
+                                        final updated = cur.isEmpty
+                                            ? remark
+                                            : (cur.contains(remark)
+                                                ? cur
+                                                : '$cur · $remark');
+                                        _remarksController.text = updated;
+                                        widget.reportSignals.remarks.value =
+                                            updated;
+                                      },
+                                    ),
+                                ],
+                              ),
+                            ],
                           ),
                         )
                       : Padding(

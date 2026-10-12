@@ -51,9 +51,17 @@ class StatusChangeSheet extends StatefulWidget {
 }
 
 class _StatusChangeSheetState extends State<StatusChangeSheet> {
+/*
   late JobStatus _status = widget.current == JobStatus.rescheduled
       ? JobStatus.rescheduled
       : JobStatus.scheduled;
+*/
+  // Gene - Oct 12, 2026: Added In Progress status option matching AppSheet Onsite Status flow.
+  late JobStatus _status = widget.current == JobStatus.rescheduled
+      ? JobStatus.rescheduled
+      : (widget.current == JobStatus.inProgress
+          ? JobStatus.inProgress
+          : JobStatus.scheduled);
   late String? _reason = RescheduleReasons.all.contains(widget.currentRemarks)
       ? widget.currentRemarks
       : null;
@@ -128,6 +136,7 @@ class _StatusChangeSheetState extends State<StatusChangeSheet> {
               child: ListView(
                 shrinkWrap: true,
                 children: [
+/*
                   _OptionRow(
                     key: const ValueKey('status_option_scheduled'),
                     label: JobStatus.scheduled.label,
@@ -135,6 +144,33 @@ class _StatusChangeSheetState extends State<StatusChangeSheet> {
                     icon: Icons.calendar_today_rounded,
                     selected: !_isRescheduled,
                     onTap: () => setState(() => _status = JobStatus.scheduled),
+                  ),
+                  _OptionRow(
+                    key: const ValueKey('status_option_rescheduled'),
+                    label: JobStatus.rescheduled.label,
+                    hint: 'Visit could not go ahead today',
+                    icon: Icons.event_repeat_rounded,
+                    selected: _isRescheduled,
+                    onTap: () =>
+                        setState(() => _status = JobStatus.rescheduled),
+                  ),
+*/
+                  // Gene - Oct 12, 2026: Added In Progress option alongside Scheduled and Rescheduled.
+                  _OptionRow(
+                    key: const ValueKey('status_option_scheduled'),
+                    label: JobStatus.scheduled.label,
+                    hint: 'Visit goes ahead as planned',
+                    icon: Icons.calendar_today_rounded,
+                    selected: _status == JobStatus.scheduled,
+                    onTap: () => setState(() => _status = JobStatus.scheduled),
+                  ),
+                  _OptionRow(
+                    key: const ValueKey('status_option_inprogress'),
+                    label: JobStatus.inProgress.label,
+                    hint: 'Technician currently working on site',
+                    icon: Icons.pending_actions_rounded,
+                    selected: _status == JobStatus.inProgress,
+                    onTap: () => setState(() => _status = JobStatus.inProgress),
                   ),
                   _OptionRow(
                     key: const ValueKey('status_option_rescheduled'),

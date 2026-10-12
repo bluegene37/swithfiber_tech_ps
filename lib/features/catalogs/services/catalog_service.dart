@@ -13,6 +13,8 @@ class CatalogService {
 
   List<PlanDto>? _cachedPlans;
   List<RouterDto>? _cachedRouters;
+  // Gene - Oct 12, 2026: Cached LCPs for LCP-first hierarchical selection.
+  List<LcpOptionDto>? _cachedLcps;
 
   /// Bundled fallback plans matching the live Switch Fiber database
   static const List<PlanDto> fallbackPlans = [
@@ -147,9 +149,36 @@ class CatalogService {
     return _cachedRouters ?? fallbackRouters;
   }
 
+  // Gene - Oct 12, 2026: Added fallback LCPs and getLcps method for hierarchical LCP-first selection flow.
+  static const List<LcpOptionDto> fallbackLcps = [
+    LcpOptionDto(id: 1, name: 'LCP 01', description: 'Binangonan Central Cabinet'),
+    LcpOptionDto(id: 2, name: 'LCP 02', description: 'Batingan Distribution Cabinet'),
+    LcpOptionDto(id: 3, name: 'LCP 03', description: 'Bangad Optical Hub'),
+    LcpOptionDto(id: 4, name: 'LCP 04', description: 'Libis Feeder Hub'),
+  ];
+
+  /// Fetch active LCP cabinets from `/api/LCPs` or `/api/LCPNapLocations` with cache & fallback
+  Future<List<LcpOptionDto>> getLcps({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedLcps != null) {
+      return _cachedLcps!;
+    }
+    try {
+      final response = await _api.get('/LCPs');
+      final data = response.data;
+      if (data is List) {
+        _cachedLcps = [
+          for (final item in data)
+            if (item is Map<String, dynamic>) LcpOptionDto.fromJson(item),
+        ];
+        return _cachedLcps!;
+      }
+    } catch (_) {}
+    return _cachedLcps ?? fallbackLcps;
+  }
+
   List<NapDto>? _cachedNaps;
 
-  /// Bundled fallback NAPs matching the live Switch Fiber database
+/*
   static const List<NapDto> fallbackNaps = [
     NapDto(id: 2, name: 'NAP 001', description: 'NAP 001 Description'),
     NapDto(id: 3, name: 'NAP 002', description: 'NAP 002 Description'),
@@ -159,6 +188,28 @@ class CatalogService {
     NapDto(id: 7, name: 'NAP 006', description: 'NAP 006 Description'),
     NapDto(id: 8, name: 'NAP 007', description: 'NAP 007 Description'),
     NapDto(id: 9, name: 'NAP 008', description: 'NAP 008 Description'),
+    NapDto(id: 1, name: 'NONE', description: 'NONE Description'),
+    NapDto(id: 10, name: 'test nap 1', description: 'test nap 1 Description'),
+  ];
+*/
+  // Gene - Oct 12, 2026: Expanded fallback NAPs to 16 distribution boxes per LCP cabinet matching live fiber layout.
+  static const List<NapDto> fallbackNaps = [
+    NapDto(id: 2, name: 'NAP 001', description: 'NAP 001 Description'),
+    NapDto(id: 3, name: 'NAP 002', description: 'NAP 002 Description'),
+    NapDto(id: 4, name: 'NAP 003', description: 'NAP 003 Description'),
+    NapDto(id: 5, name: 'NAP 004', description: 'NAP 004 Description'),
+    NapDto(id: 6, name: 'NAP 005', description: 'NAP 005 Description'),
+    NapDto(id: 7, name: 'NAP 006', description: 'NAP 006 Description'),
+    NapDto(id: 8, name: 'NAP 007', description: 'NAP 007 Description'),
+    NapDto(id: 9, name: 'NAP 008', description: 'NAP 008 Description'),
+    NapDto(id: 11, name: 'NAP 009', description: 'NAP 009 Description'),
+    NapDto(id: 12, name: 'NAP 010', description: 'NAP 010 Description'),
+    NapDto(id: 13, name: 'NAP 011', description: 'NAP 011 Description'),
+    NapDto(id: 14, name: 'NAP 012', description: 'NAP 012 Description'),
+    NapDto(id: 15, name: 'NAP 013', description: 'NAP 013 Description'),
+    NapDto(id: 16, name: 'NAP 014', description: 'NAP 014 Description'),
+    NapDto(id: 17, name: 'NAP 015', description: 'NAP 015 Description'),
+    NapDto(id: 18, name: 'NAP 016', description: 'NAP 016 Description'),
     NapDto(id: 1, name: 'NONE', description: 'NONE Description'),
     NapDto(id: 10, name: 'test nap 1', description: 'test nap 1 Description'),
   ];

@@ -172,3 +172,33 @@ class PortDto {
         if (createdDate != null) 'createdDate': createdDate!.toIso8601String(),
       };
 }
+
+// Gene - Oct 12, 2026: Added LcpOptionDto for LCP-first selection flow matching AppSheet hierarchy.
+class LcpOptionDto {
+  final int id;
+  final String name; // e.g. "LCP 01", "LCP 02"
+  final String description; // e.g. "Binangonan Central Cabinet"
+
+  const LcpOptionDto({
+    required this.id,
+    required this.name,
+    this.description = '',
+  });
+
+  factory LcpOptionDto.fromJson(Map<String, dynamic> json) {
+    return LcpOptionDto(
+      id: json['id'] is int
+          ? json['id'] as int
+          : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      name: json['name']?.toString().trim() ?? '',
+      description: json['description']?.toString().trim() ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'description': description,
+      };
+}
+

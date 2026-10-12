@@ -67,6 +67,7 @@ enum JobStatus {
 class RescheduleReasons {
   RescheduleReasons._();
 
+/*
   static const List<String> all = [
     'Not Available',
     'No Available Slot',
@@ -74,6 +75,22 @@ class RescheduleReasons {
     'Bad Weather',
     'No Materials',
     'Address Not Found',
+  ];
+*/
+  // Gene - Oct 12, 2026: Expanded reasons to include hard-coded status remarks matching AppSheet study (Office, Low Signal, Port Issue, etc.).
+  static const List<String> all = [
+    'Office',
+    'Customer Not Around',
+    'Customer Requested',
+    'Not Available',
+    'No Available Slot',
+    'No Available Port',
+    'High Attenuation / Low Signal',
+    'Bad Weather',
+    'No Materials',
+    'Address Not Found',
+    'Power Outage at Site',
+    'Line Issue / Fiber Break',
   ];
 }
 

@@ -465,6 +465,7 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
             return dateA.compareTo(dateB);
           });
 
+/*
         return RefreshIndicator(
           onRefresh: signals.fetchRemote,
           color: AppTheme.primary,
@@ -480,6 +481,53 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
                   ),
                   const SizedBox(height: 8),
                 ],
+              ],
+            ],
+          ),
+        );
+*/
+        // Gene - Oct 12, 2026: Sub-cluster jobs by Barangay under each Date group matching AppSheet hierarchy.
+        return RefreshIndicator(
+          onRefresh: signals.fetchRemote,
+          color: AppTheme.primary,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            children: [
+              for (final key in sortedKeys) ...[
+                _Kicker(dateGroupLabel(groupDates[key])),
+                ...() {
+                  final bgyMap = <String, List<JobOrderDto>>{};
+                  for (final job in groupedJobs[key]!) {
+                    final bgy = (job.barangay != null &&
+                            job.barangay!.trim().isNotEmpty)
+                        ? job.barangay!.trim()
+                        : 'Other Area';
+                    bgyMap.putIfAbsent(bgy, () => []).add(job);
+                  }
+                  final sortedBgys = bgyMap.keys.toList()
+                    ..sort((a, b) {
+                      if (a == 'Other Area') return 1;
+                      if (b == 'Other Area') return -1;
+                      return a.compareTo(b);
+                    });
+
+                  return [
+                    for (final bgy in sortedBgys) ...[
+                      if (sortedBgys.length > 1 || bgy != 'Other Area')
+                        _BarangayHeader(
+                          barangay: bgy,
+                          count: bgyMap[bgy]!.length,
+                        ),
+                      for (final job in bgyMap[bgy]!) ...[
+                        _JobRow(
+                          job: job,
+                          onTap: () => _openDetails(job),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ],
+                  ];
+                }(),
               ],
             ],
           ),
@@ -606,6 +654,68 @@ class _Kicker extends StatelessWidget {
         style: context.text.labelMedium!.copyWith(
           color: AppTheme.secondaryInkOf(context),
         ),
+      ),
+    );
+  }
+}
+
+// Gene - Oct 12, 2026: Sub-header banner grouping jobs within a calendar day by Barangay.
+class _BarangayHeader extends StatelessWidget {
+  final String barangay;
+  final int count;
+
+  const _BarangayHeader({required this.barangay, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+      child: Row(
+        children: [
+          // Gene - Oct 12, 2026: Set location icon size to 20 to satisfy field UI standard floor.
+          const Icon(
+            Icons.location_on_rounded,
+            size: 20,
+            color: AppTheme.primary,
+          ),
+          const SizedBox(width: 6),
+/*
+          Text(
+            barangay == 'Other Area' ? barangay : 'Brgy. $barangay',
+            style: context.text.labelLarge!.copyWith(
+              fontWeight: FontWeight.w700,
+              color: AppTheme.brandInkOf(context),
+            ),
+          ),
+*/
+          // Gene - Oct 12, 2026: Expanded barangay label with ellipsis to prevent overflow at 200% text scale.
+          Expanded(
+            child: Text(
+              barangay == 'Other Area' ? barangay : 'Brgy. $barangay',
+              style: context.text.labelLarge!.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppTheme.brandInkOf(context),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: AppTheme.fillOf(context),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            // Gene - Oct 12, 2026: Used theme labelSmall token instead of literal fontSize.
+            child: Text(
+              '$count ${count == 1 ? 'job' : 'jobs'}',
+              style: context.text.labelSmall!.copyWith(
+                color: AppTheme.secondaryInkOf(context),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
