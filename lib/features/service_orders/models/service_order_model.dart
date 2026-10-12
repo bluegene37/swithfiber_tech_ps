@@ -387,6 +387,29 @@ class ServiceOrderDto {
     return mine == theirs;
   }
 
+  // Gene - Oct 12, 2026: Added concernRemarks and supportRemarks getters from payload.
+  String? get concernRemarks {
+    if (rawJson == null) return null;
+    try {
+      final m = jsonDecode(rawJson!) as Map<String, dynamic>;
+      final v = m['concernRemarks'] ?? m['concern_remarks'];
+      return v?.toString().trim();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? get supportRemarks {
+    if (rawJson == null) return null;
+    try {
+      final m = jsonDecode(rawJson!) as Map<String, dynamic>;
+      final v = m['supportRemarks'] ?? m['support_remarks'];
+      return v?.toString().trim();
+    } catch (_) {
+      return null;
+    }
+  }
+
   factory ServiceOrderDto.fromJson(Map<String, dynamic> json) {
     // Extract materials from slots itemName / itemQuantity and itemName1..10
     final materials = <String, int>{};

@@ -4,6 +4,8 @@ import 'package:signals_flutter/signals_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/image_capture_service.dart';
 import '../../../core/services/map_navigation_service.dart';
+import '../../../core/services/photo_storage_service.dart';
+import '../../../core/utils/data_url.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/action_pair.dart';
@@ -413,8 +415,132 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
             ],
+
+            // Gene - Oct 12, 2026: Added House Front Picture preview matching AppSheet blue annotation ("ADD FRONT HOUSE PIC").
+            if (order.houseFrontPicture != null &&
+                order.houseFrontPicture!.trim().isNotEmpty) ...[
+              _buildHouseFrontPicturePreview(order.houseFrontPicture!, isDark),
+              const SizedBox(height: 14),
+            ],
+
+            // Gene - Oct 12, 2026: Added AppSheet metadata details (Concern remarks, Support remarks, Date installed, Connection type).
+            if (order.concernRemarks != null ||
+                order.supportRemarks != null ||
+                order.dateInstalled != null ||
+                order.connectionType != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? AppTheme.darkInput : AppTheme.lightBg,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+                    width: 0.5,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (order.concernRemarks != null &&
+                        order.concernRemarks!.isNotEmpty) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.report_problem_outlined,
+                              size: 20, color: AppTheme.warningInkOf(context)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Concern Remarks',
+                                  style: context.text.labelSmall!.copyWith(
+                                    color: AppTheme.secondaryInkOf(context),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  order.concernRemarks!,
+                                  style: context.text.bodyMedium,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    if (order.supportRemarks != null &&
+                        order.supportRemarks!.isNotEmpty) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.support_agent_rounded,
+                              size: 20, color: AppTheme.infoInkOf(context)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Support Remarks',
+                                  style: context.text.labelSmall!.copyWith(
+                                    color: AppTheme.secondaryInkOf(context),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  order.supportRemarks!,
+                                  style: context.text.bodyMedium,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 4,
+                      children: [
+                        if (order.dateInstalled != null)
+                          Text(
+                            'Installed: ${order.dateInstalled!.month}/${order.dateInstalled!.day}/${order.dateInstalled!.year}',
+                            style: context.text.labelSmall!.copyWith(
+                              color: AppTheme.secondaryInkOf(context),
+                            ),
+                          ),
+                        if (order.connectionType != null &&
+                            order.connectionType!.isNotEmpty)
+                          Text(
+                            'Connection: ${order.connectionType}',
+                            style: context.text.labelSmall!.copyWith(
+                              color: AppTheme.secondaryInkOf(context),
+                            ),
+                          ),
+                        if (order.visitStatus != null &&
+                            order.visitStatus!.isNotEmpty)
+                          Text(
+                            'Status: ${order.visitStatus}',
+                            style: context.text.labelSmall!.copyWith(
+                              color: AppTheme.secondaryInkOf(context),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
+
             // Navigate | Call in the same order, size and ink as the job
             // detail. Navigate is ink so the sticky verb stays the one red.
             ActionPair(
@@ -454,6 +580,127 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
     final fullAddr =
         '${order.address}${order.barangay != null ? ", ${order.barangay}" : ""}${order.city != null ? ", ${order.city}" : ""}, Philippines';
     return MapNavigationService.navigateToAddress(fullAddr);
+  }
+
+  // Gene - Oct 12, 2026: Added House Front Picture thumbnail preview and full-screen viewer per AppSheet Page 4 requirement.
+  Widget _buildHouseFrontPicturePreview(String picture, bool isDark) {
+    final clean = picture.trim();
+    final bytes = PhotoStorageService.instance.resolveBytes(clean) ??
+        DataUrl.decode(clean);
+    final isHttp = clean.startsWith('http://') || clean.startsWith('https://');
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkInput : AppTheme.lightBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+          width: 0.5,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            child: Row(
+              children: [
+                const Icon(CupertinoIcons.house_fill,
+                    size: 20, color: AppTheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'House Front Picture',
+                  style: context.text.labelMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          InkWell(
+            onTap: () {
+              if (bytes != null) {
+                showPhotoViewer(context, bytes, title: 'House Front Picture');
+              } else if (isHttp) {
+                launchUrl(Uri.parse(clean),
+                    mode: LaunchMode.externalApplication);
+              }
+            },
+            child: SizedBox(
+              height: 180,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (bytes != null)
+                    Image.memory(
+                      bytes,
+                      fit: BoxFit.cover,
+                    )
+                  else if (isHttp)
+                    Image.network(
+                      clean,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(CupertinoIcons.link,
+                                size: 28, color: AppTheme.primary),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Tap to open photo link',
+                              style: context.text.labelSmall!.copyWith(
+                                color: AppTheme.secondaryInkOf(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    Center(
+                      child: Text(
+                        clean,
+                        style: context.text.bodySmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(CupertinoIcons.zoom_in,
+                              size: 20, color: Colors.white),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Pinch / Zoom',
+                            style: context.text.labelSmall!.copyWith(
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildPlantAndHardwareCard(ServiceOrderDto order, bool isDark) {

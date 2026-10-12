@@ -26,6 +26,10 @@ import '../widgets/status_change_sheet.dart';
 import '../../reports/screens/create_report_screen.dart';
 import '../../reports/signals/report_signals.dart';
 import '../../../core/services/map_navigation_service.dart';
+// Gene - Oct 12, 2026: Added imports for landmark photo preview and full-screen viewer.
+import '../../../core/services/photo_storage_service.dart';
+import '../../../core/utils/data_url.dart';
+import '../../reports/widgets/photo_capture_tile.dart' show showPhotoViewer;
 
 /// Comprehensive details screen for a Job Order with full Dark Mode support
 /// and responsive flex layouts.
@@ -910,6 +914,32 @@ class JobOrderDetailScreen extends StatelessWidget {
                 ],
               ),
             ],
+            // Gene - Oct 12, 2026: Added Landmark Notes and Installation Landmark preview matching AppSheet Job Order screenshots.
+            if (job.landmarkRemarks != null) ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.assistant_direction_rounded,
+                      size: 20, color: AppTheme.primary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Landmark: ${job.landmarkRemarks}',
+                      style: context.text.bodyMedium!.copyWith(
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (job.installationLandmark != null &&
+                job.installationLandmark!.trim().isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _buildLandmarkPhotoPreview(
+                  context, job.installationLandmark!, isDark),
+            ],
             const SizedBox(height: 14),
             Divider(
                 height: 1,
@@ -947,6 +977,128 @@ class JobOrderDetailScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Gene - Oct 12, 2026: Added landmark photo preview matching AppSheet Job Order Installation Landmark per screenshot page 1 & 2.
+  Widget _buildLandmarkPhotoPreview(
+      BuildContext context, String landmark, bool isDark) {
+    final clean = landmark.trim();
+    final bytes = PhotoStorageService.instance.resolveBytes(clean) ??
+        DataUrl.decode(clean);
+    final isHttp = clean.startsWith('http://') || clean.startsWith('https://');
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkInput : AppTheme.lightBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+          width: 0.5,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+            child: Row(
+              children: [
+                const Icon(Icons.photo_camera_outlined,
+                    size: 20, color: AppTheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Installation Landmark',
+                  style: context.text.labelMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          InkWell(
+            onTap: () {
+              if (bytes != null) {
+                showPhotoViewer(context, bytes, title: 'Installation Landmark');
+              } else if (isHttp) {
+                launchUrl(Uri.parse(clean),
+                    mode: LaunchMode.externalApplication);
+              }
+            },
+            child: SizedBox(
+              height: 160,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (bytes != null)
+                    Image.memory(
+                      bytes,
+                      fit: BoxFit.cover,
+                    )
+                  else if (isHttp)
+                    Image.network(
+                      clean,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(CupertinoIcons.link,
+                                size: 28, color: AppTheme.primary),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Tap to view cloud image',
+                              style: context.text.labelSmall!.copyWith(
+                                color: AppTheme.secondaryInkOf(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    Center(
+                      child: Text(
+                        clean,
+                        style: context.text.bodySmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(CupertinoIcons.zoom_in,
+                              size: 20, color: Colors.white),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Pinch / Zoom',
+                            style: context.text.labelSmall!.copyWith(
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

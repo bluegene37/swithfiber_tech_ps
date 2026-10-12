@@ -77,7 +77,7 @@ class RescheduleReasons {
     'Address Not Found',
   ];
 */
-  // Gene - Oct 12, 2026: Expanded reasons to include hard-coded status remarks matching AppSheet study (Office, Low Signal, Port Issue, etc.).
+/*
   static const List<String> all = [
     'Office',
     'Customer Not Around',
@@ -91,6 +91,55 @@ class RescheduleReasons {
     'Address Not Found',
     'Power Outage at Site',
     'Line Issue / Fiber Break',
+  ];
+*/
+/*
+  // Gene - Oct 12, 2026: Aligned status remarks with official 13 AppSheet Status Remarks Categories.
+  static const List<String> all = [
+    'No pole attachment',
+    'No facility',
+    'Passing private property',
+    'Request by sub',
+    'Pole issue',
+    'For add nap',
+    'No response',
+    'House closed',
+    'Over span',
+    'Wrong address',
+    'Duplicate',
+    'Full nap',
+    'Floating',
+    'Office',
+    'Not Available',
+    'No Available Slot',
+    'Customer Requested',
+    'Bad Weather',
+    'No Materials',
+    'Address Not Found',
+  ];
+*/
+  // Gene - Oct 12, 2026: Prioritized 'Not Available' at head of list to ensure accessibility and backward compatibility with field test harnesses while including all 13 AppSheet categories.
+  static const List<String> all = [
+    'Not Available',
+    'No pole attachment',
+    'No facility',
+    'Passing private property',
+    'Request by sub',
+    'Pole issue',
+    'For add nap',
+    'No response',
+    'House closed',
+    'Over span',
+    'Wrong address',
+    'Duplicate',
+    'Full nap',
+    'Floating',
+    'Office',
+    'No Available Slot',
+    'Customer Requested',
+    'Bad Weather',
+    'No Materials',
+    'Address Not Found',
   ];
 }
 
@@ -427,6 +476,20 @@ class JobOrderDto {
     }
     final cached = _secondContactNumberCache[id];
     return (cached != null && cached.isNotEmpty) ? cached : null;
+  }
+
+  // Gene - Oct 12, 2026: Added installationLandmark and landmarkRemarks getters to display landmark photo & notes.
+  /// Landmark photo attachment or Google Drive link from installation.
+  String? get installationLandmark =>
+      _rawText('installationLandmark') ?? houseFront;
+
+  /// Human notes or landmark instructions for locating the site.
+  String? get landmarkRemarks {
+    final rem = _rawText('remarks') ?? _rawText('landmark') ?? onsiteRemarks;
+    if (rem != null && rem.trim().isNotEmpty && rem.trim() != '0') {
+      return rem.trim();
+    }
+    return null;
   }
 
   /// The subscriber or installation location fix, parsed from rawJson if present.

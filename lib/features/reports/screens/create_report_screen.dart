@@ -1133,6 +1133,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 */
   // Gene - Oct 12, 2026: Added quick-select status remarks chips matching AppSheet options.
   Widget _buildRemarksSection() {
+/*
     const quickRemarks = [
       'Office',
       'Customer Not Around',
@@ -1142,6 +1143,25 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       'Bad Weather',
       'No Materials',
       'Address Not Found',
+      'Completed Normal',
+    ];
+*/
+    // Gene - Oct 12, 2026: Updated quick status remarks chips to match 13 AppSheet Status Remarks Categories.
+    const quickRemarks = [
+      'No pole attachment',
+      'No facility',
+      'Passing private property',
+      'Request by sub',
+      'Pole issue',
+      'For add nap',
+      'No response',
+      'House closed',
+      'Over span',
+      'Wrong address',
+      'Duplicate',
+      'Full nap',
+      'Floating',
+      'Office',
       'Completed Normal',
     ];
 

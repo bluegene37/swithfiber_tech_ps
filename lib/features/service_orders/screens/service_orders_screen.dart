@@ -25,9 +25,31 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   static const List<String> _priorities = ['All', 'Urgent', 'High', 'Normal'];
+/*
   static const List<String> _concerns = [
     'All',
     'Pullout',
+    'No Connection',
+    'High Loss',
+    'Relocation',
+  ];
+*/
+  // Gene - Oct 12, 2026: Updated repair concerns with 13 official AppSheet Repair Categories.
+  static const List<String> _concerns = [
+    'All',
+    'Resplice',
+    'Replace Patch Cord',
+    'Fiber Relaying',
+    'Replace Router',
+    'Transfer LCP / NAP / PORT',
+    'Relocate Router',
+    'Update VLAN',
+    'Reboot/Reconfig Router',
+    'Migrate',
+    'Pullout',
+    'Others',
+    'Reconfig',
+    'Retain',
     'No Connection',
     'High Loss',
     'Relocation',
