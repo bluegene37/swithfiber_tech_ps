@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+// Gene - Oct 13, 2026: Added services.dart import for FilteringTextInputFormatter in dynamic materials input.
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/services/image_capture_service.dart';
@@ -20,7 +22,8 @@ import '../../jobs/models/job_order_model.dart';
 import '../../jobs/signals/jobs_signals.dart';
 import '../../../core/widgets/serial_scanner_sheet.dart';
 import '../signals/report_signals.dart';
-import '../widgets/optical_power_gauge.dart';
+// Gene - Oct 13, 2026: Commented out unused optical_power_gauge import since Optical reading was removed from report.
+// import '../widgets/optical_power_gauge.dart';
 import '../widgets/photo_capture_tile.dart';
 import '../widgets/signature_pad.dart';
 
@@ -78,6 +81,11 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   /// the port tiles work.
   bool _remarksExpanded = false;
 
+  // Gene - Oct 13, 2026: State variables for dynamic materials selection and addition.
+  String? _selectedMaterialToAdd;
+  final TextEditingController _materialAddQtyController =
+      TextEditingController(text: '1');
+
   @override
   void initState() {
     super.initState();
@@ -131,6 +139,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
   Timer? _signatureDebounce;
 
+  /*
   @override
   void dispose() {
     _signatureDebounce?.cancel();
@@ -138,6 +147,18 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     _serialController.dispose();
     _remarksController.dispose();
     _dbmController.dispose();
+    super.dispose();
+  }
+  */
+  // Gene - Oct 13, 2026: Dispose _materialAddQtyController when CreateReportScreen is destroyed.
+  @override
+  void dispose() {
+    _signatureDebounce?.cancel();
+    _signatureController.dispose();
+    _serialController.dispose();
+    _remarksController.dispose();
+    _dbmController.dispose();
+    _materialAddQtyController.dispose();
     super.dispose();
   }
 
@@ -359,26 +380,29 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               ),
               const SizedBox(height: 16),
 
+              /*
               // Step 2: Optical Power Reading Gauge & Input
               _buildOpticalPowerSection(rep),
               const SizedBox(height: 16),
+              */
+              // Gene - Oct 13, 2026: Removed optical reading from report screen as requested. Remaining sections follow physical flow.
 
-              // Step 3: Materials Consumed On-Site (BOM)
+              // Step 2: Materials Consumed On-Site
               _buildMaterialsSection(rep),
               const SizedBox(height: 16),
 
-              // Step 4: Photo Proof Attachments
+              // Step 3: Photo Proof Attachments
               _buildPhotoProofSection(rep),
               const SizedBox(height: 16),
 
-              // Step 5: Customer Electronic Sign-Off
+              // Step 4: Customer Electronic Sign-Off
               KeyedSubtree(
                 key: _signOffSectionKey,
                 child: _buildCustomerSignOffSection(rep),
               ),
               const SizedBox(height: 16),
 
-              // Step 6: Technician Remarks & Status
+              // Step 5: Technician Remarks & Status
               _buildRemarksSection(),
               const SizedBox(height: 24),
 
@@ -658,6 +682,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     );
   }
 
+  // Gene - Oct 13, 2026: Commented out unused _buildOpticalPowerSection since Optical reading was removed from the report as requested.
+  /*
   Widget _buildOpticalPowerSection(ReportSignals rep) {
     return Card(
       child: Padding(
@@ -665,17 +691,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            /*
-            Row(
-              children: [
-                const Expanded(
-                  child: StepHeader(
-                      number: 1, title: 'Optical reading', done: true),
-                ),
-              ],
-            ),
-            */
-            // Gene - Oct 13, 2026: Set StepHeader number to 2 for Optical reading following Hardware in AppSheet flow.
             Row(
               children: [
                 const Expanded(
@@ -747,6 +762,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       ),
     );
   }
+  */
 
 /*
   Widget _buildHardwareSection(ReportSignals rep) {
@@ -1179,7 +1195,85 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             ),
             const SizedBox(height: 14),
 
-            // 4. Modem / ONT Serial Number: text box with barcode scanner button
+            // Gene - Oct 13, 2026: Added VLAN dropdown selection with default value 1000 as requested.
+            SignalBuilder(
+              builder: (context) {
+                final currentVlan = rep.vlan.value;
+                const vlanOptions = ['1000', '100', '200', '300', '400', '500'];
+                final items = vlanOptions.contains(currentVlan)
+                    ? vlanOptions
+                    : [currentVlan, ...vlanOptions];
+
+                /*
+                return DropdownButtonFormField<String>(
+                  key: const ValueKey('vlan_dropdown_field'),
+                  value: currentVlan,
+                  decoration: const InputDecoration(
+                    labelText: 'VLAN',
+                    prefixIcon: Icon(Icons.alt_route_rounded, size: 20),
+                  ),
+                  items: items
+                      .map((v) => DropdownMenuItem(
+                            value: v,
+                            child: Text(v == '1000' ? '$v (Default)' : v),
+                          ))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      rep.vlan.value = val;
+                    }
+                  },
+                );
+                */
+                /*
+                // Gene - Oct 13, 2026: Set isExpanded: true on VLAN dropdown to prevent horizontal overflow on narrow phone screens.
+                return DropdownButtonFormField<String>(
+                  key: const ValueKey('vlan_dropdown_field'),
+                  value: currentVlan,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'VLAN',
+                    prefixIcon: Icon(Icons.alt_route_rounded, size: 20),
+                  ),
+                  items: items
+                      .map((v) => DropdownMenuItem(
+                            value: v,
+                            child: Text(v == '1000' ? '$v (Default)' : v),
+                          ))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      rep.vlan.value = val;
+                    }
+                  },
+                );
+                */
+                // Gene - Oct 13, 2026: Set isExpanded: true and initialValue on VLAN dropdown to prevent horizontal overflow and avoid deprecated value parameter.
+                return DropdownButtonFormField<String>(
+                  key: const ValueKey('vlan_dropdown_field'),
+                  initialValue: currentVlan,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'VLAN',
+                    prefixIcon: Icon(Icons.alt_route_rounded, size: 20),
+                  ),
+                  items: items
+                      .map((v) => DropdownMenuItem(
+                            value: v,
+                            child: Text(v == '1000' ? '$v (Default)' : v),
+                          ))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      rep.vlan.value = val;
+                    }
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // 5. Modem / ONT Serial Number: text box with barcode scanner button
             TextFormField(
               controller: _serialController,
               style: const TextStyle(fontFamily: 'JetBrains Mono'),
@@ -1421,12 +1515,23 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                           number: 4, title: 'Remarks', hint: 'optional'),
                     ),
                 */
+                /*
                 // Gene - Oct 13, 2026: Set StepHeader to step 6 (Technician remarks & status) following AppSheet workflow.
                 Row(
                   children: [
                     const Expanded(
                       child: StepHeader(
                           number: 6,
+                          title: 'Technician remarks & status',
+                          hint: 'optional'),
+                    ),
+                */
+                // Gene - Oct 13, 2026: Set StepHeader to step 5 (Technician remarks & status) now that optical reading is removed.
+                Row(
+                  children: [
+                    const Expanded(
+                      child: StepHeader(
+                          number: 5,
                           title: 'Technician remarks & status',
                           hint: 'optional'),
                     ),
@@ -1592,6 +1697,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     );
   }
 
+  /*
   Widget _buildMaterialsSection(ReportSignals rep) {
     return Card(
       child: Padding(
@@ -1603,23 +1709,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             final fastConnectors = materials['SC/APC Fast Connector'] ?? 0;
             final sClamps = materials['S-Clamp'] ?? 0;
 
-            /*
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.inventory_2_outlined,
-                        size: 18, color: AppTheme.primary),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text('Materials Consumed On-Site',
-                          style: context.text.titleMedium),
-                    ),
-                  ],
-                ),
-            */
-            // Gene - Oct 13, 2026: Added StepHeader number 3 for Materials consumed (BOM) following AppSheet workflow.
+            // Gene - Oct 13, 2026: Set StepHeader to step 2 for Materials Consumed On-Site now that optical reading is removed.
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1627,8 +1717,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   children: [
                     Expanded(
                       child: StepHeader(
-                        number: 3,
-                        // Gene - Oct 13, 2026: Set title to Materials Consumed On-Site matching test contract and AppSheet terminology.
+                        number: 2,
                         title: 'Materials Consumed On-Site',
                         done: materials.values.any((qty) => qty > 0),
                       ),
@@ -1674,6 +1763,248 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       ),
     );
   }
+  */
+
+  // Gene - Oct 13, 2026: Hardcoded available materials list copied from AppSheet web dropdown.
+  static const List<String> kAvailableMaterials = [
+    'APC-SC TO APC-SC (GREEN)',
+    'APC-SC TO UPC-SC (GREEN TO BLUE)',
+    'BROTHER CASSETTE TAPE',
+    'BROTHER LABEL PRINTER',
+    'Drop Cable (m)',
+    'F-CLAMP',
+    'FIBER OPTIC TROLLY',
+    'FLAT CABLE CLIP',
+    'HOUSE BRACKET',
+    'IOO BOX',
+    'MID SPAN',
+    'OPTI-S',
+    'OPTICAL POWER METER',
+    'S-Clamp',
+    'SC CONNECTOR',
+    'SC/APC Fast Connector',
+    'SCREW AND TOX',
+    'SENKO SC CONNECTOR',
+    'ZTE HG260',
+  ];
+
+  static String _unitForMaterial(String material) {
+    final lower = material.toLowerCase();
+    if (lower.contains('cable') || lower.contains('(m)')) {
+      return 'meters';
+    } else if (lower.contains('tape')) {
+      return 'rolls';
+    } else if (lower.contains('printer') ||
+        lower.contains('meter') ||
+        lower.contains('trolly')) {
+      return 'units';
+    } else if (lower.contains('screw') ||
+        lower.contains('tox') ||
+        lower.contains('clip')) {
+      return 'sets/pcs';
+    }
+    return 'pcs';
+  }
+
+  static String _materialKeySlug(String material) {
+    if (material.contains('Drop Cable')) return 'drop_cable';
+    if (material.contains('Fast Connector')) return 'fast_connectors';
+    if (material.contains('S-Clamp')) return 's_clamps';
+    return material
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
+  Future<void> _showMaterialPickerDialog(
+      BuildContext context, bool isDark) async {
+    final picked = await SearchablePickerSheet.show<String>(
+      context,
+      title: 'Select Material',
+      icon: Icons.inventory_2_outlined,
+      searchHint: 'Filter material list (e.g. F-Clamp, Cable)...',
+      items: kAvailableMaterials,
+      titleOf: (m) => m,
+      subtitleOf: (m) => 'Unit: ${_unitForMaterial(m)}',
+      matches: (m, q) => m.toLowerCase().contains(q),
+      isSelected: (m) => m == _selectedMaterialToAdd,
+      emptyMessage: (q) => 'No material matching "$q"',
+    );
+    if (picked != null) {
+      setState(() {
+        _selectedMaterialToAdd = picked;
+      });
+    }
+  }
+
+  void _handleAddMaterial(ReportSignals rep) {
+    if (_selectedMaterialToAdd == null ||
+        _selectedMaterialToAdd!.trim().isEmpty) {
+      return;
+    }
+    final mat = _selectedMaterialToAdd!.trim();
+    final qtyToAdd = int.tryParse(_materialAddQtyController.text) ?? 1;
+    final validQty = qtyToAdd > 0 ? qtyToAdd : 1;
+    final currentQty = rep.materialsUsed.value[mat] ?? 0;
+    rep.setMaterialQuantity(mat, currentQty + validQty);
+    setState(() {
+      _selectedMaterialToAdd = null;
+      _materialAddQtyController.text = '1';
+    });
+  }
+
+  // Gene - Oct 13, 2026: Dynamic materials consumed section: dropdown selector with search, Add button with custom quantity, and dynamic list of added items with counters and remove buttons.
+  Widget _buildMaterialsSection(ReportSignals rep) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SignalBuilder(
+          builder: (context) {
+            final materials = rep.materialsUsed.value;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: StepHeader(
+                        number: 2,
+                        title: 'Materials Consumed On-Site',
+                        done: materials.values.any((qty) => qty > 0),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // Dynamic Material Selector: Dropdown with search
+                PickerField(
+                  key: const ValueKey('material_select_field'),
+                  label: 'Select Material',
+                  value: _selectedMaterialToAdd,
+                  placeholder: 'Search or select material to add...',
+                  icon: Icons.inventory_2_outlined,
+                  onTap: () => _showMaterialPickerDialog(context, isDark),
+                ),
+                const SizedBox(height: 10),
+
+                // Quantity and Add Material button row
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 90,
+                      child: TextFormField(
+                        key: const ValueKey('material_add_qty_field'),
+                        controller: _materialAddQtyController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontWeight: FontWeight.w700,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Qty',
+                          isDense: true,
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: FilledButton.icon(
+                          key: const ValueKey('add_material_button'),
+                          onPressed: (_selectedMaterialToAdd == null ||
+                                  _selectedMaterialToAdd!.trim().isEmpty)
+                              ? null
+                              : () => _handleAddMaterial(rep),
+                          icon: const Icon(Icons.add_rounded, size: 20),
+                          label: const Text('Add Material'),
+                          style: FilledButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+
+                // Dynamic Added Materials list at the bottom
+                if (materials.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 18, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.fillOf(context),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isDark
+                            ? AppTheme.borderDark
+                            : AppTheme.borderLight,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'No materials added yet.\nSelect a material above and tap "Add Material".',
+                        textAlign: TextAlign.center,
+                        style: context.text.bodySmall!.copyWith(
+                          color: AppTheme.secondaryInkOf(context),
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  ...materials.entries.map((entry) {
+                    final slug = _materialKeySlug(entry.key);
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: MaterialCounterRow(
+                              name: entry.key,
+                              unit: _unitForMaterial(entry.key),
+                              count: entry.value,
+                              minusKey: ValueKey('counter_minus_$slug'),
+                              fieldKey: ValueKey('counter_field_$slug'),
+                              plusKey: ValueKey('counter_plus_$slug'),
+                              onChanged: (qty) =>
+                                  rep.setMaterialQuantity(entry.key, qty),
+                            ),
+                          ),
+                          IconButton(
+                            key: ValueKey('remove_material_$slug'),
+                            icon: const Icon(Icons.close_rounded, size: 20),
+                            color: AppTheme.secondaryInkOf(context),
+                            tooltip: 'Remove ${entry.key}',
+                            onPressed: () =>
+                                rep.setMaterialQuantity(entry.key, 0),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
 
   Widget _buildPhotoProofSection(ReportSignals rep) {
     return Card(
@@ -1696,6 +2027,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   ),
                 ),
             */
+            /*
             // Gene - Oct 13, 2026: Set StepHeader number to 4 for Photo proofs following Materials in AppSheet workflow.
             Row(
               children: [
@@ -1703,6 +2035,20 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: SignalBuilder(
                     builder: (context) => StepHeader(
                       number: 4,
+                      title: 'Photo proofs',
+                      done: rep.attachedPhotoCount.value ==
+                          JobPhoto.values.length,
+                    ),
+                  ),
+                ),
+            */
+            // Gene - Oct 13, 2026: Set StepHeader to step 3 for Photo proofs now that optical reading is removed.
+            Row(
+              children: [
+                Expanded(
+                  child: SignalBuilder(
+                    builder: (context) => StepHeader(
+                      number: 3,
                       title: 'Photo proofs',
                       done: rep.attachedPhotoCount.value ==
                           JobPhoto.values.length,
@@ -1784,8 +2130,17 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   child: ListenableBuilder(
                     listenable: _signatureController,
                     builder: (context, _) => SignalBuilder(
+                      /*
                       builder: (context) => StepHeader(
                         number: 5,
+                        title: 'Customer sign-off',
+                        done: rep.hasSignature.value ||
+                            !_signatureController.isEmpty,
+                      ),
+                      */
+                      // Gene - Oct 13, 2026: Set StepHeader to step 4 for Customer sign-off now that optical reading is removed.
+                      builder: (context) => StepHeader(
+                        number: 4,
                         title: 'Customer sign-off',
                         done: rep.hasSignature.value ||
                             !_signatureController.isEmpty,

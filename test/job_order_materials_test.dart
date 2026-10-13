@@ -162,6 +162,7 @@ void main() {
 
       expect(find.text('Materials Consumed On-Site'), findsOneWidget);
 
+      /*
       final plusDrop = find.byKey(const ValueKey('counter_plus_drop_cable'));
       final plusFast =
           find.byKey(const ValueKey('counter_plus_fast_connectors'));
@@ -180,6 +181,31 @@ void main() {
       await tester.ensureVisible(plusClamp);
       await tester.tap(plusClamp);
       await tester.pump();
+      */
+      // Gene - Oct 13, 2026: Dynamically select and add materials using searchable picker and Add Material button.
+      Future<void> addMaterial(String name, [String? qty]) async {
+        final picker = find.byKey(const ValueKey('material_select_field'));
+        await tester.scrollUntilVisible(picker, 300,
+            scrollable: find.byType(Scrollable).first);
+        await tester.tap(picker);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(name).last);
+        await tester.pumpAndSettle();
+
+        if (qty != null) {
+          final qtyField = find.byKey(const ValueKey('material_add_qty_field'));
+          await tester.enterText(qtyField, qty);
+          await tester.pump();
+        }
+
+        final addBtn = find.byKey(const ValueKey('add_material_button'));
+        await tester.tap(addBtn);
+        await tester.pumpAndSettle();
+      }
+
+      await addMaterial('Drop Cable (m)', '2');
+      await addMaterial('SC/APC Fast Connector', '1');
+      await addMaterial('S-Clamp', '1');
 
       expect(reportSignals.materialsUsed.value['Drop Cable (m)'], 2);
       expect(reportSignals.materialsUsed.value['SC/APC Fast Connector'], 1);
@@ -258,6 +284,93 @@ void main() {
       expect(find.text('60'), findsOneWidget);
       expect(find.text('SC/APC Fast Connector'), findsOneWidget);
       expect(find.text('S-Clamp'), findsOneWidget);
+
+      await tester.runAsync(() async {
+        await jobsSignals.dispose();
+        await db.close();
+      });
+    });
+
+    // Gene - Oct 13, 2026: Test dynamic material searching, adding with custom quantity, stepper interaction, and removal.
+    testWidgets(
+        'Dynamic materials selector filters with search, adds with custom count, and removes item',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 2000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      late AppDatabase db;
+      late JobsSignals jobsSignals;
+      late ReportSignals reportSignals;
+
+      final testJob = JobOrderDto(
+        id: 901,
+        ticketNumber: 'JO-901',
+        customerName: 'Test Tech',
+        address: 'Fiber Zone',
+        status: 'Scheduled',
+      );
+
+      await tester.runAsync(() async {
+        db = AppDatabase.forTesting();
+        jobsSignals =
+            JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
+        await db.jobOrdersDao.insertOrUpdateJob(testJob);
+      });
+
+      reportSignals = ReportSignals()..setJobOrder(testJob);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: CreateReportScreen(
+          jobsSignals: jobsSignals,
+          reportSignals: reportSignals,
+          pickImage: (_) async => null,
+        ),
+      ));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('No materials added yet'), findsOneWidget);
+
+      // Open picker
+      final picker = find.byKey(const ValueKey('material_select_field'));
+      await tester.scrollUntilVisible(picker, 300,
+          scrollable: find.byType(Scrollable).first);
+      await tester.tap(picker);
+      await tester.pumpAndSettle();
+
+      // Search for clip
+      final searchInput = find.byType(TextField).last;
+      await tester.enterText(searchInput, 'clip');
+      await tester.pumpAndSettle();
+
+      expect(find.text('FLAT CABLE CLIP'), findsOneWidget);
+      await tester.tap(find.text('FLAT CABLE CLIP'));
+      await tester.pumpAndSettle();
+
+      // Enter quantity 5 and tap Add Material
+      final qtyField = find.byKey(const ValueKey('material_add_qty_field'));
+      await tester.enterText(qtyField, '5');
+      await tester.pump();
+
+      final addBtn = find.byKey(const ValueKey('add_material_button'));
+      await tester.tap(addBtn);
+      await tester.pumpAndSettle();
+
+      expect(reportSignals.materialsUsed.value['FLAT CABLE CLIP'], 5);
+      expect(find.text('FLAT CABLE CLIP'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '5'), findsOneWidget);
+
+      // Tap remove button
+      final removeBtn = find.byKey(const ValueKey('remove_material_flat_cable_clip'));
+      expect(removeBtn, findsOneWidget);
+      await tester.tap(removeBtn);
+      await tester.pumpAndSettle();
+
+      expect(reportSignals.materialsUsed.value['FLAT CABLE CLIP'], isNull);
+      expect(find.textContaining('No materials added yet'), findsOneWidget);
 
       await tester.runAsync(() async {
         await jobsSignals.dispose();
