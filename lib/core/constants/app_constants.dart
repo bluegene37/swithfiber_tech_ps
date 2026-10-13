@@ -10,7 +10,9 @@ class AppConstants {
   static const String appTagline = 'Distributed Fiber Network Management';
 
   // API Config
-  static const String defaultBaseUrl = 'https://103.249.198.50:8090/api';
+  // static const String defaultBaseUrl = 'https://103.249.198.50:8090/api';
+  // Gene - Oct 13, 2026: Updated defaultBaseUrl to production domain https://admin.switchfiber.ph/api over standard HTTPS port 443.
+  static const String defaultBaseUrl = 'https://admin.switchfiber.ph/api';
   static const int connectTimeout = 30000; // 30s
   // GET /JobOrders/status/Activated returns every finished job (~10 MB, a few
   // seconds on the current server, far longer on a poor mobile link). Kept
