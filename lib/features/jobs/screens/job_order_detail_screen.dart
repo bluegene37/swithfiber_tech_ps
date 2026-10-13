@@ -935,11 +935,37 @@ class JobOrderDetailScreen extends StatelessWidget {
                 ],
               ),
             ],
+            /*
             if (job.installationLandmark != null &&
                 job.installationLandmark!.trim().isNotEmpty) ...[
               const SizedBox(height: 10),
               _buildLandmarkPhotoPreview(
                   context, job.installationLandmark!, isDark),
+            ],
+            */
+            // Gene - Oct 13, 2026: Display Front House Image in Job Order details.
+            if (job.houseFront != null && job.houseFront!.trim().isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _buildLandmarkPhotoPreview(
+                context,
+                job.houseFront!,
+                isDark,
+                title: 'Front House Image',
+                icon: CupertinoIcons.house_fill,
+              ),
+            ],
+            // Gene - Oct 13, 2026: Display Installation Landmark photo if present and distinct from houseFront.
+            if (job.installationLandmark != null &&
+                job.installationLandmark!.trim().isNotEmpty &&
+                job.installationLandmark != job.houseFront) ...[
+              const SizedBox(height: 10),
+              _buildLandmarkPhotoPreview(
+                context,
+                job.installationLandmark!,
+                isDark,
+                title: 'Installation Landmark',
+                icon: Icons.photo_camera_outlined,
+              ),
             ],
             const SizedBox(height: 14),
             Divider(
@@ -983,8 +1009,15 @@ class JobOrderDetailScreen extends StatelessWidget {
   }
 
   // Gene - Oct 12, 2026: Added landmark photo preview matching AppSheet Job Order Installation Landmark per screenshot page 1 & 2.
+  /*
   Widget _buildLandmarkPhotoPreview(
       BuildContext context, String landmark, bool isDark) {
+  */
+  // Gene - Oct 13, 2026: Added title and icon parameters to display Front House Image or Installation Landmark in details.
+  Widget _buildLandmarkPhotoPreview(
+      BuildContext context, String landmark, bool isDark,
+      {String title = 'Installation Landmark',
+      IconData icon = Icons.photo_camera_outlined}) {
     final clean = landmark.trim();
     final bytes = PhotoStorageService.instance.resolveBytes(clean) ??
         DataUrl.decode(clean);
@@ -1008,11 +1041,22 @@ class JobOrderDetailScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
             child: Row(
               children: [
+                /*
                 const Icon(Icons.photo_camera_outlined,
                     size: 20, color: AppTheme.primary),
                 const SizedBox(width: 8),
                 Text(
                   'Installation Landmark',
+                  style: context.text.labelMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                */
+                // Gene - Oct 13, 2026: Render dynamic icon and title (e.g. Front House Image or Installation Landmark).
+                Icon(icon, size: 20, color: AppTheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  title,
                   style: context.text.labelMedium!.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -1023,7 +1067,11 @@ class JobOrderDetailScreen extends StatelessWidget {
           InkWell(
             onTap: () {
               if (bytes != null) {
+                /*
                 showPhotoViewer(context, bytes, title: 'Installation Landmark');
+                */
+                // Gene - Oct 13, 2026: Pass preview title to full-screen photo viewer.
+                showPhotoViewer(context, bytes, title: title);
               } else if (isHttp) {
                 launchUrl(Uri.parse(clean),
                     mode: LaunchMode.externalApplication);

@@ -189,8 +189,21 @@ void main() {
     final firstJob = jobsSignals.allJobs.value.first;
     expect(find.text(firstJob.customerName), findsOneWidget);
 
+    /*
     // Tap on the job card
     await tester.tap(find.text(firstJob.customerName));
+    await tester.pumpAndSettle();
+
+    // Verify detailed screen opened
+    expect(find.byType(JobOrderDetailScreen), findsOneWidget);
+    */
+    // Gene - Oct 13, 2026: Tapping the card safely toggles expansion; tapping the DETAILS action button in the card footer opens JobOrderDetailScreen.
+    await tester.tap(find.text(firstJob.customerName));
+    await tester.pumpAndSettle();
+    expect(find.text('DETAILS'), findsOneWidget);
+    await tester.ensureVisible(find.text('DETAILS'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('DETAILS'));
     await tester.pumpAndSettle();
 
     // Verify detailed screen opened
@@ -281,6 +294,51 @@ void main() {
 
     await tester.runAsync(() async {
       await lcpNapSignals.dispose();
+      await jobsSignals.dispose();
+      await db.close();
+    });
+  });
+
+  // Gene - Oct 13, 2026: Verify that the Front House Image is displayed in JobOrderDetailScreen details.
+  testWidgets('JobOrderDetailScreen renders Front House Image in details when present',
+      (WidgetTester tester) async {
+    late final AppDatabase db;
+    late final JobRepository repository;
+    late final JobsSignals jobsSignals;
+    await tester.runAsync(() async {
+      db = AppDatabase.forTesting();
+      repository = JobRepository(db.jobOrdersDao);
+      jobsSignals = JobsSignals(repository);
+      await db.jobOrdersDao.insertAllJobs([
+        JobOrderDto(
+          id: 99,
+          ticketNumber: 'SF-99',
+          customerName: 'Front House Tester',
+          address: 'Block 1 Lot 2 Street',
+          status: 'Scheduled',
+          houseFront: 'uploads/house_front_test.jpg',
+        ),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: JobOrderDetailScreen(
+          jobId: 99,
+          jobsSignals: jobsSignals,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final frontHouse = find.text('Front House Image');
+    await tester.scrollUntilVisible(frontHouse, 300,
+        scrollable: find.byType(Scrollable).first);
+    expect(frontHouse, findsOneWidget);
+
+    await tester.runAsync(() async {
       await jobsSignals.dispose();
       await db.close();
     });
