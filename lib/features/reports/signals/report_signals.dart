@@ -21,6 +21,11 @@ class ReportSignals {
   // Gene - Oct 13, 2026: Added plan signals to allow upgrading or changing subscription plan during on-site installation.
   final planName = signal<String?>(null);
   final planId = signal<int?>(null);
+  // Gene - Oct 13, 2026: Added connectionType signal (default: Fiber, options: Fiber, Local, Antenna).
+  final connectionType = signal<String>('Fiber');
+  // Gene - Oct 13, 2026: Added visitBy and visitWith signals (defaults: 'None').
+  final visitBy = signal<String>('None');
+  final visitWith = signal<String>('None');
   final remarks = signal<String>('');
 
   /// Materials consumed on site (e.g. Drop Cable, SC/APC Fast Connectors, S-Clamps).
@@ -40,8 +45,16 @@ class ReportSignals {
   late final ReadonlySignal<bool> hasSignature =
       computed(() => DataUrl.isDataUrl(signature.value));
 
+/*
   late final ReadonlySignal<int> attachedPhotoCount = computed(
     () => photos.value.values.where((v) => v.trim().isNotEmpty).length,
+  );
+*/
+  // Gene - Oct 13, 2026: Count only the 4 required report photo proofs (Signed Contract, Set Up, Box Reading, Router Reading).
+  late final ReadonlySignal<int> attachedPhotoCount = computed(
+    () => JobPhoto.reportPhotos
+        .where((p) => (photos.value[p]?.trim().isNotEmpty ?? false))
+        .length,
   );
 
   late final ReadonlySignal<bool> isFormValid = computed(() {
@@ -122,6 +135,11 @@ class ReportSignals {
     // Gene - Oct 13, 2026: Pre-fill plan from job order.
     planName.value = job.planName;
     planId.value = job.planId;
+    // Gene - Oct 13, 2026: Pre-fill connectionType from job order.
+    connectionType.value = job.connectionType;
+    // Gene - Oct 13, 2026: Pre-fill visitBy and visitWith from job order.
+    visitBy.value = job.visitBy;
+    visitWith.value = job.visitWith;
     remarks.value = job.onsiteRemarks ?? '';
     materialsUsed.value = Map<String, int>.from(job.materialsUsed);
     // Start from what the job already carries; a fresh capture replaces it.
@@ -162,6 +180,11 @@ class ReportSignals {
         // Gene - Oct 13, 2026: Pass upgraded or changed plan to persist in database & sync to API.
         planId: planId.value,
         planName: planName.value,
+        // Gene - Oct 13, 2026: Pass selected connection type (Fiber, Local, Antenna).
+        connectionType: connectionType.value,
+        // Gene - Oct 13, 2026: Pass visitBy and visitWith for technician attendance tracking.
+        visitBy: visitBy.value,
+        visitWith: visitWith.value,
         boxReadingImage: _finalPhoto(job, JobPhoto.boxReading),
         routerReadingImage: _finalPhoto(job, JobPhoto.routerReading),
         setupImage: _finalPhoto(job, JobPhoto.setup),
@@ -204,6 +227,10 @@ class ReportSignals {
     // Gene - Oct 13, 2026: Reset plan signals.
     planName.value = null;
     planId.value = null;
+    // Gene - Oct 13, 2026: Reset connectionType, visitBy, and visitWith.
+    connectionType.value = 'Fiber';
+    visitBy.value = 'None';
+    visitWith.value = 'None';
     remarks.value = '';
     nap.value = null;
     signature.value = null;

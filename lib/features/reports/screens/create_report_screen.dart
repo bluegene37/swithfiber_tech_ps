@@ -72,12 +72,21 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   List<PortDto> _availablePorts = CatalogService.fallbackPorts;
   List<LcpOptionDto> _availableLcps = CatalogService.fallbackLcps;
   */
+  /*
   // Gene - Oct 13, 2026: Added _availablePlans to allow updating or upgrading plan on-site from /Plans API.
   List<RouterDto> _availableRouters = CatalogService.fallbackRouters;
   List<NapDto> _availableNaps = CatalogService.fallbackNaps;
   List<PortDto> _availablePorts = CatalogService.fallbackPorts;
   List<LcpOptionDto> _availableLcps = CatalogService.fallbackLcps;
   List<PlanDto> _availablePlans = CatalogService.fallbackPlans;
+  */
+  // Gene - Oct 13, 2026: Added _availableTechnicians to populate Visit By and Visit With dropdowns.
+  List<RouterDto> _availableRouters = CatalogService.fallbackRouters;
+  List<NapDto> _availableNaps = CatalogService.fallbackNaps;
+  List<PortDto> _availablePorts = CatalogService.fallbackPorts;
+  List<LcpOptionDto> _availableLcps = CatalogService.fallbackLcps;
+  List<PlanDto> _availablePlans = CatalogService.fallbackPlans;
+  List<String> _availableTechnicians = CatalogService.fallbackTechnicians;
 
   /// Whether the NAP port tiles are open. Closed by default: the header
   /// already names the port the job arrived with, and sixteen tiles pushed
@@ -91,8 +100,11 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
   // Gene - Oct 13, 2026: State variables for dynamic materials selection and addition.
   String? _selectedMaterialToAdd;
+  /*
   final TextEditingController _materialAddQtyController =
       TextEditingController(text: '1');
+  */
+  // Gene - Oct 13, 2026: Removed qty text field on add; materials default to 1 on add and count is adjusted directly in the added list.
 
   // Gene - Oct 13, 2026: Signature pad lock state to prevent accidental scratch lines while scrolling.
   bool _isSignaturePadActive = false;
@@ -149,6 +161,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     });
   }
   */
+/*
   // Gene - Oct 13, 2026: Fetch available plans from /Plans API table to populate on-site plan dropdown.
   Future<void> _loadCatalog() async {
     final routersFuture = CatalogService.instance.getRouters();
@@ -164,6 +177,33 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       _availablePorts = results[2] as List<PortDto>;
       _availableLcps = results[3] as List<LcpOptionDto>;
       _availablePlans = results[4] as List<PlanDto>;
+    });
+  }
+*/
+  // Gene - Oct 13, 2026: Fetch available technicians to populate Visit By and Visit With dropdowns.
+  Future<void> _loadCatalog() async {
+    final routersFuture = CatalogService.instance.getRouters();
+    final napsFuture = CatalogService.instance.getNaps();
+    final portsFuture = CatalogService.instance.getPorts();
+    final lcpsFuture = CatalogService.instance.getLcps();
+    final plansFuture = CatalogService.instance.getPlans();
+    final techFuture = CatalogService.instance.getTechnicians();
+    final results = await Future.wait([
+      routersFuture,
+      napsFuture,
+      portsFuture,
+      lcpsFuture,
+      plansFuture,
+      techFuture,
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _availableRouters = results[0] as List<RouterDto>;
+      _availableNaps = results[1] as List<NapDto>;
+      _availablePorts = results[2] as List<PortDto>;
+      _availableLcps = results[3] as List<LcpOptionDto>;
+      _availablePlans = results[4] as List<PlanDto>;
+      _availableTechnicians = results[5] as List<String>;
     });
   }
 
@@ -188,7 +228,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     _serialController.dispose();
     _remarksController.dispose();
     _dbmController.dispose();
+    /*
     _materialAddQtyController.dispose();
+    */
     super.dispose();
   }
 
@@ -553,7 +595,11 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           builder: (context) {
             final submitting = rep.isSubmitting.value;
             final photos = rep.attachedPhotoCount.value;
+            /*
             final total = JobPhoto.values.length;
+            */
+            // Gene - Oct 13, 2026: Set total required photos to 4 (Signed Contract, Set Up, Box Reading, Router Reading).
+            final total = JobPhoto.reportPhotos.length;
             final missing = <String>[
               if (serial.text.trim().isEmpty) 'serial number',
               if (photos < total) '${total - photos} of $total photos',
@@ -845,6 +891,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               );
             }
 
+            /*
             final fullAddress = [
               job.address.trim(),
               if (job.barangay != null && job.barangay!.trim().isNotEmpty)
@@ -861,6 +908,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   job.secondContactNumber!.trim().isNotEmpty)
                 job.secondContactNumber!.trim(),
             ].join(' · ');
+            */
+            // Gene - Oct 13, 2026: Removed un-important read-only contact number and address fields from report summary card.
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1094,6 +1143,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     ],
                   ),
                 ),
+                /*
                 if (phone.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Row(
@@ -1134,6 +1184,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     ],
                   ),
                 ],
+                */
+                // Gene - Oct 13, 2026: Removed un-important phone number and street address rows from report summary per user request.
               ],
             );
           },
@@ -1733,6 +1785,104 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             ),
             const SizedBox(height: 12),
 
+            // Gene - Oct 13, 2026: Added Connection Type dropdown selector (default: Fiber, options: Fiber, Local, Antenna).
+            SignalBuilder(
+              builder: (context) {
+                final currentType = rep.connectionType.value;
+                const typeOptions = ['Fiber', 'Local', 'Antenna'];
+                final items = typeOptions.contains(currentType)
+                    ? typeOptions
+                    : [currentType, ...typeOptions];
+
+                return DropdownButtonFormField<String>(
+                  key: const ValueKey('connection_type_dropdown_field'),
+                  initialValue: currentType,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Connection Type',
+                    prefixIcon: Icon(Icons.cable_rounded, size: 20),
+                  ),
+                  items: items
+                      .map((t) => DropdownMenuItem(
+                            value: t,
+                            child: Text(t == 'Fiber' ? '$t (Default)' : t),
+                          ))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      rep.connectionType.value = val;
+                    }
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // Gene - Oct 13, 2026: Added Visit By and Visit With dropdown selectors.
+            SignalBuilder(
+              builder: (context) {
+                final currentVisitBy = rep.visitBy.value;
+                final techOptions = ['None', ..._availableTechnicians];
+                final items = techOptions.contains(currentVisitBy)
+                    ? techOptions
+                    : [currentVisitBy, ...techOptions];
+
+                return DropdownButtonFormField<String>(
+                  key: const ValueKey('visit_by_dropdown_field'),
+                  initialValue: currentVisitBy,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Visit By',
+                    prefixIcon: Icon(Icons.person_rounded, size: 20),
+                  ),
+                  items: items
+                      .map((t) => DropdownMenuItem(
+                            value: t,
+                            child: Text(t == 'None' ? '$t (Default)' : t),
+                          ))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      rep.visitBy.value = val;
+                    }
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+
+            SignalBuilder(
+              builder: (context) {
+                final currentVisitWith = rep.visitWith.value;
+                final techOptions = ['None', ..._availableTechnicians];
+                final items = techOptions.contains(currentVisitWith)
+                    ? techOptions
+                    : [currentVisitWith, ...techOptions];
+
+                return DropdownButtonFormField<String>(
+                  key: const ValueKey('visit_with_dropdown_field'),
+                  initialValue: currentVisitWith,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Visit With',
+                    prefixIcon: Icon(Icons.group_rounded, size: 20),
+                  ),
+                  items: items
+                      .map((t) => DropdownMenuItem(
+                            value: t,
+                            child: Text(t == 'None' ? '$t (Default)' : t),
+                          ))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      rep.visitWith.value = val;
+                    }
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+
             // 5. Modem / ONT Serial Number: text box with barcode scanner button
             TextFormField(
               controller: _serialController,
@@ -2297,6 +2447,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     }
   }
 
+  /*
   void _handleAddMaterial(ReportSignals rep) {
     if (_selectedMaterialToAdd == null ||
         _selectedMaterialToAdd!.trim().isEmpty) {
@@ -2310,6 +2461,20 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     setState(() {
       _selectedMaterialToAdd = null;
       _materialAddQtyController.text = '1';
+    });
+  }
+  */
+  // Gene - Oct 13, 2026: Material item defaults to 1 when added; if already added, adds 1 more. Qty adjustments are done via fast +/- in the added list below.
+  void _handleAddMaterial(ReportSignals rep) {
+    if (_selectedMaterialToAdd == null ||
+        _selectedMaterialToAdd!.trim().isEmpty) {
+      return;
+    }
+    final mat = _selectedMaterialToAdd!.trim();
+    final currentQty = rep.materialsUsed.value[mat] ?? 0;
+    rep.setMaterialQuantity(mat, currentQty > 0 ? currentQty + 1 : 1);
+    setState(() {
+      _selectedMaterialToAdd = null;
     });
   }
 
@@ -2350,6 +2515,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 ),
                 const SizedBox(height: 10),
 
+                /*
                 // Quantity and Add Material button row
                 Row(
                   children: [
@@ -2397,6 +2563,26 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     ),
                   ],
                 ),
+                */
+                // Gene - Oct 13, 2026: Removed qty text field in adding row; full-width Add Material button adds item with default qty = 1.
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton.icon(
+                    key: const ValueKey('add_material_button'),
+                    onPressed: (_selectedMaterialToAdd == null ||
+                            _selectedMaterialToAdd!.trim().isEmpty)
+                        ? null
+                        : () => _handleAddMaterial(rep),
+                    icon: const Icon(Icons.add_rounded, size: 20),
+                    label: const Text('Add Material'),
+                    style: FilledButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
 
                 const SizedBox(height: 16),
                 const Divider(height: 1),
@@ -2431,11 +2617,13 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   ...materials.entries.map((entry) {
                     final slug = _materialKeySlug(entry.key);
                     return Padding(
+                      key: ValueKey('material_item_$slug'),
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
                         children: [
                           Expanded(
                             child: MaterialCounterRow(
+                              key: ValueKey('material_counter_$slug'),
                               name: entry.key,
                               unit: _unitForMaterial(entry.key),
                               count: entry.value,
@@ -2510,18 +2698,30 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     builder: (context) => StepHeader(
                       number: 3,
                       title: 'Photo proofs',
+                      /*
                       done: rep.attachedPhotoCount.value ==
                           JobPhoto.values.length,
+                      */
+                      // Gene - Oct 13, 2026: Done when all 4 report photos are attached.
+                      done: rep.attachedPhotoCount.value ==
+                          JobPhoto.reportPhotos.length,
                     ),
                   ),
                 ),
                 SignalBuilder(
                   builder: (context) {
                     final job = rep.selectedJobOrder.value;
+                    /*
                     final count = JobPhoto.values
                         .where((p) => rep.photoFor(p)?.isNotEmpty == true)
                         .length;
                     final label = '$count / ${JobPhoto.values.length}';
+                    */
+                    // Gene - Oct 13, 2026: Count only the 4 required report photo proofs.
+                    final count = JobPhoto.reportPhotos
+                        .where((p) => rep.photoFor(p)?.isNotEmpty == true)
+                        .length;
+                    final label = '$count / ${JobPhoto.reportPhotos.length}';
                     return Text(
                       job == null ? '' : label,
                       style: context.text.bodySmall!.copyWith(
@@ -2543,6 +2743,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 // Read so the grid rebuilds when any photo changes.
                 rep.photos.value;
                 rep.selectedJobOrder.value;
+                /*
                 return GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -2555,6 +2756,31 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   itemCount: JobPhoto.values.length,
                   itemBuilder: (context, index) {
                     final photo = JobPhoto.values[index];
+                    return PhotoCaptureTile(
+                      key: ValueKey(photo),
+                      label: photo.label,
+                      hint: photo.hint,
+                      icon: _iconFor(photo),
+                      value: rep.photoFor(photo),
+                      pick: _pick,
+                      onChanged: (v) => rep.setPhoto(photo, v),
+                    );
+                  },
+                );
+                */
+                // Gene - Oct 13, 2026: Render only the 4 required report photo proofs (Signed Contract, Set Up, Box Reading, Router Reading).
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 0.98,
+                  ),
+                  itemCount: JobPhoto.reportPhotos.length,
+                  itemBuilder: (context, index) {
+                    final photo = JobPhoto.reportPhotos[index];
                     return PhotoCaptureTile(
                       key: ValueKey(photo),
                       label: photo.label,

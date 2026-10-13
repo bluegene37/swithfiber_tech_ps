@@ -146,6 +146,7 @@ class RescheduleReasons {
 /// The photo proofs a technician can attach to a job order, one per API
 /// field. [clientSignature] is drawn rather than photographed and lives
 /// alongside these on [JobOrderDto].
+/*
 enum JobPhoto {
   boxReading('boxReadingImage', 'NAP Box Reading',
       'Optical power meter reading at the NAP port'),
@@ -165,6 +166,37 @@ enum JobPhoto {
   final String jsonKey;
   final String label;
   final String hint;
+}
+*/
+// Gene - Oct 13, 2026: Updated JobPhoto enum and defined reportPhotos to only include the 4 AppSheet installation proofs: Signed Contract, Set Up, Box Reading, and Router Reading.
+enum JobPhoto {
+  signedContract(
+      'signedContractImage', 'Signed Contract', 'Subscriber service contract'),
+  setup('setupImage', 'Set Up', 'ONT and router as installed'),
+  boxReading('boxReadingImage', 'Box Reading',
+      'Optical power meter reading at the NAP port'),
+  routerReading('routerReadingImage', 'Router Reading',
+      'Optical reading at the subscriber ONT'),
+  // Legacy / historical photo definitions retained for database & DTO compatibility:
+  speedtest('speedtestImage', 'Speed Test', 'Speed test result screenshot'),
+  portLabel('portLabelImage', 'Port Label', 'Labelled NAP port'),
+  houseFront(
+      'houseFront', 'House Front', 'Subscriber premises from the street');
+
+  const JobPhoto(this.jsonKey, this.label, this.hint);
+
+  /// Field name on the API record and in [JobOrderDto.toApiJson].
+  final String jsonKey;
+  final String label;
+  final String hint;
+
+  /// The 4 standard photo proofs required on the installation completion report matching AppSheet flow.
+  static const List<JobPhoto> reportPhotos = [
+    JobPhoto.signedContract,
+    JobPhoto.setup,
+    JobPhoto.boxReading,
+    JobPhoto.routerReading,
+  ];
 }
 
 /// An on-site outcome that needs the technician's attention, taken from
@@ -221,6 +253,13 @@ class JobOrderDto {
   final String? _secondContactNumber;
   // Gene - Oct 13, 2026: Added _username backing field for subscriber PPPoE / RADIUS identity.
   final String? _username;
+  // Gene - Oct 13, 2026: Added _connectionType backing field for connection type (Fiber, Local, Antenna).
+  final String? _connectionType;
+  // Gene - Oct 13, 2026: Added _visitBy and _visitWith backing fields for technician visit attribution.
+  final String? _visitBy;
+  final String? _visitWith;
+  // Gene - Oct 13, 2026: Added _addressCoordinates backing field for direct job order coordinates.
+  final String? _addressCoordinates;
   final String status;
   final String? onsiteStatus;
 
@@ -310,6 +349,13 @@ class JobOrderDto {
     String? secondContactNumber,
     // Gene - Oct 13, 2026: Added optional username parameter for subscriber PPPoE / RADIUS identity.
     String? username,
+    // Gene - Oct 13, 2026: Added optional connectionType parameter (Fiber, Local, Antenna).
+    String? connectionType,
+    // Gene - Oct 13, 2026: Added optional visitBy and visitWith parameters for technician visit attribution.
+    String? visitBy,
+    String? visitWith,
+    // Gene - Oct 13, 2026: Added optional addressCoordinates parameter.
+    String? addressCoordinates,
     this.status = 'pending',
     this.onsiteStatus,
     this.rawJson,
@@ -340,7 +386,11 @@ class JobOrderDto {
   })  : _planName = planName,
         _subscriberEmail = subscriberEmail,
         _secondContactNumber = secondContactNumber,
-        _username = username {
+        _username = username,
+        _connectionType = connectionType,
+        _visitBy = visitBy,
+        _visitWith = visitWith,
+        _addressCoordinates = addressCoordinates {
     if (planName != null && planName.trim().isNotEmpty) {
       _planNameCache[id] = planName.trim();
     }
@@ -580,31 +630,119 @@ class JobOrderDto {
     return '';
   }
 
-  /// The subscriber or installation location fix, parsed from rawJson if present.
+  // Gene - Oct 13, 2026: Added connectionType getter (default: 'Fiber', options: Fiber, Local, Antenna).
+  String get connectionType {
+    if (_connectionType != null && _connectionType.trim().isNotEmpty) {
+      return _connectionType.trim();
+    }
+    final raw = _rawText('connectionType') ?? _rawText('connection_type');
+    if (raw != null && raw.trim().isNotEmpty) {
+      return raw.trim();
+    }
+    return 'Fiber';
+  }
+
+  // Gene - Oct 13, 2026: Added visitBy getter (default: 'None').
+  String get visitBy {
+    if (_visitBy != null && _visitBy.trim().isNotEmpty) {
+      return _visitBy.trim();
+    }
+    final raw = _rawText('visitBy') ?? _rawText('visit_by');
+    if (raw != null && raw.trim().isNotEmpty) {
+      return raw.trim();
+    }
+    return 'None';
+  }
+
+  // Gene - Oct 13, 2026: Added visitWith getter (default: 'None').
+  String get visitWith {
+    if (_visitWith != null && _visitWith.trim().isNotEmpty) {
+      return _visitWith.trim();
+    }
+    final raw = _rawText('visitWith') ?? _rawText('visit_with');
+    if (raw != null && raw.trim().isNotEmpty) {
+      return raw.trim();
+    }
+    return 'None';
+  }
+
+  // Gene - Oct 13, 2026: Helper method to parse coordinates from string format (lat, lng).
+  static LatLng? _parseCoordinatesString(String raw) {
+    final parts = raw
+        .replaceAll(RegExp(r'[^\d.,\s-]'), '')
+        .split(RegExp(r'[,;\s]+'));
+    if (parts.length >= 2) {
+      final lat = double.tryParse(parts[0]);
+      final lng = double.tryParse(parts[1]);
+      if (lat != null &&
+          lng != null &&
+          lat.abs() <= 90 &&
+          lng.abs() <= 180 &&
+          !(lat == 0 && lng == 0)) {
+        return LatLng(lat, lng);
+      }
+    }
+    return null;
+  }
+
+  /// The subscriber or installation location fix, parsed from addressCoordinates or rawJson if present.
   LatLng? get latLng {
+    final coords = _addressCoordinates;
+    if (coords != null && coords.trim().isNotEmpty) {
+      final parsed = _parseCoordinatesString(coords);
+      if (parsed != null) return parsed;
+    }
     if (rawJson != null) {
       try {
         final map = jsonDecode(rawJson!);
         if (map is Map<String, dynamic>) {
-          final raw = map['coordinates'] ?? map['location'] ?? map['latLng'];
+          final raw = map['coordinates'] ??
+              map['Coordinates'] ??
+              map['addressCoordinates'] ??
+              map['AddressCoordinates'] ??
+              map['address_coordinates'] ??
+              map['location'] ??
+              map['Location'] ??
+              map['latLng'] ??
+              map['LatLng'] ??
+              map['gps'] ??
+              map['GPS'];
           if (raw is String && raw.trim().isNotEmpty) {
-            final parts = raw
-                .replaceAll(RegExp(r'[^\d.,\s-]'), '')
-                .split(RegExp(r'[,;\s]+'));
-            if (parts.length >= 2) {
-              final lat = double.tryParse(parts[0]);
-              final lng = double.tryParse(parts[1]);
-              if (lat != null &&
-                  lng != null &&
-                  lat.abs() <= 90 &&
-                  lng.abs() <= 180 &&
-                  !(lat == 0 && lng == 0)) {
-                return LatLng(lat, lng);
+            final parsed = _parseCoordinatesString(raw);
+            if (parsed != null) return parsed;
+          } else if (raw is Map) {
+            final lat = raw['latitude'] ??
+                raw['Latitude'] ??
+                raw['lat'] ??
+                raw['Lat'];
+            final lng = raw['longitude'] ??
+                raw['Longitude'] ??
+                raw['lng'] ??
+                raw['Lng'] ??
+                raw['lon'] ??
+                raw['Lon'];
+            if (lat != null && lng != null) {
+              final latD = double.tryParse(lat.toString());
+              final lngD = double.tryParse(lng.toString());
+              if (latD != null &&
+                  lngD != null &&
+                  latD.abs() <= 90 &&
+                  lngD.abs() <= 180 &&
+                  !(latD == 0 && lngD == 0)) {
+                return LatLng(latD, lngD);
               }
             }
           }
-          final lat = map['latitude'] ?? map['lat'];
-          final lng = map['longitude'] ?? map['lng'] ?? map['lon'];
+          final lat = map['latitude'] ??
+              map['Latitude'] ??
+              map['lat'] ??
+              map['Lat'];
+          final lng = map['longitude'] ??
+              map['Longitude'] ??
+              map['lng'] ??
+              map['Lng'] ??
+              map['lon'] ??
+              map['Lon'];
           if (lat != null && lng != null) {
             final latD = double.tryParse(lat.toString());
             final lngD = double.tryParse(lng.toString());
@@ -726,6 +864,27 @@ class JobOrderDto {
         json['Username']?.toString() ??
         json['user_name']?.toString();
     final cleanUsername = _cleanValue(rawUsername);
+    // Gene - Oct 13, 2026: Parsed connectionType (Fiber, Local, Antenna) from payload.
+    final rawConnType = json['connectionType']?.toString() ??
+        json['ConnectionType']?.toString() ??
+        json['connection_type']?.toString();
+    final cleanConnType = _cleanValue(rawConnType);
+    // Gene - Oct 13, 2026: Parsed visitBy and visitWith from payload.
+    final rawVisitBy = json['visitBy']?.toString() ??
+        json['VisitBy']?.toString() ??
+        json['visit_by']?.toString();
+    final cleanVisitBy = _cleanValue(rawVisitBy);
+    final rawVisitWith = json['visitWith']?.toString() ??
+        json['VisitWith']?.toString() ??
+        json['visit_with']?.toString();
+    final cleanVisitWith = _cleanValue(rawVisitWith);
+    // Gene - Oct 13, 2026: Parsed addressCoordinates / coordinates from API payload.
+    final rawCoords = json['addressCoordinates'] ??
+        json['AddressCoordinates'] ??
+        json['address_coordinates'] ??
+        json['coordinates'] ??
+        json['Coordinates'];
+    final cleanCoords = _cleanValue(rawCoords?.toString());
 
     return JobOrderDto(
       id: id,
@@ -754,6 +913,13 @@ class JobOrderDto {
       subscriberEmail: cleanEmail,
       secondContactNumber: cleanSecond,
       username: cleanUsername,
+      // Gene - Oct 13, 2026: Passed connectionType parameter to fromJson.
+      connectionType: cleanConnType,
+      // Gene - Oct 13, 2026: Passed visitBy and visitWith parameters to fromJson.
+      visitBy: cleanVisitBy,
+      visitWith: cleanVisitWith,
+      // Gene - Oct 13, 2026: Passed addressCoordinates parameter to fromJson.
+      addressCoordinates: cleanCoords,
       // Preserved verbatim: the API's office-side vocabulary is 'Applied' /
       // 'Confirmed', and lowercasing it silently broke every status comparison.
       status: json['status']?.toString().trim() ?? 'pending',
@@ -853,6 +1019,59 @@ class JobOrderDto {
           rowText(row[column]),
         );
 
+    // Gene - Oct 13, 2026: Extract connectionType from rawJson for JobOrderDto.fromRow.
+    final String? rowConnectionType = () {
+      if (rawJson != null && rawJson.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(rawJson);
+          if (decoded is Map<String, dynamic>) {
+            final val = decoded['connectionType'] ??
+                decoded['ConnectionType'] ??
+                decoded['connection_type'];
+            if (val != null && val.toString().trim().isNotEmpty) {
+              return val.toString().trim();
+            }
+          }
+        } catch (_) {}
+      }
+      return null;
+    }();
+
+    // Gene - Oct 13, 2026: Extract visitBy and visitWith from rawJson for JobOrderDto.fromRow.
+    final String? rowVisitBy = () {
+      if (rawJson != null && rawJson.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(rawJson);
+          if (decoded is Map<String, dynamic>) {
+            final val = decoded['visitBy'] ??
+                decoded['VisitBy'] ??
+                decoded['visit_by'];
+            if (val != null && val.toString().trim().isNotEmpty) {
+              return val.toString().trim();
+            }
+          }
+        } catch (_) {}
+      }
+      return null;
+    }();
+
+    final String? rowVisitWith = () {
+      if (rawJson != null && rawJson.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(rawJson);
+          if (decoded is Map<String, dynamic>) {
+            final val = decoded['visitWith'] ??
+                decoded['VisitWith'] ??
+                decoded['visit_with'];
+            if (val != null && val.toString().trim().isNotEmpty) {
+              return val.toString().trim();
+            }
+          }
+        } catch (_) {}
+      }
+      return null;
+    }();
+
     return JobOrderDto(
       id: rowInt(row['id']),
       ticketNumber: rowText(row['ticket_number']) ?? '',
@@ -872,6 +1091,12 @@ class JobOrderDto {
       secondContactNumber: rowText(row['second_contact_number']),
       // Gene - Oct 13, 2026: Passed row username for subscriber PPPoE / RADIUS account.
       username: rowText(row['username']),
+      // Gene - Oct 13, 2026: Passed connectionType, visitBy, and visitWith extracted from rawJson.
+      connectionType: rowConnectionType,
+      visitBy: rowVisitBy,
+      visitWith: rowVisitWith,
+      // Gene - Oct 13, 2026: Passed addressCoordinates parsed from table row.
+      addressCoordinates: rowText(row['address_coordinates']) ?? rowText(row['coordinates']),
       status: rowText(row['status']) ?? 'pending',
       onsiteStatus: rowText(row['onsite_status']),
       rawJson: rawJson,
@@ -904,6 +1129,7 @@ class JobOrderDto {
 
   /// The `job_orders` row for this job. Materials are folded into `raw_json`
   /// so they survive a round trip and reach the PUT body.
+/*
   Map<String, Object?> toRow({bool synced = true}) {
     String? rawJsonWithMaterials = rawJson;
     if (materialsUsed.isNotEmpty) {
@@ -926,6 +1152,84 @@ class JobOrderDto {
       for (int i = idx; i <= 10; i++) {
         rawMap['itemName$i'] = '';
         rawMap['itemQuantity$i'] = '';
+      }
+      rawJsonWithMaterials = jsonEncode(rawMap);
+    }
+*/
+/*
+  // Gene - Oct 13, 2026: Included connectionType in raw_json inside toRow so connection type persists in local database.
+  Map<String, Object?> toRow({bool synced = true}) {
+    String? rawJsonWithMaterials = rawJson;
+    if (materialsUsed.isNotEmpty || _connectionType != null) {
+      Map<String, dynamic> rawMap = {};
+      if (rawJson != null && rawJson!.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(rawJson!);
+          if (decoded is Map<String, dynamic>) rawMap = decoded;
+        } catch (_) {}
+      }
+      if (_connectionType != null) {
+        rawMap['connectionType'] = _connectionType;
+        rawMap['connection_type'] = _connectionType;
+      }
+      if (materialsUsed.isNotEmpty) {
+        rawMap['materialsUsed'] = materialsUsed;
+        int idx = 1;
+        materialsUsed.forEach((name, qty) {
+          if (idx <= 10) {
+            rawMap['itemName$idx'] = name;
+            rawMap['itemQuantity$idx'] = qty;
+            idx++;
+          }
+        });
+        for (int i = idx; i <= 10; i++) {
+          rawMap['itemName$i'] = '';
+          rawMap['itemQuantity$i'] = '';
+        }
+      }
+      rawJsonWithMaterials = jsonEncode(rawMap);
+    }
+*/
+  // Gene - Oct 13, 2026: Included connectionType, visitBy, and visitWith in raw_json inside toRow.
+  Map<String, Object?> toRow({bool synced = true}) {
+    String? rawJsonWithMaterials = rawJson;
+    if (materialsUsed.isNotEmpty ||
+        _connectionType != null ||
+        _visitBy != null ||
+        _visitWith != null) {
+      Map<String, dynamic> rawMap = {};
+      if (rawJson != null && rawJson!.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(rawJson!);
+          if (decoded is Map<String, dynamic>) rawMap = decoded;
+        } catch (_) {}
+      }
+      if (_connectionType != null) {
+        rawMap['connectionType'] = _connectionType;
+        rawMap['connection_type'] = _connectionType;
+      }
+      if (_visitBy != null) {
+        rawMap['visitBy'] = _visitBy;
+        rawMap['visit_by'] = _visitBy;
+      }
+      if (_visitWith != null) {
+        rawMap['visitWith'] = _visitWith;
+        rawMap['visit_with'] = _visitWith;
+      }
+      if (materialsUsed.isNotEmpty) {
+        rawMap['materialsUsed'] = materialsUsed;
+        int idx = 1;
+        materialsUsed.forEach((name, qty) {
+          if (idx <= 10) {
+            rawMap['itemName$idx'] = name;
+            rawMap['itemQuantity$idx'] = qty;
+            idx++;
+          }
+        });
+        for (int i = idx; i <= 10; i++) {
+          rawMap['itemName$i'] = '';
+          rawMap['itemQuantity$i'] = '';
+        }
       }
       rawJsonWithMaterials = jsonEncode(rawMap);
     }
@@ -1093,6 +1397,18 @@ class JobOrderDto {
       username: (server.username != null && server.username!.trim().isNotEmpty)
           ? server.username
           : username,
+      // Gene - Oct 13, 2026: Merged connection type, visitBy, and visitWith preserving server or existing value.
+      connectionType: (server._connectionType != null &&
+              server._connectionType.trim().isNotEmpty)
+          ? server._connectionType
+          : _connectionType,
+      visitBy: (server._visitBy != null && server._visitBy.trim().isNotEmpty)
+          ? server._visitBy
+          : _visitBy,
+      visitWith: (server._visitWith != null &&
+              server._visitWith.trim().isNotEmpty)
+          ? server._visitWith
+          : _visitWith,
       status: server.status,
       onsiteStatus: (server.onsiteStatus != null &&
               server.onsiteStatus!.trim().isNotEmpty)
@@ -1380,6 +1696,10 @@ class JobOrderDto {
       if (signedContractImage != null)
         'signedContractImage': signedContractImage,
       if (houseFront != null) 'houseFront': houseFront,
+      // Gene - Oct 13, 2026: Include connectionType, visitBy, and visitWith in technician edits for server PUT sync.
+      if (connectionType.isNotEmpty) 'connectionType': connectionType,
+      if (visitBy.isNotEmpty) 'visitBy': visitBy,
+      if (visitWith.isNotEmpty) 'visitWith': visitWith,
       // Stamped on activation. Left out when unknown so a cached row from
       // before this column existed never blanks the office's assignment.
       if (assignedEmail != null) 'assignedEmail': assignedEmail,

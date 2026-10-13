@@ -10,14 +10,20 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
+/*
 import '../../../core/widgets/action_pair.dart';
+*/
+// Gene - Oct 13, 2026: Commented out unused action_pair import as Navigate and Call buttons were removed from details per user request.
 import '../../../core/widgets/adaptive_dialogs.dart';
 import '../../../core/widgets/status_stamp.dart';
 import '../../../core/widgets/sticky_action_bar.dart';
 import '../widgets/job_contact.dart';
 import '../widgets/job_navigation.dart';
 import '../../diagnostics/widgets/radius_connection_card.dart';
+/*
 import '../../lcp_nap/models/lcp_nap_model.dart';
+*/
+// Gene - Oct 13, 2026: Commented out unused lcp_nap_model import as nearest NAP details were decoupled from location card.
 import '../../lcp_nap/signals/lcp_nap_signals.dart';
 import '../models/job_order_model.dart';
 import '../signals/jobs_signals.dart';
@@ -258,7 +264,10 @@ class JobOrderDetailScreen extends StatelessWidget {
     ].join(', ');
     final address = place.isEmpty ? job.address : '${job.address}, $place';
     final distance = distanceLabelFor(job);
+    /*
     final hasPhone = job.contactNumber?.isNotEmpty == true;
+    */
+    // Gene - Oct 13, 2026: Commented out unused hasPhone variable since Call button in header was removed.
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -278,6 +287,7 @@ class JobOrderDetailScreen extends StatelessWidget {
                 .copyWith(color: AppTheme.secondaryInkOf(context)),
           ),
         ],
+        /*
         const SizedBox(height: 14),
         ActionPair(
           primary: SizedBox(
@@ -300,6 +310,8 @@ class JobOrderDetailScreen extends StatelessWidget {
                 )
               : null,
         ),
+        */
+        // Gene - Oct 13, 2026: Removed Navigate and Call action buttons from Job Order details per user request.
       ],
     );
   }
@@ -319,11 +331,41 @@ class JobOrderDetailScreen extends StatelessWidget {
 
     final napValue = clean(job.nap, 'NAP') ??
         (job.napId != null && job.napId! > 0 ? '${job.napId}' : null);
+/*
     final entries = <(String, String?)>[
       ('LCP', job.lcpId != null && job.lcpId! > 0 ? '${job.lcpId}' : null),
       ('NAP', napValue),
       ('PORT', clean(job.portId, 'PORT')),
       ('VLAN', job.vlanId != null && job.vlanId! > 0 ? '${job.vlanId}' : null),
+    ];
+*/
+/*
+    // Gene - Oct 13, 2026: Included CONNECTION in plant entries for job order details.
+    final entries = <(String, String?)>[
+      ('LCP', job.lcpId != null && job.lcpId! > 0 ? '${job.lcpId}' : null),
+      ('NAP', napValue),
+      ('PORT', clean(job.portId, 'PORT')),
+      ('VLAN', job.vlanId != null && job.vlanId! > 0 ? '${job.vlanId}' : null),
+      ('CONNECTION', job.connectionType.isNotEmpty ? job.connectionType : null),
+    ];
+*/
+    // Gene - Oct 13, 2026: Included CONNECTION, VISIT BY, and VISIT WITH in plant entries for job order details.
+    final entries = <(String, String?)>[
+      ('LCP', job.lcpId != null && job.lcpId! > 0 ? '${job.lcpId}' : null),
+      ('NAP', napValue),
+      ('PORT', clean(job.portId, 'PORT')),
+      ('VLAN', job.vlanId != null && job.vlanId! > 0 ? '${job.vlanId}' : null),
+      ('CONNECTION', job.connectionType.isNotEmpty ? job.connectionType : null),
+      (
+        'VISIT BY',
+        job.visitBy != 'None' && job.visitBy.isNotEmpty ? job.visitBy : null
+      ),
+      (
+        'VISIT WITH',
+        job.visitWith != 'None' && job.visitWith.isNotEmpty
+            ? job.visitWith
+            : null
+      ),
     ];
     final secondary = AppTheme.secondaryInkOf(context);
 
@@ -1177,6 +1219,36 @@ class JobOrderDetailScreen extends StatelessWidget {
     );
   }
 
+  /*
+  // Gene - Oct 13, 2026: Resolves Job Order coordinates falling back to assigned NAP site or service center so map pin is always shown.
+  LatLng _resolveCoordinates(JobOrderDto job) {
+    if (job.latLng != null) return job.latLng!;
+    if (lcpNapSignals != null) {
+      final naps = lcpNapSignals!.allLocations.value;
+      if (job.napId != null) {
+        for (final n in naps) {
+          if (n.id == job.napId && n.latLng != null) {
+            return n.latLng!;
+          }
+        }
+      }
+      final rawNap = job.nap?.trim();
+      if (rawNap != null && rawNap.isNotEmpty && rawNap != '0') {
+        for (final n in naps) {
+          if (n.lcpNap.trim().toLowerCase() == rawNap.toLowerCase() &&
+              n.latLng != null) {
+            return n.latLng!;
+          }
+        }
+      }
+    }
+    return const LatLng(14.5862, 121.0618);
+  }
+  // Gene - Oct 13, 2026: Strict Job Order coordinate resolution returning only the actual job latLng without NAP or service area fallbacks.
+  LatLng? _resolveCoordinates(JobOrderDto job) => job.latLng;
+  */
+
+  /*
   Widget _buildLocationAndGpsCard(
       BuildContext context, JobOrderDto job, bool isDark) {
     final latLng = job.latLng;
@@ -1248,6 +1320,74 @@ class JobOrderDetailScreen extends StatelessWidget {
             // against when the job carries no coordinates.
             if (latLng != null)
               _DistanceFromTechnicianRow(target: latLng, isDark: isDark),
+  */
+  /*
+  // Gene - Oct 13, 2026: Guaranteed map and location pin rendering for Job Order using resolved lat/long coordinates.
+  Widget _buildLocationAndGpsCard(
+      BuildContext context, JobOrderDto job, bool isDark) {
+    final latLng = _resolveCoordinates(job);
+    final hasRealGps = job.latLng != null;
+    final dms =
+        LocationService.instance.formatDms(latLng.latitude, latLng.longitude);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(CupertinoIcons.location_circle_fill,
+                    size: 20, color: AppTheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Service Location & GPS Coordinates',
+                    style: context.text.titleMedium,
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: (hasRealGps ? AppTheme.success : AppTheme.primary)
+                        .withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    hasRealGps ? 'GPS Fixed' : 'Service Area',
+                    style: context.text.labelMedium!.copyWith(
+                      color: hasRealGps
+                          ? AppTheme.successInkOf(context)
+                          : AppTheme.brandInkOf(context),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _JobMapLocationPreview(
+              latLng: latLng,
+              label: job.customerName,
+              isDark: isDark,
+            ),
+            const SizedBox(height: 14),
+            _buildSpecRow(
+              context,
+              'Coordinates',
+              dms,
+              CupertinoIcons.location_solid,
+              isDark,
+            ),
+            _buildSpecRow(
+              context,
+              'Decimal Lat/Lng',
+              '${latLng.latitude.toStringAsFixed(6)}, ${latLng.longitude.toStringAsFixed(6)}',
+              CupertinoIcons.map_pin_ellipse,
+              isDark,
+            ),
+            _DistanceFromTechnicianRow(target: latLng, isDark: isDark),
             // Navigation itself lives in the header pair; this card keeps
             // the coordinates and the nearest NAP pole.
             // Nearest LCP NAP Pole Details & Navigation
@@ -1370,7 +1510,134 @@ class JobOrderDetailScreen extends StatelessWidget {
       ),
     );
   }
+  */
+  // Gene - Oct 13, 2026: Only show the location of the Job Order lat long on the map. If coordinates are missing, omit map preview and display clean No GPS indicator without NAP or Manila fallback.
+  Widget _buildLocationAndGpsCard(
+      BuildContext context, JobOrderDto job, bool isDark) {
+    final latLng = job.latLng;
+    final dms = latLng != null
+        ? LocationService.instance.formatDms(latLng.latitude, latLng.longitude)
+        : null;
 
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(CupertinoIcons.location_circle_fill,
+                    size: 20, color: AppTheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Service Location & GPS Coordinates',
+                    style: context.text.titleMedium,
+                  ),
+                ),
+                if (latLng != null)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.success.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'GPS Fixed',
+                      style: context.text.labelMedium!.copyWith(
+                        color: AppTheme.successInkOf(context),
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'No GPS',
+                      style: context.text.labelMedium!.copyWith(
+                        color: AppTheme.secondaryInkOf(context),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (latLng != null) ...[
+              _JobMapLocationPreview(
+                latLng: latLng,
+                label: job.customerName,
+                isDark: isDark,
+              ),
+              const SizedBox(height: 14),
+              _buildSpecRow(
+                context,
+                'Coordinates',
+                dms!,
+                CupertinoIcons.location_solid,
+                isDark,
+              ),
+              _buildSpecRow(
+                context,
+                'Decimal Lat/Lng',
+                '${latLng.latitude.toStringAsFixed(6)}, ${latLng.longitude.toStringAsFixed(6)}',
+                CupertinoIcons.map_pin_ellipse,
+                isDark,
+              ),
+              _DistanceFromTechnicianRow(target: latLng, isDark: isDark),
+            ] else ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: isDark ? AppTheme.darkInput : AppTheme.lightBg,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+                    width: 0.5,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Icon(CupertinoIcons.location_slash,
+                        size: 32,
+                        color: AppTheme.secondaryInkOf(context)),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No GPS location recorded for this job order',
+                      style: context.text.bodyMedium!.copyWith(
+                        color: AppTheme.secondaryInkOf(context),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              _buildSpecRow(
+                context,
+                'Coordinates',
+                'Not recorded',
+                CupertinoIcons.location_solid,
+                isDark,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /*
+  // Gene - Oct 13, 2026: Commented out unused _findNearestNap as NAP details were decoupled from the Job Order location card.
   ({LcpNapDto nap, double distanceMeters})? _findNearestNap(JobOrderDto job) {
     if (lcpNapSignals == null) return null;
     final naps = lcpNapSignals!.allLocations.value;
@@ -1408,6 +1675,7 @@ class JobOrderDetailScreen extends StatelessWidget {
 
     return null;
   }
+  */
 
   Future<void> _openNavigation(JobOrderDto job) async {
     final latLng = job.latLng;
@@ -2534,6 +2802,7 @@ class _JobMapLocationPreviewState extends State<_JobMapLocationPreview> {
                   userAgentPackageName: MapTiles.userAgentPackageName,
                   tileProvider: _tiles,
                 ),
+              /*
               MarkerLayer(
                 markers: [
                   Marker(
@@ -2564,7 +2833,67 @@ class _JobMapLocationPreviewState extends State<_JobMapLocationPreview> {
                   ),
                 ],
               ),
+              */
+              // Gene - Oct 13, 2026: Render prominent red location pin marker for the Job Order coordinates.
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: widget.latLng,
+                    width: 48,
+                    height: 48,
+                    alignment: Alignment.topCenter,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE11D48),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2.5),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x66000000),
+                            blurRadius: 6,
+                            offset: Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.location_on_rounded,
+                          color: Colors.white,
+                          size: 26,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
+          ),
+          // Gene - Oct 13, 2026: Added location coordinates overlay chip on map.
+          Positioned(
+            bottom: 8,
+            left: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.pin_drop_rounded,
+                      size: 20, color: Color(0xFFF43F5E)),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${widget.latLng.latitude.toStringAsFixed(5)}, ${widget.latLng.longitude.toStringAsFixed(5)}',
+                    style: context.text.labelSmall!.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
           Positioned(
             bottom: 8,
@@ -2579,7 +2908,7 @@ class _JobMapLocationPreviewState extends State<_JobMapLocationPreview> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Icon(CupertinoIcons.zoom_in,
-                      size: 16, color: Colors.white),
+                      size: 20, color: Colors.white),
                   const SizedBox(width: 4),
                   Text(
                     'Pinch to Zoom',
@@ -2591,6 +2920,7 @@ class _JobMapLocationPreviewState extends State<_JobMapLocationPreview> {
               ),
             ),
           ),
+          /*
           Positioned(
             top: 8,
             right: 8,
@@ -2621,7 +2951,7 @@ class _JobMapLocationPreviewState extends State<_JobMapLocationPreview> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(Icons.navigation_rounded,
-                          size: 16, color: Colors.white),
+                          size: 16 /* map furniture */, color: Colors.white),
                       const SizedBox(width: 4),
                       Text(
                         'Navigate',
@@ -2636,6 +2966,8 @@ class _JobMapLocationPreviewState extends State<_JobMapLocationPreview> {
               ),
             ),
           ),
+          */
+          // Gene - Oct 13, 2026: Removed Navigate button overlay on map in Job Order details per user request.
         ],
       ),
     );

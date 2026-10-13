@@ -273,4 +273,100 @@ class CatalogService {
     } catch (_) {}
     return _cachedPorts ?? fallbackPorts;
   }
+
+  List<String>? _cachedTechnicians;
+
+  // Gene - Oct 13, 2026: Bundled fallback technicians matching Field Installation Team (FIT1) and active field personnel.
+  static const List<String> fallbackTechnicians = [
+    'Dave Dimacali',
+    'Technician Trial Cruz',
+    'Aldrin Ian Albao',
+    'Melchor Ynopia',
+    'Leonardo Bayos',
+    'Jerry John Jao',
+    'Liwanag II Capistrano',
+    'Antonio Urata',
+    'Elmer Tuyor',
+    'Wilbert Calle',
+    'Rolando Calle',
+    'Bernard Aquino',
+    'Peter Dominic Ojeda',
+    'Reynaldo Boctoy Jr',
+    'John Carlo Belarga',
+    'Manuel Monteverde',
+    'Wesley Aragones',
+  ];
+
+  // Gene - Oct 13, 2026: Fetch active technicians filtered by AccessLevel = Tech / Field Installation Team or accesslevel_id 8/9.
+  Future<List<String>> getTechnicians({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedTechnicians != null) {
+      return _cachedTechnicians!;
+    }
+    try {
+      final matchingAccessIds = <int>{8, 9};
+      try {
+        final accessResponse = await _api.get('/AccessLevel');
+        final accessData = accessResponse.data;
+        if (accessData is List) {
+          for (final item in accessData) {
+            if (item is Map<String, dynamic>) {
+              final id = item['id'] is int
+                  ? item['id'] as int
+                  : int.tryParse(item['id']?.toString() ?? '');
+              final name = item['name']?.toString().toLowerCase() ?? '';
+              if (id != null) {
+                if (name.contains('field installation') ||
+                    name.contains('tech') ||
+                    id == 8 ||
+                    id == 9) {
+                  matchingAccessIds.add(id);
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      final response = await _api.get('/Users');
+      final data = response.data;
+      if (data is List) {
+        final names = <String>{};
+        for (final item in data) {
+          if (item is Map<String, dynamic>) {
+            final active = item['active'] == null ||
+                item['active'] == true ||
+                item['active'].toString() == 'true';
+            if (!active) continue;
+
+            final accessId = item['accesslevel_id'] is int
+                ? item['accesslevel_id'] as int
+                : int.tryParse(item['accesslevel_id']?.toString() ?? '') ??
+                    (item['accessLevelId'] is int
+                        ? item['accessLevelId'] as int
+                        : int.tryParse(item['accessLevelId']?.toString() ?? '') ?? 0);
+
+            final username = item['username']?.toString() ?? '';
+            final fname = item['fname']?.toString() ?? item['firstName']?.toString() ?? '';
+            final lname = item['lname']?.toString() ?? item['lastName']?.toString() ?? '';
+            final fullName = '$fname $lname'.trim().replaceAll(RegExp(r'\s+'), ' ');
+
+            final isTech = matchingAccessIds.contains(accessId) ||
+                accessId == 8 ||
+                accessId == 9 ||
+                username.toLowerCase().contains('tech');
+
+            if (isTech && fullName.isNotEmpty) {
+              names.add(fullName);
+            }
+          }
+        }
+        if (names.isNotEmpty) {
+          final combined = <String>{...names, ...fallbackTechnicians}.toList()..sort();
+          _cachedTechnicians = combined;
+          return combined;
+        }
+      }
+    } catch (_) {}
+    return _cachedTechnicians ?? fallbackTechnicians;
+  }
 }

@@ -209,23 +209,29 @@ void main() {
     // Verify detailed screen opened
     expect(find.byType(JobOrderDetailScreen), findsOneWidget);
     */
-    // Gene - Oct 13, 2026: Tapping the card safely toggles expansion; tapping the DETAILS action button in the card footer opens JobOrderDetailScreen.
-    await tester.tap(find.text(firstJob.customerName));
+    // Gene - Oct 13, 2026: Action buttons are always visible at card bottom; tapping DETAILS opens JobOrderDetailScreen.
+    expect(find.text('DETAILS'), findsWidgets);
+    await tester.ensureVisible(find.text('DETAILS').first);
     await tester.pumpAndSettle();
-    expect(find.text('DETAILS'), findsOneWidget);
-    await tester.ensureVisible(find.text('DETAILS'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('DETAILS'));
+    await tester.tap(find.text('DETAILS').first);
     await tester.pumpAndSettle();
 
     // Verify detailed screen opened
     expect(find.byType(JobOrderDetailScreen), findsOneWidget);
+    /*
     // The Today home under the route has its own Navigate on the lifted job.
     expect(
         find.descendant(
             of: find.byType(JobOrderDetailScreen),
             matching: find.text('Navigate')),
         findsOneWidget);
+    */
+    // Gene - Oct 13, 2026: Navigate action button was removed from JobOrderDetailScreen per user request.
+    expect(
+        find.descendant(
+            of: find.byType(JobOrderDetailScreen),
+            matching: find.text('Navigate')),
+        findsNothing);
 
     // Last section of a lazy ListView: scroll the detail route's own list,
     // not the job list still mounted underneath it.

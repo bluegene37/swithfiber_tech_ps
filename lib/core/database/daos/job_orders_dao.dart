@@ -192,6 +192,7 @@ class JobOrdersDao {
     bool isSynced = false,
   }) async {
   */
+/*
   // Gene - Oct 13, 2026: Added planId and planName parameters to updateJobCompletion to persist on-site plan upgrades.
   Future<void> updateJobCompletion({
     required int id,
@@ -254,6 +255,169 @@ class JobOrdersDao {
       if (planName != null) {
         rawMap['plan'] = planName;
         rawMap['planName'] = planName;
+      }
+      updatedRawJson = jsonEncode(rawMap);
+    }
+*/
+/*
+  // Gene - Oct 13, 2026: Added connectionType parameter to updateJobCompletion to persist selected connection type in raw_json.
+  Future<void> updateJobCompletion({
+    required int id,
+    String? status,
+    required String onsiteStatus,
+    required String onsiteRemarks,
+    double? opticalPower,
+    String? modemRouterSN,
+    String? routerModel,
+    String? nap,
+    int? vlanId,
+    int? planId,
+    String? planName,
+    String? connectionType,
+    String? boxReadingImage,
+    String? routerReadingImage,
+    String? clientSignature,
+    String? setupImage,
+    String? speedtestImage,
+    String? portLabelImage,
+    String? signedContractImage,
+    String? houseFront,
+    String? assignedEmail,
+    Map<String, int>? materialsUsed,
+    bool isSynced = false,
+  }) async {
+    String? updatedRawJson;
+    if (materialsUsed != null ||
+        vlanId != null ||
+        planId != null ||
+        planName != null ||
+        connectionType != null) {
+      final existing = await getJobById(id);
+      Map<String, dynamic> rawMap = {};
+      final raw = existing?.rawJson;
+      if (raw != null && raw.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is Map<String, dynamic>) rawMap = decoded;
+        } catch (_) {}
+      }
+      if (materialsUsed != null) {
+        rawMap['materialsUsed'] = materialsUsed;
+        int idx = 1;
+        materialsUsed.forEach((name, qty) {
+          if (idx <= 10) {
+            rawMap['itemName$idx'] = name;
+            rawMap['itemQuantity$idx'] = qty;
+            idx++;
+          }
+        });
+        for (int i = idx; i <= 10; i++) {
+          rawMap['itemName$i'] = '';
+          rawMap['itemQuantity$i'] = '';
+        }
+      }
+      if (vlanId != null) {
+        rawMap['vlanId'] = vlanId;
+        rawMap['vlan'] = vlanId.toString();
+      }
+      if (planId != null) {
+        rawMap['planId'] = planId;
+        rawMap['PlanId'] = planId;
+      }
+      if (planName != null) {
+        rawMap['plan'] = planName;
+        rawMap['planName'] = planName;
+      }
+      if (connectionType != null) {
+        rawMap['connectionType'] = connectionType;
+        rawMap['connection_type'] = connectionType;
+      }
+      updatedRawJson = jsonEncode(rawMap);
+    }
+*/
+  // Gene - Oct 13, 2026: Added visitBy and visitWith parameters to updateJobCompletion to persist technician attendance.
+  Future<void> updateJobCompletion({
+    required int id,
+    String? status,
+    required String onsiteStatus,
+    required String onsiteRemarks,
+    double? opticalPower,
+    String? modemRouterSN,
+    String? routerModel,
+    String? nap,
+    int? vlanId,
+    int? planId,
+    String? planName,
+    String? connectionType,
+    String? visitBy,
+    String? visitWith,
+    String? boxReadingImage,
+    String? routerReadingImage,
+    String? clientSignature,
+    String? setupImage,
+    String? speedtestImage,
+    String? portLabelImage,
+    String? signedContractImage,
+    String? houseFront,
+    String? assignedEmail,
+    Map<String, int>? materialsUsed,
+    bool isSynced = false,
+  }) async {
+    String? updatedRawJson;
+    if (materialsUsed != null ||
+        vlanId != null ||
+        planId != null ||
+        planName != null ||
+        connectionType != null ||
+        visitBy != null ||
+        visitWith != null) {
+      final existing = await getJobById(id);
+      Map<String, dynamic> rawMap = {};
+      final raw = existing?.rawJson;
+      if (raw != null && raw.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is Map<String, dynamic>) rawMap = decoded;
+        } catch (_) {}
+      }
+      if (materialsUsed != null) {
+        rawMap['materialsUsed'] = materialsUsed;
+        int idx = 1;
+        materialsUsed.forEach((name, qty) {
+          if (idx <= 10) {
+            rawMap['itemName$idx'] = name;
+            rawMap['itemQuantity$idx'] = qty;
+            idx++;
+          }
+        });
+        for (int i = idx; i <= 10; i++) {
+          rawMap['itemName$i'] = '';
+          rawMap['itemQuantity$i'] = '';
+        }
+      }
+      if (vlanId != null) {
+        rawMap['vlanId'] = vlanId;
+        rawMap['vlan'] = vlanId.toString();
+      }
+      if (planId != null) {
+        rawMap['planId'] = planId;
+        rawMap['PlanId'] = planId;
+      }
+      if (planName != null) {
+        rawMap['plan'] = planName;
+        rawMap['planName'] = planName;
+      }
+      if (connectionType != null) {
+        rawMap['connectionType'] = connectionType;
+        rawMap['connection_type'] = connectionType;
+      }
+      if (visitBy != null) {
+        rawMap['visitBy'] = visitBy;
+        rawMap['visit_by'] = visitBy;
+      }
+      if (visitWith != null) {
+        rawMap['visitWith'] = visitWith;
+        rawMap['visit_with'] = visitWith;
       }
       updatedRawJson = jsonEncode(rawMap);
     }

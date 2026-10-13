@@ -578,4 +578,182 @@ void main() {
     // Ticket number SF-70 should only appear once (in the ticket badge), never in username field
     expect(find.text('SF-70'), findsOneWidget);
   });
+
+  // Gene - Oct 13, 2026: Added test verifying Connection Type dropdown renders with Fiber default, options (Fiber, Local, Antenna), and updates signal.
+  testWidgets('connection type dropdown defaults to Fiber and supports Local and Antenna', (tester) async {
+    await tester.runAsync(() async {
+      db = AppDatabase.forTesting();
+      jobsSignals =
+          JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    final signals = ReportSignals();
+    final job = JobOrderDto(
+      id: 88,
+      ticketNumber: 'SF-88',
+      customerName: 'Juan Dela Cruz',
+      address: 'Poblacion',
+      status: 'Scheduled',
+    );
+    expect(job.connectionType, 'Fiber');
+
+    signals.setJobOrder(job);
+    expect(signals.connectionType.value, 'Fiber');
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: CreateReportScreen(
+        jobsSignals: jobsSignals,
+        reportSignals: signals,
+        pickImage: (_) async => null,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final dropdownFinder = find.byKey(const ValueKey('connection_type_dropdown_field'));
+    await tester.ensureVisible(dropdownFinder);
+    await tester.pumpAndSettle();
+    expect(dropdownFinder, findsOneWidget);
+    expect(find.text('Fiber (Default)'), findsOneWidget);
+
+    // Tap dropdown and select Local
+    await tester.tap(dropdownFinder);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Local').last, findsOneWidget);
+    expect(find.text('Antenna').last, findsOneWidget);
+
+    await tester.tap(find.text('Local').last);
+    await tester.pumpAndSettle();
+
+    expect(signals.connectionType.value, 'Local');
+  });
+
+  // Gene - Oct 13, 2026: Added test verifying connectionType persistence through submitReport.
+  test('persists connectionType to database on report submission', () async {
+    final testDb = AppDatabase.forTesting();
+    final repo = JobRepository(testDb.jobOrdersDao, api: _QuietApi());
+    final job = JobOrderDto(
+      id: 89,
+      ticketNumber: 'SF-89',
+      customerName: 'Maria Clara',
+      address: 'Barangay 1',
+      status: 'Scheduled',
+    );
+    await testDb.jobOrdersDao.insertAllJobs([job]);
+
+    final signals = ReportSignals();
+    signals.setJobOrder(job);
+    signals.routerSerial.value = 'HWTC9999';
+    signals.setSignature('data:image/png;base64,iVBORw0KGgo=');
+    signals.connectionType.value = 'Antenna';
+
+    final success = await signals.submitReport(repo);
+    expect(success, isTrue);
+
+    final updated = await testDb.jobOrdersDao.getJobById(89);
+    expect(updated?.connectionType, 'Antenna');
+
+    await testDb.close();
+  });
+
+  // Gene - Oct 13, 2026: Added test verifying Visit By and Visit With dropdowns default to None and allow technician selection.
+  testWidgets(
+      'visit by and visit with dropdowns default to None and allow technician selection',
+      (tester) async {
+    await tester.runAsync(() async {
+      db = AppDatabase.forTesting();
+      jobsSignals =
+          JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    final signals = ReportSignals();
+    final job = JobOrderDto(
+      id: 90,
+      ticketNumber: 'SF-90',
+      customerName: 'Pedro Penduko',
+      address: 'Barangay 2',
+      status: 'Scheduled',
+    );
+    expect(job.visitBy, 'None');
+    expect(job.visitWith, 'None');
+
+    signals.setJobOrder(job);
+    expect(signals.visitBy.value, 'None');
+    expect(signals.visitWith.value, 'None');
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: CreateReportScreen(
+        jobsSignals: jobsSignals,
+        reportSignals: signals,
+        pickImage: (_) async => null,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final visitByFinder =
+        find.byKey(const ValueKey('visit_by_dropdown_field'));
+    final visitWithFinder =
+        find.byKey(const ValueKey('visit_with_dropdown_field'));
+
+    await tester.ensureVisible(visitByFinder);
+    await tester.pumpAndSettle();
+    expect(visitByFinder, findsOneWidget);
+    expect(visitWithFinder, findsOneWidget);
+
+    // Both should show 'None (Default)'
+    expect(find.text('None (Default)'), findsNWidgets(2));
+
+    // Tap Visit By and select Dave Dimacali
+    await tester.tap(visitByFinder);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dave Dimacali').last, findsOneWidget);
+    await tester.tap(find.text('Dave Dimacali').last);
+    await tester.pumpAndSettle();
+
+    expect(signals.visitBy.value, 'Dave Dimacali');
+
+    // Tap Visit With and select Aldrin Ian Albao
+    await tester.tap(visitWithFinder);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Aldrin Ian Albao').last, findsOneWidget);
+    await tester.tap(find.text('Aldrin Ian Albao').last);
+    await tester.pumpAndSettle();
+
+    expect(signals.visitWith.value, 'Aldrin Ian Albao');
+  });
+
+  // Gene - Oct 13, 2026: Added test verifying visitBy and visitWith persistence through submitReport.
+  test('persists visitBy and visitWith to database on report submission',
+      () async {
+    final testDb = AppDatabase.forTesting();
+    final repo = JobRepository(testDb.jobOrdersDao, api: _QuietApi());
+    final job = JobOrderDto(
+      id: 91,
+      ticketNumber: 'SF-91',
+      customerName: 'Crisostomo Ibarra',
+      address: 'San Diego',
+      status: 'Scheduled',
+    );
+    await testDb.jobOrdersDao.insertAllJobs([job]);
+
+    final signals = ReportSignals();
+    signals.setJobOrder(job);
+    signals.routerSerial.value = 'HWTC8888';
+    signals.setSignature('data:image/png;base64,iVBORw0KGgo=');
+    signals.visitBy.value = 'Dave Dimacali';
+    signals.visitWith.value = 'Melchor Ynopia';
+
+    final success = await signals.submitReport(repo);
+    expect(success, isTrue);
+
+    final updated = await testDb.jobOrdersDao.getJobById(91);
+    expect(updated?.visitBy, 'Dave Dimacali');
+    expect(updated?.visitWith, 'Melchor Ynopia');
+
+    await testDb.close();
+  });
 }

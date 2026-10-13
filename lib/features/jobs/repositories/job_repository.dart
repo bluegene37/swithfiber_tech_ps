@@ -278,6 +278,7 @@ class JobRepository {
     Map<String, int>? materialsUsed,
   }) async {
   */
+/*
   // Gene - Oct 13, 2026: Added planId and planName parameters to saveCompletionReport to support on-site plan upgrades.
   Future<void> saveCompletionReport({
     required int id,
@@ -351,10 +352,167 @@ class JobRepository {
     await syncWorker.refreshPendingCount();
     unawaited(syncWorker.syncPendingJobs());
   }
+*/
+/*
+  // Gene - Oct 13, 2026: Added connectionType parameter to saveCompletionReport to support on-site connection type selection.
+  Future<void> saveCompletionReport({
+    required int id,
+    String? status,
+    required String onsiteStatus,
+    required String onsiteRemarks,
+    double? opticalPower,
+    String? modemRouterSN,
+    String? routerModel,
+    String? nap,
+    int? vlanId,
+    int? planId,
+    String? planName,
+    String? connectionType,
+    String? boxReadingImage,
+    String? routerReadingImage,
+    String? clientSignature,
+    String? setupImage,
+    String? speedtestImage,
+    String? portLabelImage,
+    String? signedContractImage,
+    String? houseFront,
+    String? assignedEmail,
+    Map<String, int>? materialsUsed,
+  }) async {
+    final photoStorage = PhotoStorageService.instance;
+    final savedBox = await photoStorage.savePhotoLocally(boxReadingImage,
+        tag: 'box_reading', entityId: id);
+    final savedRouter = await photoStorage.savePhotoLocally(routerReadingImage,
+        tag: 'router_reading', entityId: id);
+    final savedSig = await photoStorage.savePhotoLocally(clientSignature,
+        tag: 'signature', entityId: id);
+    final savedSetup = await photoStorage.savePhotoLocally(setupImage,
+        tag: 'setup', entityId: id);
+    final savedSpeed = await photoStorage.savePhotoLocally(speedtestImage,
+        tag: 'speedtest', entityId: id);
+    final savedPort = await photoStorage.savePhotoLocally(portLabelImage,
+        tag: 'port_label', entityId: id);
+    final savedContract = await photoStorage.savePhotoLocally(
+        signedContractImage,
+        tag: 'signed_contract',
+        entityId: id);
+    final savedHouse = await photoStorage.savePhotoLocally(houseFront,
+        tag: 'house_front', entityId: id);
+
+    await _dao.updateJobCompletion(
+      id: id,
+      status: status,
+      onsiteStatus: onsiteStatus,
+      onsiteRemarks: onsiteRemarks,
+      opticalPower: opticalPower,
+      modemRouterSN: modemRouterSN,
+      routerModel: routerModel,
+      nap: nap,
+      vlanId: vlanId,
+      // Gene - Oct 13, 2026: Pass planId and planName to updateJobCompletion.
+      planId: planId,
+      planName: planName,
+      connectionType: connectionType,
+      boxReadingImage: savedBox,
+      routerReadingImage: savedRouter,
+      clientSignature: savedSig,
+      setupImage: savedSetup,
+      speedtestImage: savedSpeed,
+      portLabelImage: savedPort,
+      signedContractImage: savedContract,
+      houseFront: savedHouse,
+      assignedEmail: assignedEmail,
+      materialsUsed: materialsUsed,
+      isSynced: false,
+    );
+
+    await syncWorker.refreshPendingCount();
+    unawaited(syncWorker.syncPendingJobs());
+  }
+*/
+  // Gene - Oct 13, 2026: Added visitBy and visitWith parameters to saveCompletionReport to support technician attendance tracking.
+  Future<void> saveCompletionReport({
+    required int id,
+    String? status,
+    required String onsiteStatus,
+    required String onsiteRemarks,
+    double? opticalPower,
+    String? modemRouterSN,
+    String? routerModel,
+    String? nap,
+    int? vlanId,
+    int? planId,
+    String? planName,
+    String? connectionType,
+    String? visitBy,
+    String? visitWith,
+    String? boxReadingImage,
+    String? routerReadingImage,
+    String? clientSignature,
+    String? setupImage,
+    String? speedtestImage,
+    String? portLabelImage,
+    String? signedContractImage,
+    String? houseFront,
+    String? assignedEmail,
+    Map<String, int>? materialsUsed,
+  }) async {
+    final photoStorage = PhotoStorageService.instance;
+    final savedBox = await photoStorage.savePhotoLocally(boxReadingImage,
+        tag: 'box_reading', entityId: id);
+    final savedRouter = await photoStorage.savePhotoLocally(routerReadingImage,
+        tag: 'router_reading', entityId: id);
+    final savedSig = await photoStorage.savePhotoLocally(clientSignature,
+        tag: 'signature', entityId: id);
+    final savedSetup = await photoStorage.savePhotoLocally(setupImage,
+        tag: 'setup', entityId: id);
+    final savedSpeed = await photoStorage.savePhotoLocally(speedtestImage,
+        tag: 'speedtest', entityId: id);
+    final savedPort = await photoStorage.savePhotoLocally(portLabelImage,
+        tag: 'port_label', entityId: id);
+    final savedContract = await photoStorage.savePhotoLocally(
+        signedContractImage,
+        tag: 'signed_contract',
+        entityId: id);
+    final savedHouse = await photoStorage.savePhotoLocally(houseFront,
+        tag: 'house_front', entityId: id);
+
+    await _dao.updateJobCompletion(
+      id: id,
+      status: status,
+      onsiteStatus: onsiteStatus,
+      onsiteRemarks: onsiteRemarks,
+      opticalPower: opticalPower,
+      modemRouterSN: modemRouterSN,
+      routerModel: routerModel,
+      nap: nap,
+      vlanId: vlanId,
+      planId: planId,
+      planName: planName,
+      connectionType: connectionType,
+      visitBy: visitBy,
+      visitWith: visitWith,
+      boxReadingImage: savedBox,
+      routerReadingImage: savedRouter,
+      clientSignature: savedSig,
+      setupImage: savedSetup,
+      speedtestImage: savedSpeed,
+      portLabelImage: savedPort,
+      signedContractImage: savedContract,
+      houseFront: savedHouse,
+      assignedEmail: assignedEmail,
+      materialsUsed: materialsUsed,
+      isSynced: false,
+    );
+
+    await syncWorker.refreshPendingCount();
+    unawaited(syncWorker.syncPendingJobs());
+  }
 
   /// Seed realistic demo fiber installation and repair job orders
   Future<void> seedSampleJobs() async {
     final now = DateTime.now();
+    /*
     final sampleJobs = [
       JobOrderDto(
         id: 101,
@@ -481,6 +639,144 @@ class JobRepository {
         lcpId: 2,
         napId: 5,
         portId: 'Port 7',
+        isSynced: true,
+        updatedAt: now,
+      ),
+    ];
+    */
+    // Gene - Oct 13, 2026: Seeded GPS coordinates in rawJson for demo job orders to display location pins on map.
+    final sampleJobs = [
+      JobOrderDto(
+        id: 101,
+        ticketNumber: 'SF-2026-0801',
+        customerName: 'Rosario Mendoza',
+        contactNumber: '+63 917 555 1234',
+        address: 'Blk 12 Lot 4, Redwood St., Villa Verde',
+        barangay: 'San Roque',
+        city: 'Antipolo',
+        planName: 'Fiber Blast 100 Mbps',
+        planId: 2,
+        status: 'Scheduled',
+        onsiteStatus: 'Scheduled',
+        onsiteRemarks: 'Running drop cable from NAP 04 to subscriber home.',
+        opticalPower: -19.5,
+        modemRouterSN: 'HWTC8829104',
+        routerModel: 'Huawei HG8145V5',
+        lcpId: 1,
+        napId: 4,
+        portId: 'Port 2',
+        rawJson: '{"coordinates": "14.6291, 121.1280"}',
+        isSynced: true,
+        updatedAt: now,
+      ),
+      JobOrderDto(
+        id: 102,
+        ticketNumber: 'SF-2026-0802',
+        customerName: 'Danilo Santos',
+        contactNumber: '+63 928 444 8899',
+        address: 'Unit 5B, Skyline Tower, Emerald Ave.',
+        barangay: 'San Antonio',
+        city: 'Pasig',
+        planName: 'Fiber Giga 200 Mbps',
+        planId: 3,
+        status: 'Scheduled',
+        onsiteStatus: 'Dispatched',
+        onsiteRemarks: 'Scheduled morning installation dispatch.',
+        lcpId: 2,
+        napId: 8,
+        portId: 'Port 6',
+        rawJson: '{"coordinates": "14.5868, 121.0625"}',
+        isSynced: true,
+        updatedAt: now,
+      ),
+      JobOrderDto(
+        id: 103,
+        ticketNumber: 'SF-2026-0803',
+        customerName: 'Maria Elena Cruz',
+        contactNumber: '+63 919 333 4567',
+        address: '45 Jasmin St., Phase 2, Greenpark Village',
+        barangay: 'Manggahan',
+        city: 'Pasig',
+        planName: 'Fiber Basic 50 Mbps',
+        planId: 1,
+        status: 'Activated',
+        onsiteStatus: 'Done',
+        onsiteRemarks: 'Fiber termination verified. Rx power: -18.2 dBm.',
+        assignedEmail: 'technician@switchfiber.ph',
+        opticalPower: -18.2,
+        modemRouterSN: 'ZTE8839001',
+        routerModel: 'ZTE F670L',
+        lcpId: 1,
+        napId: 3,
+        portId: 'Port 1',
+        dateInstalled: now.subtract(const Duration(days: 1)),
+        rawJson: '{"coordinates": "14.5880, 121.0640"}',
+        isSynced: true,
+        updatedAt: now,
+      ),
+      JobOrderDto(
+        id: 104,
+        ticketNumber: 'SF-2026-0804',
+        customerName: 'Eduardo Bautista',
+        contactNumber: '+63 908 222 1100',
+        address: '77 Katipunan Ave., Loyola Heights',
+        barangay: 'Loyola Heights',
+        city: 'Quezon City',
+        planName: 'Fiber Blast 100 Mbps',
+        planId: 2,
+        status: 'Activated',
+        onsiteStatus: 'Done',
+        onsiteRemarks: 'Subscriber online. RADIUS account active.',
+        assignedEmail: 'technician@switchfiber.ph',
+        opticalPower: -17.8,
+        modemRouterSN: 'HWTC4490123',
+        routerModel: 'Huawei EG8145V5',
+        lcpId: 3,
+        napId: 12,
+        portId: 'Port 5',
+        dateInstalled: now.subtract(const Duration(days: 2)),
+        rawJson: '{"coordinates": "14.6435, 121.0715"}',
+        isSynced: true,
+        updatedAt: now,
+      ),
+      JobOrderDto(
+        id: 105,
+        ticketNumber: 'SF-2026-0805',
+        customerName: 'Jasmine Alcantara',
+        contactNumber: '+63 918 777 3322',
+        address: 'Blk 4 Lot 19, Camella Homes, Manila East Rd',
+        barangay: 'San Juan',
+        city: 'Taytay',
+        planName: 'Fiber Blast 100 Mbps',
+        planId: 2,
+        status: 'Scheduled',
+        onsiteStatus: 'Scheduled',
+        onsiteRemarks: 'New installation scheduled. Near Guard House Gate 2.',
+        lcpId: 1,
+        napId: 2,
+        portId: 'Port 3',
+        rawJson: '{"coordinates": "14.5710, 121.1350"}',
+        isSynced: true,
+        updatedAt: now,
+      ),
+      JobOrderDto(
+        id: 106,
+        ticketNumber: 'SF-2026-0806',
+        customerName: 'Rafael De Silva',
+        contactNumber: '+63 920 111 9988',
+        address: 'Unit 1204, Mega Plaza, Ortigas Ave.',
+        barangay: 'San Antonio',
+        city: 'Pasig',
+        planName: 'Fiber Giga 200 Mbps',
+        planId: 3,
+        status: 'Scheduled',
+        onsiteStatus: 'Scheduled',
+        onsiteRemarks:
+            'Scheduled afternoon dispatch. Customer requested PM slot.',
+        lcpId: 2,
+        napId: 5,
+        portId: 'Port 7',
+        rawJson: '{"coordinates": "14.5855, 121.0610"}',
         isSynced: true,
         updatedAt: now,
       ),
