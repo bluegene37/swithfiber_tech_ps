@@ -232,6 +232,7 @@ class JobRepository {
 
   /// Save completion report details locally and queue for sync.
   /// Does not change the job order status unless [status] is explicitly provided.
+  /*
   Future<void> saveCompletionReport({
     required int id,
     String? status,
@@ -241,6 +242,55 @@ class JobRepository {
     String? modemRouterSN,
     String? routerModel,
     String? nap,
+    String? boxReadingImage,
+    String? routerReadingImage,
+    String? clientSignature,
+    String? setupImage,
+    String? speedtestImage,
+    String? portLabelImage,
+    String? signedContractImage,
+    String? houseFront,
+    String? assignedEmail,
+    Map<String, int>? materialsUsed,
+  }) async {
+  */
+  /*
+  // Gene - Oct 13, 2026: Added vlanId parameter to saveCompletionReport.
+  Future<void> saveCompletionReport({
+    required int id,
+    String? status,
+    required String onsiteStatus,
+    required String onsiteRemarks,
+    double? opticalPower,
+    String? modemRouterSN,
+    String? routerModel,
+    String? nap,
+    int? vlanId,
+    String? boxReadingImage,
+    String? routerReadingImage,
+    String? clientSignature,
+    String? setupImage,
+    String? speedtestImage,
+    String? portLabelImage,
+    String? signedContractImage,
+    String? houseFront,
+    String? assignedEmail,
+    Map<String, int>? materialsUsed,
+  }) async {
+  */
+  // Gene - Oct 13, 2026: Added planId and planName parameters to saveCompletionReport to support on-site plan upgrades.
+  Future<void> saveCompletionReport({
+    required int id,
+    String? status,
+    required String onsiteStatus,
+    required String onsiteRemarks,
+    double? opticalPower,
+    String? modemRouterSN,
+    String? routerModel,
+    String? nap,
+    int? vlanId,
+    int? planId,
+    String? planName,
     String? boxReadingImage,
     String? routerReadingImage,
     String? clientSignature,
@@ -281,6 +331,10 @@ class JobRepository {
       modemRouterSN: modemRouterSN,
       routerModel: routerModel,
       nap: nap,
+      vlanId: vlanId,
+      // Gene - Oct 13, 2026: Pass planId and planName to updateJobCompletion.
+      planId: planId,
+      planName: planName,
       boxReadingImage: savedBox,
       routerReadingImage: savedRouter,
       clientSignature: savedSig,

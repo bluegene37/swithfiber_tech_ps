@@ -65,11 +65,19 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   List<NapDto> _availableNaps = CatalogService.fallbackNaps;
   List<PortDto> _availablePorts = CatalogService.fallbackPorts;
 */
+  /*
   // Gene - Oct 12, 2026: Added _availableLcps for LCP-first hierarchical workflow.
   List<RouterDto> _availableRouters = CatalogService.fallbackRouters;
   List<NapDto> _availableNaps = CatalogService.fallbackNaps;
   List<PortDto> _availablePorts = CatalogService.fallbackPorts;
   List<LcpOptionDto> _availableLcps = CatalogService.fallbackLcps;
+  */
+  // Gene - Oct 13, 2026: Added _availablePlans to allow updating or upgrading plan on-site from /Plans API.
+  List<RouterDto> _availableRouters = CatalogService.fallbackRouters;
+  List<NapDto> _availableNaps = CatalogService.fallbackNaps;
+  List<PortDto> _availablePorts = CatalogService.fallbackPorts;
+  List<LcpOptionDto> _availableLcps = CatalogService.fallbackLcps;
+  List<PlanDto> _availablePlans = CatalogService.fallbackPlans;
 
   /// Whether the NAP port tiles are open. Closed by default: the header
   /// already names the port the job arrived with, and sixteen tiles pushed
@@ -124,6 +132,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     });
   }
 */
+  /*
   // Gene - Oct 12, 2026: Also load available LCP cabinets in catalog fetch.
   Future<void> _loadCatalog() async {
     final routersFuture = CatalogService.instance.getRouters();
@@ -137,6 +146,24 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       _availableNaps = results[1] as List<NapDto>;
       _availablePorts = results[2] as List<PortDto>;
       _availableLcps = results[3] as List<LcpOptionDto>;
+    });
+  }
+  */
+  // Gene - Oct 13, 2026: Fetch available plans from /Plans API table to populate on-site plan dropdown.
+  Future<void> _loadCatalog() async {
+    final routersFuture = CatalogService.instance.getRouters();
+    final napsFuture = CatalogService.instance.getNaps();
+    final portsFuture = CatalogService.instance.getPorts();
+    final lcpsFuture = CatalogService.instance.getLcps();
+    final plansFuture = CatalogService.instance.getPlans();
+    final results = await Future.wait([routersFuture, napsFuture, portsFuture, lcpsFuture, plansFuture]);
+    if (!mounted) return;
+    setState(() {
+      _availableRouters = results[0] as List<RouterDto>;
+      _availableNaps = results[1] as List<NapDto>;
+      _availablePorts = results[2] as List<PortDto>;
+      _availableLcps = results[3] as List<LcpOptionDto>;
+      _availablePlans = results[4] as List<PlanDto>;
     });
   }
 
@@ -856,6 +883,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+                /*
                 if (job.planName != null && job.planName!.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Row(
@@ -874,6 +902,93 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     ],
                   ),
                 ],
+                */
+                // Gene - Oct 13, 2026: Subscription plan dropdown selector allowing technician to upgrade or change plan on-site.
+                SignalBuilder(
+                  builder: (context) {
+                    final activePlanId = rep.planId.value ?? job.planId;
+                    final activePlanName = rep.planName.value ?? job.planName;
+
+                    final plans = List<PlanDto>.from(_availablePlans);
+                    int? matchedId;
+
+                    if (activePlanId != null &&
+                        plans.any((p) => p.id == activePlanId)) {
+                      matchedId = activePlanId;
+                    } else if (activePlanName != null &&
+                        activePlanName.trim().isNotEmpty) {
+                      final found = plans.where((p) =>
+                          p.name.trim().toLowerCase() ==
+                          activePlanName.trim().toLowerCase());
+                      if (found.isNotEmpty) {
+                        matchedId = found.first.id;
+                      } else {
+                        final fallbackId = activePlanId ?? -999;
+                        plans.insert(
+                          0,
+                          PlanDto(
+                            id: fallbackId,
+                            name: activePlanName.trim(),
+                            description: 'Assigned Subscription Plan',
+                            amount: 0,
+                          ),
+                        );
+                        matchedId = fallbackId;
+                      }
+                    } else if (plans.isNotEmpty) {
+                      matchedId = plans.first.id;
+                    }
+
+                    final isUpgraded = (activePlanName != null &&
+                            job.planName != null &&
+                            activePlanName.trim() != job.planName!.trim()) ||
+                        (activePlanId != null &&
+                            job.planId != null &&
+                            activePlanId != job.planId);
+
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 10, bottom: 2),
+                      child: DropdownButtonFormField<int>(
+                        key: const ValueKey('plan_dropdown_field'),
+                        initialValue: matchedId,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: 'Subscription Plan',
+                          prefixIcon: const Icon(Icons.wifi_rounded, size: 20),
+                          helperText: isUpgraded
+                              ? 'Plan updated on-site from: ${job.planName ?? "Initial Plan"}'
+                              : 'Select to update or upgrade plan on-site',
+                          helperStyle: isUpgraded
+                              ? context.text.labelSmall!.copyWith(
+                                  color: AppTheme.successInkOf(context),
+                                  fontWeight: FontWeight.w600,
+                                )
+                              : null,
+                        ),
+                        items: plans.map((plan) {
+                          final priceSuffix = plan.amount > 0
+                              ? ' · ${plan.formattedPrice}'
+                              : '';
+                          return DropdownMenuItem<int>(
+                            value: plan.id,
+                            child: Text(
+                              '${plan.name}$priceSuffix',
+                              overflow: TextOverflow.ellipsis,
+                              style: context.text.bodyMedium,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (newId) {
+                          if (newId != null) {
+                            final chosen =
+                                plans.firstWhere((p) => p.id == newId);
+                            rep.setPlan(chosen.id, chosen.name);
+                          }
+                        },
+                      ),
+                    );
+                  },
+                ),
                 const SizedBox(height: 10),
                 // RADIUS / Wi-Fi dedicated account identity
                 Container(
@@ -927,6 +1042,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                         padding: EdgeInsets.zero,
                         constraints:
                             const BoxConstraints(minWidth: 36, minHeight: 36),
+                        /*
                         onPressed: () {
                           Clipboard.setData(
                               ClipboardData(text: job.radiusUsername));
@@ -939,6 +1055,22 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                             ),
                           );
                         },
+                        */
+                        // Gene - Oct 13, 2026: Disable copy button if username is empty.
+                        onPressed: job.radiusUsername.trim().isEmpty
+                            ? null
+                            : () {
+                                Clipboard.setData(
+                                    ClipboardData(text: job.radiusUsername));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                        'RADIUS username copied to clipboard'),
+                                    duration: Duration(seconds: 2),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              },
                       ),
                     ],
                   ),

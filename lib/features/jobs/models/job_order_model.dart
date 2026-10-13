@@ -546,6 +546,7 @@ class JobOrderDto {
           ? _username.trim()
           : _rawText('username');
 
+  /*
   /// Resolves the unique RADIUS / PPPoE username for Wi-Fi authentication,
   /// falling back to subscriber account number or ticket number.
   String get radiusUsername {
@@ -564,6 +565,19 @@ class JobOrderDto {
       return acc;
     }
     return ticketNumber;
+  }
+  */
+  // Gene - Oct 13, 2026: Return empty string if username is null or empty, without falling back to account or ticket number.
+  String get radiusUsername {
+    final u = username?.trim();
+    if (u != null && u.isNotEmpty && u.toLowerCase() != 'switch') {
+      return u;
+    }
+    final rawU = _rawText('username');
+    if (rawU != null && rawU.isNotEmpty && rawU.toLowerCase() != 'switch') {
+      return rawU;
+    }
+    return '';
   }
 
   /// The subscriber or installation location fix, parsed from rawJson if present.
@@ -1348,6 +1362,8 @@ class JobOrderDto {
       if (statusRemarks != null) 'statusRemarks': statusRemarks,
       'modemRouterSN': modemRouterSN ?? '',
       'routerModel': routerModel ?? '',
+      // Gene - Oct 13, 2026: Include upgraded/changed planId in technician edits for server PUT sync.
+      if (planId != null) 'planId': planId.toString(),
       if (nap != null) 'nap': nap,
       if (nap != null) 'napId': nap,
       'portId': portId ?? '',

@@ -371,4 +371,131 @@ void main() {
     expect(
         find.byKey(const ValueKey('unlock_signature_pad_button')), findsOneWidget);
   });
+
+  // Gene - Oct 13, 2026: Added test verifying plan dropdown displays and updates on-site plan selection.
+  testWidgets(
+      'displays plan dropdown and allows technician to update or upgrade plan on-site',
+      (tester) async {
+    await tester.runAsync(() async {
+      db = AppDatabase.forTesting();
+      jobsSignals =
+          JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    final signals = ReportSignals();
+    final job = JobOrderDto(
+      id: 30,
+      ticketNumber: 'SF-30',
+      customerName: 'Juan Dela Cruz',
+      address: 'Block 2 Lot 8',
+      planId: 1,
+      planName: 'SwitchLite - P699',
+      status: 'Scheduled',
+    );
+    signals.setJobOrder(job);
+    expect(signals.planId.value, 1);
+    expect(signals.planName.value, 'SwitchLite - P699');
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: CreateReportScreen(
+        jobsSignals: jobsSignals,
+        reportSignals: signals,
+        pickImage: (_) async => null,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final planDropdownFinder =
+        find.byKey(const ValueKey('plan_dropdown_field'));
+    expect(planDropdownFinder, findsOneWidget);
+
+    // Tap dropdown to reveal plan options
+    await tester.tap(planDropdownFinder);
+    await tester.pumpAndSettle();
+
+    // Verify plans are available in dropdown menu
+    expect(find.text('SwitchUltra - P1499 · ₱1499.00').last, findsOneWidget);
+
+    // Select SwitchUltra - P1499
+    await tester.tap(find.text('SwitchUltra - P1499 · ₱1499.00').last);
+    await tester.pumpAndSettle();
+
+    // Verify signal updated to upgraded plan
+    expect(signals.planId.value, 5);
+    expect(signals.planName.value, 'SwitchUltra - P1499');
+    expect(find.textContaining('Plan updated on-site from: SwitchLite - P699'),
+        findsOneWidget);
+  });
+
+  // Gene - Oct 13, 2026: Added test verifying submitReport saves upgraded plan to repository and database.
+  test('submitReport saves upgraded plan into database and sync payload',
+      () async {
+    final testDb = AppDatabase.forTesting();
+    final repo = JobRepository(testDb.jobOrdersDao, api: _QuietApi());
+    final job = JobOrderDto(
+      id: 55,
+      ticketNumber: 'SF-55',
+      customerName: 'Elena Cruz',
+      address: 'Zone 4',
+      planId: 1,
+      planName: 'SwitchLite - P699',
+      status: 'Scheduled',
+    );
+    // Gene - Oct 13, 2026: Use insertOrUpdateJob to seed test job
+    await testDb.jobOrdersDao.insertOrUpdateJob(job);
+
+    final signals = ReportSignals();
+    signals.setJobOrder(job);
+    signals.routerSerial.value = 'HWTC5555';
+    signals.setSignature('data:image/png;base64,iVBORw0KGgo=');
+    signals.setPlan(5, 'SwitchUltra - P1499');
+
+    final success = await signals.submitReport(repo);
+    expect(success, isTrue);
+
+    final updated = await testDb.jobOrdersDao.getJobById(55);
+    expect(updated?.planId, 5);
+    expect(updated?.planName, 'SwitchUltra - P1499');
+
+    await testDb.close();
+  });
+
+  // Gene - Oct 13, 2026: Added test verifying username shows empty when null or unassigned.
+  testWidgets('shows empty when username is null or empty', (tester) async {
+    await tester.runAsync(() async {
+      db = AppDatabase.forTesting();
+      jobsSignals =
+          JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    final signals = ReportSignals();
+    final job = JobOrderDto(
+      id: 70,
+      ticketNumber: 'SF-70',
+      customerName: 'Pedro Penduko',
+      address: 'Sitio Bato',
+      username: null,
+      status: 'Scheduled',
+    );
+    expect(job.username, isNull);
+    expect(job.radiusUsername, '');
+
+    signals.setJobOrder(job);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: CreateReportScreen(
+        jobsSignals: jobsSignals,
+        reportSignals: signals,
+        pickImage: (_) async => null,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(
+        find.byKey(const ValueKey('radius_username_banner')), findsOneWidget);
+    // Ticket number SF-70 should only appear once (in the ticket badge), never in username field
+    expect(find.text('SF-70'), findsOneWidget);
+  });
 }

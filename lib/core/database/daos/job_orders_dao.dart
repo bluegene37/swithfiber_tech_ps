@@ -144,6 +144,7 @@ class JobOrdersDao {
       });
 
   /// Update completion report details locally
+  /*
   Future<void> updateJobCompletion({
     required int id,
     String? status,
@@ -165,8 +166,59 @@ class JobOrdersDao {
     Map<String, int>? materialsUsed,
     bool isSynced = false,
   }) async {
+  */
+  /*
+  // Gene - Oct 13, 2026: Added vlanId parameter to persist VLAN selection on report completion.
+  Future<void> updateJobCompletion({
+    required int id,
+    String? status,
+    required String onsiteStatus,
+    required String onsiteRemarks,
+    double? opticalPower,
+    String? modemRouterSN,
+    String? routerModel,
+    String? nap,
+    int? vlanId,
+    String? boxReadingImage,
+    String? routerReadingImage,
+    String? clientSignature,
+    String? setupImage,
+    String? speedtestImage,
+    String? portLabelImage,
+    String? signedContractImage,
+    String? houseFront,
+    String? assignedEmail,
+    Map<String, int>? materialsUsed,
+    bool isSynced = false,
+  }) async {
+  */
+  // Gene - Oct 13, 2026: Added planId and planName parameters to updateJobCompletion to persist on-site plan upgrades.
+  Future<void> updateJobCompletion({
+    required int id,
+    String? status,
+    required String onsiteStatus,
+    required String onsiteRemarks,
+    double? opticalPower,
+    String? modemRouterSN,
+    String? routerModel,
+    String? nap,
+    int? vlanId,
+    int? planId,
+    String? planName,
+    String? boxReadingImage,
+    String? routerReadingImage,
+    String? clientSignature,
+    String? setupImage,
+    String? speedtestImage,
+    String? portLabelImage,
+    String? signedContractImage,
+    String? houseFront,
+    String? assignedEmail,
+    Map<String, int>? materialsUsed,
+    bool isSynced = false,
+  }) async {
     String? updatedRawJson;
-    if (materialsUsed != null) {
+    if (materialsUsed != null || vlanId != null || planId != null || planName != null) {
       final existing = await getJobById(id);
       Map<String, dynamic> rawMap = {};
       final raw = existing?.rawJson;
@@ -176,18 +228,32 @@ class JobOrdersDao {
           if (decoded is Map<String, dynamic>) rawMap = decoded;
         } catch (_) {}
       }
-      rawMap['materialsUsed'] = materialsUsed;
-      int idx = 1;
-      materialsUsed.forEach((name, qty) {
-        if (idx <= 10) {
-          rawMap['itemName$idx'] = name;
-          rawMap['itemQuantity$idx'] = qty;
-          idx++;
+      if (materialsUsed != null) {
+        rawMap['materialsUsed'] = materialsUsed;
+        int idx = 1;
+        materialsUsed.forEach((name, qty) {
+          if (idx <= 10) {
+            rawMap['itemName$idx'] = name;
+            rawMap['itemQuantity$idx'] = qty;
+            idx++;
+          }
+        });
+        for (int i = idx; i <= 10; i++) {
+          rawMap['itemName$i'] = '';
+          rawMap['itemQuantity$i'] = '';
         }
-      });
-      for (int i = idx; i <= 10; i++) {
-        rawMap['itemName$i'] = '';
-        rawMap['itemQuantity$i'] = '';
+      }
+      if (vlanId != null) {
+        rawMap['vlanId'] = vlanId;
+        rawMap['vlan'] = vlanId.toString();
+      }
+      if (planId != null) {
+        rawMap['planId'] = planId;
+        rawMap['PlanId'] = planId;
+      }
+      if (planName != null) {
+        rawMap['plan'] = planName;
+        rawMap['planName'] = planName;
       }
       updatedRawJson = jsonEncode(rawMap);
     }
@@ -201,6 +267,9 @@ class JobOrdersDao {
       'modem_router_sn': modemRouterSN,
       'router_model': routerModel,
       if (nap != null) 'nap': nap,
+      if (vlanId != null) 'vlan_id': vlanId,
+      if (planId != null) 'plan_id': planId,
+      if (planName != null) 'plan_name': planName,
       'date_installed': dateText(DateTime.now()),
       'box_reading_image': boxReadingImage,
       'router_reading_image': routerReadingImage,

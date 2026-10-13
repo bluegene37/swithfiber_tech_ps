@@ -16,6 +16,11 @@ class ReportSignals {
 */
   // Gene - Oct 12, 2026: Default LCP to Central Cabinet (LCP 01) if not explicitly set on job order.
   final lcp = signal<String?>('LCP 01');
+  // Gene - Oct 13, 2026: Added vlan signal with default value '1000' as requested.
+  final vlan = signal<String>('1000');
+  // Gene - Oct 13, 2026: Added plan signals to allow upgrading or changing subscription plan during on-site installation.
+  final planName = signal<String?>(null);
+  final planId = signal<int?>(null);
   final remarks = signal<String>('');
 
   /// Materials consumed on site (e.g. Drop Cable, SC/APC Fast Connectors, S-Clamps).
@@ -108,11 +113,26 @@ class ReportSignals {
     } else {
       lcp.value = 'LCP 01';
     }
+    // Gene - Oct 13, 2026: Set vlan from job order if present, otherwise default to '1000'.
+    if (job.vlanId != null && job.vlanId! > 0) {
+      vlan.value = job.vlanId.toString();
+    } else {
+      vlan.value = '1000';
+    }
+    // Gene - Oct 13, 2026: Pre-fill plan from job order.
+    planName.value = job.planName;
+    planId.value = job.planId;
     remarks.value = job.onsiteRemarks ?? '';
     materialsUsed.value = Map<String, int>.from(job.materialsUsed);
     // Start from what the job already carries; a fresh capture replaces it.
     photos.value = const {};
     signature.value = job.hasSignature ? job.clientSignature : null;
+  }
+
+  // Gene - Oct 13, 2026: Set updated plan when customer upgrades or changes plan during on-site installation.
+  void setPlan(int? id, String? name) {
+    planId.value = id;
+    planName.value = name;
   }
 
   /// Submit report locally into the PowerSync database and initiate background sync.
@@ -137,6 +157,11 @@ class ReportSignals {
         modemRouterSN: routerSerial.value.trim(),
         routerModel: routerModel.value.trim(),
         nap: nap.value?.trim(),
+        // Gene - Oct 13, 2026: Pass selected VLAN ID (default 1000).
+        vlanId: int.tryParse(vlan.value) ?? 1000,
+        // Gene - Oct 13, 2026: Pass upgraded or changed plan to persist in database & sync to API.
+        planId: planId.value,
+        planName: planName.value,
         boxReadingImage: _finalPhoto(job, JobPhoto.boxReading),
         routerReadingImage: _finalPhoto(job, JobPhoto.routerReading),
         setupImage: _finalPhoto(job, JobPhoto.setup),
@@ -174,6 +199,11 @@ class ReportSignals {
     routerSerial.value = '';
     routerModel.value = 'Huawei 5v5';
     napPort.value = 'PORT 001';
+    // Gene - Oct 13, 2026: Reset vlan to default '1000'.
+    vlan.value = '1000';
+    // Gene - Oct 13, 2026: Reset plan signals.
+    planName.value = null;
+    planId.value = null;
     remarks.value = '';
     nap.value = null;
     signature.value = null;
