@@ -98,6 +98,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
   */
+  /*
   // Gene - Oct 13, 2026: Updated test to assert all six numbered steps matching AppSheet workflow order (1: Hardware, 2: Optical, 3: Materials, 4: Photos, 5: Customer sign-off, 6: Remarks & status).
   testWidgets('the form is six numbered steps with one sticky Save',
       (tester) async {
@@ -120,6 +121,30 @@ void main() {
     expect(find.textContaining('signature'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+  */
+  // Gene - Oct 13, 2026: Updated test to assert five numbered steps without optical reading and with VLAN dropdown.
+  testWidgets('the form is five numbered steps with one sticky Save',
+      (tester) async {
+    await pumpReport(tester);
+
+    for (final n in [1, 2, 3, 4, 5]) {
+      final header =
+          find.byWidgetPredicate((w) => w is StepHeader && w.number == n);
+      await tester.scrollUntilVisible(header, 300, scrollable: scrollable());
+      expect(header, findsOneWidget, reason: 'step $n');
+    }
+    expect(find.text('Optical reading'), findsNothing);
+    expect(find.byKey(const ValueKey('vlan_dropdown_field')), findsOneWidget);
+    expect(find.text('Customer sign-off'), findsOneWidget);
+
+    // One red verb, pinned, saying what is still missing.
+    expect(find.byType(StickyActionBar), findsOneWidget);
+    expect(find.text('Save report'), findsOneWidget);
+    expect(find.textContaining('Missing: serial number'), findsOneWidget);
+    expect(find.textContaining('7 of 7 photos'), findsOneWidget);
+    expect(find.textContaining('signature'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
       'NAP port starts collapsed to the current port and Change opens the '
@@ -127,8 +152,13 @@ void main() {
     await pumpReport(tester);
     final change = find.byKey(const ValueKey('nap_port_toggle'));
     await tester.scrollUntilVisible(change, 300, scrollable: scrollable());
+    /*
     expect(find.byType(DropdownButtonFormField<String>), findsNothing,
         reason: 'the ONT model is a searchable sheet like the NAP box');
+    */
+    // Gene - Oct 13, 2026: Assert router model is a searchable PickerField and VLAN uses DropdownButtonFormField.
+    expect(find.byKey(const ValueKey('router_model_field')), findsOneWidget);
+    expect(find.byKey(const ValueKey('vlan_dropdown_field')), findsOneWidget);
 
     // Collapsed: the header names the port, the grid is not built.
     expect(report.napPort.value, 'PORT 001');
@@ -252,6 +282,27 @@ void main() {
     expect(find.text('Edit'), findsOneWidget);
     expect(find.byType(TextFormField).evaluate().length,
         lessThan(20)); // sanity: the box is gone, no leak of a second one
+    expect(tester.takeException(), isNull);
+  });
+
+  // Gene - Oct 13, 2026: Assert VLAN dropdown defaults to 1000 and updates report signal on selection.
+  testWidgets(
+      'VLAN dropdown defaults to 1000 and updates report signal on selection',
+      (tester) async {
+    await pumpReport(tester);
+    final vlanDropdown = find.byKey(const ValueKey('vlan_dropdown_field'));
+    await tester.scrollUntilVisible(vlanDropdown, 300, scrollable: scrollable());
+    expect(vlanDropdown, findsOneWidget);
+    expect(find.text('1000 (Default)'), findsOneWidget);
+    expect(report.vlan.value, '1000');
+
+    await tester.tap(vlanDropdown);
+    await tester.pumpAndSettle();
+    expect(find.text('200').last, findsOneWidget);
+    await tester.tap(find.text('200').last);
+    await tester.pumpAndSettle();
+
+    expect(report.vlan.value, '200');
     expect(tester.takeException(), isNull);
   });
 

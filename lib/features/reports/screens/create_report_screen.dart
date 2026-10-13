@@ -86,6 +86,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   final TextEditingController _materialAddQtyController =
       TextEditingController(text: '1');
 
+  // Gene - Oct 13, 2026: Signature pad lock state to prevent accidental scratch lines while scrolling.
+  bool _isSignaturePadActive = false;
+
   @override
   void initState() {
     super.initState();
@@ -191,6 +194,84 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     final dataUrl = await _signatureController.toDataUrl();
     if (!mounted) return;
     widget.reportSignals.setSignature(dataUrl);
+  }
+
+  // Gene - Oct 13, 2026: Opens dedicated modal dialog for subscriber signature to isolate signing from list scrolling.
+  Future<void> _openSignatureDialog(ReportSignals rep) async {
+    final dialogController = SignatureController();
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.draw_rounded, size: 24, color: AppTheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Subscriber Signature',
+                    style: dialogContext.text.titleMedium),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Please sign in the space below:',
+                  style: dialogContext.text.bodySmall,
+                ),
+                const SizedBox(height: 12),
+                SignaturePad(
+                  controller: dialogController,
+                  height: 200,
+                  enabled: true,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () => dialogController.clear(),
+              icon: const Icon(Icons.backspace_outlined, size: 20),
+              label: const Text('Clear'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(null),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                if (dialogController.isEmpty) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please draw signature before saving'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                  return;
+                }
+                final dataUrl = await dialogController.toDataUrl();
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop(dataUrl);
+                }
+              },
+              icon: const Icon(Icons.check_rounded, size: 20),
+              label: const Text('Done'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null && mounted) {
+      rep.setSignature(result);
+      _signatureController.clear();
+      setState(() => _isSignaturePadActive = false);
+    }
   }
 
   Future<void> _handleSubmit() async {
@@ -509,6 +590,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     );
   }
   */
+/*
   // Gene - Oct 13, 2026: Enhanced Job Order & Subscriber summary card to display ticket, customer, plan, contact, and barangay/address matching AppSheet header hierarchy.
   Widget _buildJobOrderSummary(ReportSignals rep) {
     return Card(
@@ -661,6 +743,233 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                             // Gene - Oct 13, 2026: Set icon size to 20 to meet outdoor readability standard.
                             Icon(Icons.location_on_outlined,
                                 size: 20, color: AppTheme.secondaryInkOf(context)),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          fullAddress,
+                          style: context.text.bodySmall!.copyWith(
+                            color: AppTheme.secondaryInkOf(context),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+*/
+  // Gene - Oct 13, 2026: Displayed subscriber PPPoE / RADIUS username badge with 1-tap clipboard copy at the top of the report for dedicated Wi-Fi records.
+  Widget _buildJobOrderSummary(ReportSignals rep) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SignalBuilder(
+          builder: (context) {
+            final job = rep.selectedJobOrder.value;
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            if (job == null) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.receipt_long_rounded,
+                          size: 20, color: AppTheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Job Order & Subscriber',
+                          style: context.text.titleMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No job order is linked to this report.',
+                    style: context.text.bodySmall,
+                  ),
+                ],
+              );
+            }
+
+            final fullAddress = [
+              job.address.trim(),
+              if (job.barangay != null && job.barangay!.trim().isNotEmpty)
+                'Brgy. ${job.barangay!.trim()}',
+              if (job.city != null && job.city!.trim().isNotEmpty)
+                job.city!.trim(),
+            ].where((s) => s.isNotEmpty).join(', ');
+
+            final phone = [
+              if (job.contactNumber != null &&
+                  job.contactNumber!.trim().isNotEmpty)
+                job.contactNumber!.trim(),
+              if (job.secondContactNumber != null &&
+                  job.secondContactNumber!.trim().isNotEmpty)
+                job.secondContactNumber!.trim(),
+            ].join(' · ');
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.receipt_long_rounded,
+                        size: 20, color: AppTheme.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Job Order & Subscriber',
+                        style: context.text.titleMedium,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.fillOf(context),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        job.ticketNumber,
+                        style: context.text.labelSmall!.copyWith(
+                          fontFamily: 'JetBrains Mono',
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.brandInkOf(context),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  job.customerName,
+                  style: context.text.titleSmall!.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (job.planName != null && job.planName!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.wifi_rounded,
+                          size: 20, color: AppTheme.secondaryInkOf(context)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${job.planName!} · Fiber to the Home',
+                          style: context.text.bodySmall!.copyWith(
+                            color: AppTheme.secondaryInkOf(context),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 10),
+                // RADIUS / Wi-Fi dedicated account identity
+                Container(
+                  key: const ValueKey('radius_username_banner'),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppTheme.darkInput : AppTheme.fillLight,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color:
+                          isDark ? AppTheme.borderDark : AppTheme.borderLight,
+                      width: 0.5,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.wifi_lock_rounded,
+                        size: 20,
+                        color: AppTheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'RADIUS / Wi-Fi Username',
+                              style: context.text.labelSmall!.copyWith(
+                                color: AppTheme.secondaryInkOf(context),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              job.radiusUsername,
+                              style: context.text.bodyMedium!.copyWith(
+                                fontFamily: 'JetBrains Mono',
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.brandInkOf(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        key: const ValueKey('copy_radius_username_button'),
+                        icon: const Icon(Icons.copy_rounded, size: 20),
+                        tooltip: 'Copy username',
+                        padding: EdgeInsets.zero,
+                        constraints:
+                            const BoxConstraints(minWidth: 36, minHeight: 36),
+                        onPressed: () {
+                          Clipboard.setData(
+                              ClipboardData(text: job.radiusUsername));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content:
+                                  Text('RADIUS username copied to clipboard'),
+                              duration: Duration(seconds: 2),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                if (phone.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Icon(Icons.call_outlined,
+                          size: 20, color: AppTheme.secondaryInkOf(context)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          phone,
+                          style: context.text.bodySmall!.copyWith(
+                            color: AppTheme.secondaryInkOf(context),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (fullAddress.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Icon(Icons.location_on_outlined,
+                            size: 20, color: AppTheme.secondaryInkOf(context)),
                       ),
                       const SizedBox(width: 6),
                       Expanded(
@@ -2199,6 +2508,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                               ),
                             ),
                           ),
+/*
                           TextButton.icon(
                             onPressed: () {
                               rep.setSignature(null);
@@ -2263,6 +2573,276 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                               : null,
                           icon: const Icon(Icons.backspace_outlined, size: 24),
                           label: const Text('Clear'),
+                        ),
+                      ],
+                    ),
+                    // Gene - Oct 13, 2026: Display subscriber name matching AppSheet signature block footer.
+                    if (rep.selectedJobOrder.value != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Signed by: ${rep.selectedJobOrder.value!.customerName}',
+                        style: context.text.bodySmall!.copyWith(
+                          color: AppTheme.secondaryInkOf(context),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+*/
+                          // Gene - Oct 13, 2026: Sign again resets signature and unlocks pad into active signing mode.
+                          TextButton.icon(
+                            onPressed: () {
+                              rep.setSignature(null);
+                              _signatureController.clear();
+                              setState(() => _isSignaturePadActive = true);
+                            },
+                            icon: const Icon(Icons.refresh_rounded, size: 20),
+                            label: const Text('Sign again'),
+                          ),
+                        ],
+                      ),
+                      // Gene - Oct 13, 2026: Display subscriber name matching AppSheet signature block footer for existing signature.
+                      if (rep.selectedJobOrder.value != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Signed by: ${rep.selectedJobOrder.value!.customerName}',
+                          style: context.text.bodySmall!.copyWith(
+                            color: AppTheme.secondaryInkOf(context),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                }
+
+                // Gene - Oct 13, 2026: Display scroll-safe locked signature card by default to prevent accidental scratch strokes during list scroll.
+                if (!_isSignaturePadActive && !padHasInk) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        height: 160,
+                        decoration: BoxDecoration(
+                          color: isDark ? AppTheme.darkInput : AppTheme.fillLight,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isDark
+                                ? AppTheme.borderDark
+                                : AppTheme.borderLight,
+                            width: 1.5,
+                          ),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            key: const ValueKey('unlock_signature_pad_button'),
+                            onTap: () =>
+                                setState(() => _isSignaturePadActive = true),
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primary
+                                          .withValues(alpha: 0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.draw_rounded,
+                                      size: 28,
+                                      color: AppTheme.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    'Tap to sign',
+                                    style: context.text.titleSmall!.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.brandInkOf(context),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.lock_outline_rounded,
+                                        size: 20,
+                                        color:
+                                            AppTheme.secondaryInkOf(context),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          'Locked to prevent scroll marks',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: context.text.bodySmall!.copyWith(
+                                            color: AppTheme.secondaryInkOf(
+                                                context),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          FilledButton.tonalIcon(
+                            key: const ValueKey('activate_signature_button'),
+                            onPressed: () =>
+                                setState(() => _isSignaturePadActive = true),
+                            icon: const Icon(Icons.edit_rounded, size: 20),
+                            label: const Text('Unlock to sign'),
+                          ),
+                          TextButton.icon(
+                            key: const ValueKey('open_signature_dialog_button'),
+                            onPressed: () => _openSignatureDialog(rep),
+                            icon: const Icon(Icons.open_in_full_rounded,
+                                size: 20),
+                            label: const Text('Sign in dialog'),
+                          ),
+                        ],
+                      ),
+                      if (rep.selectedJobOrder.value != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Signed by: ${rep.selectedJobOrder.value!.customerName}',
+                          style: context.text.bodySmall!.copyWith(
+                            color: AppTheme.secondaryInkOf(context),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                }
+
+                // Gene - Oct 13, 2026: Active signature drawing mode with active outline, clear, done lock, and full dialog options.
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppTheme.primary,
+                          width: 1.5,
+                        ),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primary.withValues(alpha: 0.1),
+                              borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(10)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.edit_rounded,
+                                    size: 20, color: AppTheme.primary),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Signing active · Sign in box',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: context.text.labelSmall!.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.primary,
+                                    ),
+                                  ),
+                                ),
+                                TextButton.icon(
+                                  key: const ValueKey(
+                                      'lock_signature_pad_button'),
+                                  // Gene - Oct 13, 2026: Removed custom compact style to satisfy tap target accessibility standards (min 48dp).
+                                  onPressed: () {
+                                    _onStrokeEnd();
+                                    setState(
+                                        () => _isSignaturePadActive = false);
+                                  },
+                                  icon: const Icon(Icons.check_rounded,
+                                      size: 20),
+                                  label: const Text('Done'),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SignaturePad(
+                            controller: _signatureController,
+                            onStrokeEnd: _onStrokeEnd,
+                            enabled: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          padHasInk
+                              ? Icons.check_circle_rounded
+                              : Icons.touch_app_rounded,
+                          size: 20,
+                          color: padHasInk ? AppTheme.success : muted,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            padHasInk
+                                ? 'Signature captured'
+                                : 'Ask subscriber to sign above',
+                            style: context.text.labelMedium!.copyWith(
+                              color: padHasInk
+                                  ? AppTheme.successInkOf(context)
+                                  : AppTheme.secondaryInkOf(context),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton.icon(
+                          onPressed: padHasInk
+                              ? () {
+                                  _signatureController.clear();
+                                  rep.setSignature(null);
+                                }
+                              : null,
+                          icon: const Icon(Icons.backspace_outlined, size: 20),
+                          label: const Text('Clear'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.tonalIcon(
+                          onPressed: () {
+                            _onStrokeEnd();
+                            setState(() => _isSignaturePadActive = false);
+                          },
+                          icon: const Icon(Icons.lock_rounded, size: 20),
+                          label: const Text('Done'),
                         ),
                       ],
                     ),

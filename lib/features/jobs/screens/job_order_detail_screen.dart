@@ -1,4 +1,5 @@
-import 'dart:convert';
+// Gene - Oct 13, 2026: Commented out unused dart:convert import since radius username decoding is handled in JobOrderDto
+// import 'dart:convert';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -2332,6 +2333,7 @@ class JobOrderDetailScreen extends StatelessWidget {
     );
   }
 
+/*
   String _radiusAccountOf(JobOrderDto job) {
     if (job.rawJson != null) {
       try {
@@ -2348,6 +2350,9 @@ class JobOrderDetailScreen extends StatelessWidget {
     }
     return job.ticketNumber;
   }
+*/
+  // Gene - Oct 13, 2026: Replaced duplicated radius account logic with unified job.radiusUsername getter.
+  String _radiusAccountOf(JobOrderDto job) => job.radiusUsername;
 }
 
 /// The straight-line distance between the technician and the job's coordinates.

@@ -207,10 +207,20 @@ class JobOrderDto {
     _planNameCache.clear();
   }
 
+/*
   final String? _planName;
   final int? planId;
   final String? _subscriberEmail;
   final String? _secondContactNumber;
+  final String status;
+  final String? onsiteStatus;
+*/
+  final String? _planName;
+  final int? planId;
+  final String? _subscriberEmail;
+  final String? _secondContactNumber;
+  // Gene - Oct 13, 2026: Added _username backing field for subscriber PPPoE / RADIUS identity.
+  final String? _username;
   final String status;
   final String? onsiteStatus;
 
@@ -262,6 +272,7 @@ class JobOrderDto {
     this.city,
     String? planName,
     this.planId,
+/*
     String? subscriberEmail,
     String? secondContactNumber,
     this.status = 'pending',
@@ -294,6 +305,42 @@ class JobOrderDto {
   })  : _planName = planName,
         _subscriberEmail = subscriberEmail,
         _secondContactNumber = secondContactNumber {
+*/
+    String? subscriberEmail,
+    String? secondContactNumber,
+    // Gene - Oct 13, 2026: Added optional username parameter for subscriber PPPoE / RADIUS identity.
+    String? username,
+    this.status = 'pending',
+    this.onsiteStatus,
+    this.rawJson,
+    this.onsiteRemarks,
+    this.statusRemarks,
+    this.opticalPower,
+    this.modemRouterSN,
+    this.routerModel,
+    this.lcpId,
+    this.napId,
+    this.nap,
+    this.portId,
+    this.vlanId,
+    this.dateInstalled,
+    this.boxReadingImage,
+    this.routerReadingImage,
+    this.clientSignature,
+    this.setupImage,
+    this.speedtestImage,
+    this.portLabelImage,
+    this.signedContractImage,
+    this.houseFront,
+    this.materialsUsed = const {},
+    this.assignedEmail,
+    this.modifiedDate,
+    this.isSynced = true,
+    this.updatedAt,
+  })  : _planName = planName,
+        _subscriberEmail = subscriberEmail,
+        _secondContactNumber = secondContactNumber,
+        _username = username {
     if (planName != null && planName.trim().isNotEmpty) {
       _planNameCache[id] = planName.trim();
     }
@@ -492,6 +539,33 @@ class JobOrderDto {
     return null;
   }
 
+  // Gene - Oct 13, 2026: Added username and radiusUsername getters to resolve subscriber PPPoE / RADIUS account identity.
+  /// The explicit subscriber account username or PPPoE username if assigned.
+  String? get username =>
+      (_username != null && _username.trim().isNotEmpty)
+          ? _username.trim()
+          : _rawText('username');
+
+  /// Resolves the unique RADIUS / PPPoE username for Wi-Fi authentication,
+  /// falling back to subscriber account number or ticket number.
+  String get radiusUsername {
+    final u = username?.trim();
+    if (u != null && u.isNotEmpty && u.toLowerCase() != 'switch') {
+      return u;
+    }
+    final rawU = _rawText('username');
+    if (rawU != null && rawU.isNotEmpty && rawU.toLowerCase() != 'switch') {
+      return rawU;
+    }
+    final acc = _rawText('accountNumber') ??
+        _rawText('accountNo') ??
+        _rawText('AccountNo');
+    if (acc != null && acc.isNotEmpty) {
+      return acc;
+    }
+    return ticketNumber;
+  }
+
   /// The subscriber or installation location fix, parsed from rawJson if present.
   LatLng? get latLng {
     if (rawJson != null) {
@@ -593,6 +667,7 @@ class JobOrderDto {
         json['EmailAddress']?.toString() ??
         json['email']?.toString();
     final cleanEmail = _cleanValue(rawEmail);
+/*
     final rawSecond = json['secondContactNumber']?.toString() ??
         json['SecondContactNumber']?.toString() ??
         json['second_contact_number']?.toString();
@@ -624,6 +699,47 @@ class JobOrderDto {
           : int.tryParse((json['planId'] ?? json['PlanId'])?.toString() ?? '0'),
       subscriberEmail: cleanEmail,
       secondContactNumber: cleanSecond,
+      // Preserved verbatim: the API's office-side vocabulary is 'Applied' /
+      // 'Confirmed', and lowercasing it silently broke every status comparison.
+      status: json['status']?.toString().trim() ?? 'pending',
+*/
+    final rawSecond = json['secondContactNumber']?.toString() ??
+        json['SecondContactNumber']?.toString() ??
+        json['second_contact_number']?.toString();
+    final cleanSecond = _cleanValue(rawSecond);
+    // Gene - Oct 13, 2026: Parsed username for dedicated RADIUS / Wi-Fi identity from API payload.
+    final rawUsername = json['username']?.toString() ??
+        json['Username']?.toString() ??
+        json['user_name']?.toString();
+    final cleanUsername = _cleanValue(rawUsername);
+
+    return JobOrderDto(
+      id: id,
+      ticketNumber: ticketNumber,
+      customerName: customerName,
+      contactNumber: (json['contactNumber'] ??
+              json['ContactNumber'] ??
+              json['mobileNumber'] ??
+              json['MobileNumber'] ??
+              json['contact_number'] ??
+              json['mobile_number'])
+          ?.toString(),
+      address: address,
+      barangay: (json['barangay'] ?? json['Barangay'])?.toString(),
+      city: (json['city'] ?? json['City'])?.toString(),
+      planName: json['plan']?.toString() ??
+          json['Plan']?.toString() ??
+          json['desiredPlan']?.toString() ??
+          json['DesiredPlan']?.toString() ??
+          (json['planId'] is String ? json['planId'] as String : null) ??
+          json['choose_Plan']?.toString() ??
+          '',
+      planId: (json['planId'] ?? json['PlanId']) is int
+          ? (json['planId'] ?? json['PlanId']) as int
+          : int.tryParse((json['planId'] ?? json['PlanId'])?.toString() ?? '0'),
+      subscriberEmail: cleanEmail,
+      secondContactNumber: cleanSecond,
+      username: cleanUsername,
       // Preserved verbatim: the API's office-side vocabulary is 'Applied' /
       // 'Confirmed', and lowercasing it silently broke every status comparison.
       status: json['status']?.toString().trim() ?? 'pending',
@@ -733,8 +849,15 @@ class JobOrderDto {
       city: rowText(row['city']),
       planName: rowText(row['plan_name']),
       planId: rowIntOrNull(row['plan_id']),
+/*
       subscriberEmail: rowText(row['subscriber_email']),
       secondContactNumber: rowText(row['second_contact_number']),
+      status: rowText(row['status']) ?? 'pending',
+*/
+      subscriberEmail: rowText(row['subscriber_email']),
+      secondContactNumber: rowText(row['second_contact_number']),
+      // Gene - Oct 13, 2026: Passed row username for subscriber PPPoE / RADIUS account.
+      username: rowText(row['username']),
       status: rowText(row['status']) ?? 'pending',
       onsiteStatus: rowText(row['onsite_status']),
       rawJson: rawJson,
@@ -945,8 +1068,17 @@ class JobOrderDto {
       city: mergedCity,
       planName: mergedPlanName,
       planId: mergedPlanId,
+/*
       subscriberEmail: mergedEmail,
       secondContactNumber: mergedSecondContact,
+      status: server.status,
+*/
+      subscriberEmail: mergedEmail,
+      secondContactNumber: mergedSecondContact,
+      // Gene - Oct 13, 2026: Merged subscriber username preserving server or existing value.
+      username: (server.username != null && server.username!.trim().isNotEmpty)
+          ? server.username
+          : username,
       status: server.status,
       onsiteStatus: (server.onsiteStatus != null &&
               server.onsiteStatus!.trim().isNotEmpty)

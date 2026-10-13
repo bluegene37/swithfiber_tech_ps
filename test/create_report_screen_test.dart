@@ -11,6 +11,8 @@ import 'package:swithfiber_tech_ps/features/jobs/services/job_orders_api.dart';
 import 'package:swithfiber_tech_ps/features/jobs/signals/jobs_signals.dart';
 import 'package:swithfiber_tech_ps/features/reports/screens/create_report_screen.dart';
 import 'package:swithfiber_tech_ps/features/reports/signals/report_signals.dart';
+// Gene - Oct 13, 2026: Import SignaturePad for signature pad widget assertions
+import 'package:swithfiber_tech_ps/features/reports/widgets/signature_pad.dart';
 
 /// Accepts every PUT so the background sync after submit completes quietly.
 class _QuietApi implements JobOrdersApi {
@@ -273,5 +275,100 @@ void main() {
     expect(signals.routerSerial.value, '',
         reason:
             'routerSerial must be reset to empty string when job has no serial');
+  });
+
+  // Gene - Oct 13, 2026: Added test verifying subscriber RADIUS / Wi-Fi username displays at the top of CreateReportScreen.
+  testWidgets('displays RADIUS username at the top of the report screen',
+      (tester) async {
+    await tester.runAsync(() async {
+      db = AppDatabase.forTesting();
+      jobsSignals =
+          JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    final signals = ReportSignals();
+    final job = JobOrderDto(
+      id: 20,
+      ticketNumber: 'SF-20',
+      customerName: 'Maria Santos',
+      address: 'Block 5 Lot 12',
+      username: 'accountt0601261206',
+      status: 'Scheduled',
+    );
+    signals.setJobOrder(job);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: CreateReportScreen(
+        jobsSignals: jobsSignals,
+        reportSignals: signals,
+        pickImage: (_) async => null,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('radius_username_banner')), findsOneWidget);
+    expect(find.text('RADIUS / Wi-Fi Username'), findsOneWidget);
+    expect(find.text('accountt0601261206'), findsOneWidget);
+    expect(find.byKey(const ValueKey('copy_radius_username_button')),
+        findsOneWidget);
+
+    // Tap copy button and verify snackbar feedback
+    await tester.tap(find.byKey(const ValueKey('copy_radius_username_button')));
+    await tester.pump();
+    expect(find.text('RADIUS username copied to clipboard'), findsOneWidget);
+    ScaffoldMessenger.of(tester.element(find.byType(CreateReportScreen)))
+        .clearSnackBars();
+    await tester.pumpAndSettle();
+  });
+
+  // Gene - Oct 13, 2026: Added test verifying signature pad starts locked against scrolling scratches and can be unlocked.
+  testWidgets(
+      'signature pad starts locked against scrolling scratches and can be unlocked',
+      (tester) async {
+    await tester.runAsync(() async {
+      db = AppDatabase.forTesting();
+      jobsSignals =
+          JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    final signals = ReportSignals();
+    final job = _job(1);
+    signals.setJobOrder(job);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: CreateReportScreen(
+        jobsSignals: jobsSignals,
+        reportSignals: signals,
+        pickImage: (_) async => null,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Verify locked state is visible
+    final unlockFinder =
+        find.byKey(const ValueKey('unlock_signature_pad_button'));
+    // Gene - Oct 13, 2026: Replaced scrollUntilVisible with ensureVisible to avoid multiple Scrollables error
+    // await tester.scrollUntilVisible(unlockFinder, 300);
+    await tester.ensureVisible(unlockFinder);
+    await tester.pumpAndSettle();
+    expect(unlockFinder, findsOneWidget);
+    expect(find.text('Tap to sign'), findsOneWidget);
+
+    // Tap to unlock
+    await tester.tap(unlockFinder);
+    await tester.pumpAndSettle();
+
+    // Active signature pad is now shown
+    expect(find.byType(SignaturePad), findsOneWidget);
+    expect(find.byKey(const ValueKey('lock_signature_pad_button')),
+        findsOneWidget);
+
+    // Tap Done to lock again
+    await tester.tap(find.byKey(const ValueKey('lock_signature_pad_button')));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('unlock_signature_pad_button')), findsOneWidget);
   });
 }

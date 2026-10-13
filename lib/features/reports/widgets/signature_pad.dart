@@ -71,6 +71,7 @@ typedef SignaturePadController = SignatureController;
 /// Reports each finished stroke through [onStrokeEnd] so the owner can export
 /// as the customer signs, and stays inert until touched so an untouched pad
 /// never produces a blank "signature".
+/*
 class SignaturePad extends StatelessWidget {
   final SignatureController controller;
   final double height;
@@ -138,6 +139,88 @@ class SignaturePad extends StatelessWidget {
               ),
             ),
           ),
+        );
+      },
+    );
+  }
+}
+*/
+// Gene - Oct 13, 2026: Added enabled flag to SignaturePad to allow locking the canvas against accidental scratch gestures during page scroll.
+class SignaturePad extends StatelessWidget {
+  final SignatureController controller;
+  final double height;
+  final VoidCallback? onStrokeEnd;
+  final bool enabled;
+
+  const SignaturePad({
+    super.key,
+    required this.controller,
+    this.height = 180,
+    this.onStrokeEnd,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        controller.canvasSize = Size(constraints.maxWidth, height);
+        final content = Container(
+          height: height,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+              width: 1.5,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: AnimatedBuilder(
+            animation: controller,
+            builder: (context, _) => CustomPaint(
+              painter: SignaturePainter(controller.strokes),
+              child: controller.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Sign here',
+                        // The plain (non-`Of`) const is deliberate: this
+                        // canvas is always white regardless of theme (see
+                        // `color: Colors.white` above), so the placeholder
+                        // must stay a fixed, theme-invariant ink rather
+                        // than follow dark mode like `secondaryInkOf` would.
+                        style: context.text.titleSmall!.copyWith(
+                          color: AppTheme.secondaryInk,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    )
+                  : const SizedBox.expand(),
+            ),
+          ),
+        );
+
+        if (!enabled) {
+          return content;
+        }
+
+        return RawGestureDetector(
+          behavior: HitTestBehavior.opaque,
+          gestures: <Type, GestureRecognizerFactory>{
+            EagerPanGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
+              () => EagerPanGestureRecognizer(),
+              (EagerPanGestureRecognizer instance) {
+                instance.onStart =
+                    (d) => controller.beginStroke(d.localPosition);
+                instance.onUpdate =
+                    (d) => controller.extendStroke(d.localPosition);
+                instance.onEnd = (_) => onStrokeEnd?.call();
+              },
+            ),
+          },
+          child: content,
         );
       },
     );
