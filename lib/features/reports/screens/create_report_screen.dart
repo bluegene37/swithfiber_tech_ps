@@ -208,6 +208,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     }
   }
 
+  /*
   /// Debounced export after a stroke so fast consecutive strokes don't
   /// repeatedly encode PNGs on the UI thread, while ensuring signature is ready.
   void _onStrokeEnd() {
@@ -222,7 +223,10 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     if (!mounted) return;
     widget.reportSignals.setSignature(dataUrl);
   }
+  */
+  // Gene - Oct 13, 2026: Debounced auto-save deprecated in favor of explicit Save & Lock button to prevent UI re-renders during active stroke drawing.
 
+  /*
   // Gene - Oct 13, 2026: Opens dedicated modal dialog for subscriber signature to isolate signing from list scrolling.
   Future<void> _openSignatureDialog(ReportSignals rep) async {
     final dialogController = SignatureController();
@@ -297,6 +301,21 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     if (result != null && mounted) {
       rep.setSignature(result);
       _signatureController.clear();
+      setState(() => _isSignaturePadActive = false);
+    }
+  }
+  */
+  // Gene - Oct 13, 2026: Removed signature dialog in favor of inline locked signature pad with Done/Save and Unlock to sign.
+  Future<void> _saveAndLockSignature(ReportSignals rep) async {
+    _signatureDebounce?.cancel();
+    if (!_signatureController.isEmpty) {
+      final dataUrl = await _signatureController.toDataUrl();
+      if (dataUrl != null && mounted) {
+        rep.setSignature(dataUrl);
+      }
+      _signatureController.clear();
+    }
+    if (mounted) {
       setState(() => _isSignaturePadActive = false);
     }
   }
@@ -2597,6 +2616,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               style: context.text.bodySmall,
             ),
             const SizedBox(height: 12),
+            /*
             SignalBuilder(
               builder: (context) {
                 final existing = rep.signature.value;
@@ -2640,88 +2660,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                               ),
                             ),
                           ),
-/*
-                          TextButton.icon(
-                            onPressed: () {
-                              rep.setSignature(null);
-                              _signatureController.clear();
-                            },
-                            icon: const Icon(Icons.refresh_rounded, size: 24),
-                            label: const Text('Sign again'),
-                          ),
-                        ],
-                      ),
-                      // Gene - Oct 13, 2026: Display subscriber name matching AppSheet signature block footer for existing signature.
-                      if (rep.selectedJobOrder.value != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          'Signed by: ${rep.selectedJobOrder.value!.customerName}',
-                          style: context.text.bodySmall!.copyWith(
-                            color: AppTheme.secondaryInkOf(context),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ],
-                  );
-                }
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SignaturePad(
-                      controller: _signatureController,
-                      onStrokeEnd: _onStrokeEnd,
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(
-                          padHasInk
-                              ? Icons.check_circle_rounded
-                              : Icons.touch_app_rounded,
-                          size: 20,
-                          color: padHasInk ? AppTheme.success : muted,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            padHasInk
-                                ? 'Signature captured'
-                                : 'Ask the subscriber to sign in the box above',
-                            style: context.text.labelMedium!.copyWith(
-                              color: padHasInk
-                                  ? AppTheme.successInkOf(context)
-                                  : AppTheme.secondaryInkOf(context),
-                            ),
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: padHasInk
-                              ? () {
-                                  _signatureController.clear();
-                                  rep.setSignature(null);
-                                }
-                              : null,
-                          icon: const Icon(Icons.backspace_outlined, size: 24),
-                          label: const Text('Clear'),
-                        ),
-                      ],
-                    ),
-                    // Gene - Oct 13, 2026: Display subscriber name matching AppSheet signature block footer.
-                    if (rep.selectedJobOrder.value != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        'Signed by: ${rep.selectedJobOrder.value!.customerName}',
-                        style: context.text.bodySmall!.copyWith(
-                          color: AppTheme.secondaryInkOf(context),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ],
-                );
-*/
                           // Gene - Oct 13, 2026: Sign again resets signature and unlocks pad into active signing mode.
                           TextButton.icon(
                             onPressed: () {
@@ -2990,6 +2928,312 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                       ),
                     ],
                   ],
+                );
+              },
+            ),
+            */
+            // Gene - Oct 13, 2026: Replaced signature dialog and multi-branch drawing view with a robust locking signature pad:
+            // Starts locked to prevent accidental scratch gestures while scrolling.
+            // Technician taps "Unlock to sign" to sign. Tapping "Done" / "Save" immediately locks and captures the signature.
+            // When locked, static signature is shown and can be unlocked to sign again.
+            SignalBuilder(
+              builder: (context) {
+                final existing = rep.signature.value;
+                final existingBytes =
+                    PhotoStorageService.instance.resolveBytes(existing) ??
+                        DataUrl.decode(existing);
+
+                // State 1: Locked with an existing or saved signature
+                if (!_isSignaturePadActive && existingBytes != null) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        height: 140,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppTheme.success.withValues(alpha: 0.6),
+                            width: 1.5,
+                          ),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Image.memory(existingBytes,
+                            cacheWidth: 600, fit: BoxFit.contain),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.verified_rounded,
+                              size: 20, color: AppTheme.success),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Signature saved · Locked',
+                              style: context.text.labelMedium!.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.successInkOf(context),
+                              ),
+                            ),
+                          ),
+                          FilledButton.tonalIcon(
+                            key: const ValueKey('unlock_signature_pad_button'),
+                            onPressed: () {
+                              rep.setSignature(null);
+                              _signatureController.clear();
+                              setState(() => _isSignaturePadActive = true);
+                            },
+                            icon: const Icon(Icons.lock_open_rounded, size: 20),
+                            label: const Text('Unlock to sign'),
+                          ),
+                        ],
+                      ),
+                      if (rep.selectedJobOrder.value != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Signed by: ${rep.selectedJobOrder.value!.customerName}',
+                          style: context.text.bodySmall!.copyWith(
+                            color: AppTheme.secondaryInkOf(context),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                }
+
+                // State 2: Locked without a signature (scroll-safe placeholder)
+                if (!_isSignaturePadActive) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        height: 160,
+                        decoration: BoxDecoration(
+                          color: isDark ? AppTheme.darkInput : AppTheme.fillLight,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isDark
+                                ? AppTheme.borderDark
+                                : AppTheme.borderLight,
+                            width: 1.5,
+                          ),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            key: const ValueKey('unlock_signature_pad_button'),
+                            onTap: () =>
+                                setState(() => _isSignaturePadActive = true),
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primary
+                                          .withValues(alpha: 0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.draw_rounded,
+                                      size: 28,
+                                      color: AppTheme.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    'Tap to sign',
+                                    style: context.text.titleSmall!.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.brandInkOf(context),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.lock_outline_rounded,
+                                        size: 20,
+                                        color:
+                                            AppTheme.secondaryInkOf(context),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          'Locked to prevent scroll marks',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: context.text.bodySmall!.copyWith(
+                                            color: AppTheme.secondaryInkOf(
+                                                context),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          FilledButton.tonalIcon(
+                            key: const ValueKey('activate_signature_button'),
+                            onPressed: () =>
+                                setState(() => _isSignaturePadActive = true),
+                            icon: const Icon(Icons.lock_open_rounded, size: 20),
+                            label: const Text('Unlock to sign'),
+                          ),
+                        ],
+                      ),
+                      if (rep.selectedJobOrder.value != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Signed by: ${rep.selectedJobOrder.value!.customerName}',
+                          style: context.text.bodySmall!.copyWith(
+                            color: AppTheme.secondaryInkOf(context),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                }
+
+                // State 3: Active signature drawing mode
+                return ListenableBuilder(
+                  listenable: _signatureController,
+                  builder: (context, _) {
+                    final padHasInk = !_signatureController.isEmpty;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppTheme.primary,
+                              width: 1.5,
+                            ),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Column(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primary.withValues(alpha: 0.1),
+                                  borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(10)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.edit_rounded,
+                                        size: 20, color: AppTheme.primary),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        'Signing active · Sign in box',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: context.text.labelSmall!.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.primary,
+                                        ),
+                                      ),
+                                    ),
+                                    TextButton.icon(
+                                      key: const ValueKey(
+                                          'lock_signature_pad_button'),
+                                      onPressed: () =>
+                                          _saveAndLockSignature(rep),
+                                      icon: const Icon(Icons.check_rounded,
+                                          size: 20),
+                                      label: const Text('Done'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              SignaturePad(
+                                controller: _signatureController,
+                                enabled: true,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(
+                              padHasInk
+                                  ? Icons.check_circle_rounded
+                                  : Icons.touch_app_rounded,
+                              size: 20,
+                              color: padHasInk ? AppTheme.success : muted,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                padHasInk
+                                    ? 'Signature drawn · Tap Done to lock'
+                                    : 'Ask subscriber to sign above',
+                                style: context.text.labelMedium!.copyWith(
+                                  color: padHasInk
+                                      ? AppTheme.successInkOf(context)
+                                      : AppTheme.secondaryInkOf(context),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton.icon(
+                              key: const ValueKey('clear_signature_button'),
+                              onPressed: padHasInk
+                                  ? () {
+                                      _signatureController.clear();
+                                      rep.setSignature(null);
+                                    }
+                                  : null,
+                              icon: const Icon(Icons.backspace_outlined,
+                                  size: 20),
+                              label: const Text('Clear'),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton.icon(
+                              key: const ValueKey('save_signature_pad_button'),
+                              onPressed: () => _saveAndLockSignature(rep),
+                              icon: const Icon(Icons.lock_rounded, size: 20),
+                              label: const Text('Done'),
+                            ),
+                          ],
+                        ),
+                        if (rep.selectedJobOrder.value != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'Signed by: ${rep.selectedJobOrder.value!.customerName}',
+                            style: context.text.bodySmall!.copyWith(
+                              color: AppTheme.secondaryInkOf(context),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
                 );
               },
             ),

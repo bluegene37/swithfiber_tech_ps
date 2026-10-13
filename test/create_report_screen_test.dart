@@ -372,6 +372,86 @@ void main() {
         find.byKey(const ValueKey('unlock_signature_pad_button')), findsOneWidget);
   });
 
+  // Gene - Oct 13, 2026: Added test verifying drawing signature, saving with Done/Save to lock, and unlocking to sign again.
+  testWidgets(
+      'drawing signature locks when Done is tapped and can be unlocked to sign again',
+      (tester) async {
+    await tester.runAsync(() async {
+      db = AppDatabase.forTesting();
+      jobsSignals =
+          JobsSignals(JobRepository(db.jobOrdersDao, api: _QuietApi()));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    final signals = ReportSignals();
+    final job = _job(1);
+    signals.setJobOrder(job);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: CreateReportScreen(
+        jobsSignals: jobsSignals,
+        reportSignals: signals,
+        pickImage: (_) async => null,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Verify initially locked
+    final unlockFinder =
+        find.byKey(const ValueKey('unlock_signature_pad_button'));
+    await tester.ensureVisible(unlockFinder);
+    await tester.pumpAndSettle();
+    expect(unlockFinder, findsOneWidget);
+
+    // Tap to unlock
+    await tester.tap(unlockFinder);
+    await tester.pumpAndSettle();
+
+    // SignaturePad is now displayed
+    final padFinder = find.byType(SignaturePad);
+    expect(padFinder, findsOneWidget);
+    await tester.ensureVisible(padFinder);
+    await tester.pumpAndSettle();
+
+    // Draw a stroke on the signature pad
+    await tester.timedDrag(padFinder, const Offset(50, 20),
+        const Duration(milliseconds: 200));
+    await tester.pump();
+
+    // Check that Clear button is enabled after drawing ink
+    final clearFinder = find.byKey(const ValueKey('clear_signature_button'));
+    final clearWidget = tester.widget<TextButton>(clearFinder);
+    expect(clearWidget.onPressed, isNotNull);
+
+    // Tap Done to save and lock
+    final doneFinder = find.byKey(const ValueKey('save_signature_pad_button'));
+    await tester.ensureVisible(doneFinder);
+    await tester.pumpAndSettle();
+    await tester.tap(doneFinder);
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pumpAndSettle();
+
+    // Signature is now locked and saved into report signals
+    expect(signals.hasSignature.value, isTrue);
+    expect(find.text('Signature saved · Locked'), findsOneWidget);
+    expect(find.byType(SignaturePad), findsNothing);
+    expect(find.byType(Image), findsWidgets);
+
+    // Tap 'Unlock to sign' to sign again
+    final unlockAgainFinder =
+        find.byKey(const ValueKey('unlock_signature_pad_button'));
+    await tester.ensureVisible(unlockAgainFinder);
+    await tester.pumpAndSettle();
+    await tester.tap(unlockAgainFinder);
+    await tester.pumpAndSettle();
+
+    // Signature was cleared and pad is unlocked again
+    expect(signals.hasSignature.value, isFalse);
+    expect(find.byType(SignaturePad), findsOneWidget);
+  });
+
   // Gene - Oct 13, 2026: Added test verifying plan dropdown displays and updates on-site plan selection.
   testWidgets(
       'displays plan dropdown and allows technician to update or upgrade plan on-site',
