@@ -130,9 +130,16 @@ void main() {
       await tester.tap(find.byWidget(toggle.widget));
     }
     await tester.pump();
+    /*
     expect(find.text('NAVIGATE'), findsNWidgets(3));
     expect(find.text('CALL'), findsNWidgets(3));
     expect(find.text('SMS'), findsNWidgets(3));
+    */
+    // Gene - Oct 13, 2026: Expanded cards show four partitioned actions in the footer including DETAILS.
+    expect(find.text('NAVIGATE'), findsNWidgets(3));
+    expect(find.text('CALL'), findsNWidgets(3));
+    expect(find.text('SMS'), findsNWidgets(3));
+    expect(find.text('DETAILS'), findsNWidgets(3));
     expect(find.byType(ElevatedButton), findsNothing,
         reason: 'no red verb on the list; the sticky verb is on the detail');
     expect(find.text('09171234567 · 09181234567'), findsNWidgets(3));
@@ -260,5 +267,129 @@ void main() {
     expect(find.text('Today Client Two'), findsOneWidget);
     expect(find.text('Tomorrow Client'), findsOneWidget);
   });
+
+  // Gene - Oct 13, 2026: Verifies that tapping anywhere on the card toggles expansion instead of opening details, and that tapping DETAILS invokes onSelectJobForDetails.
+  testWidgets('card tap toggles expand/collapse and DETAILS button triggers details navigation',
+      (tester) async {
+    JobOrderDto? selectedJob;
+    await seed(tester, [job(1, 'Blaine Ivory Medel')]);
+
+    tester.view.devicePixelRatio = 3.0;
+    tester.view.physicalSize = const Size(402 * 3.0, 1000 * 3.0);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: JobOrdersScreen(
+        jobsSignals: signals,
+        onSelectJobForDetails: (j) => selectedJob = j,
+      ),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Gene - Oct 13, 2026: DETAILS action button at the bottom of the card is always visible.
+    expect(find.text('DETAILS'), findsOneWidget);
+    expect(selectedJob, isNull);
+
+    // Initially collapsed: secondary address is not visible
+    expect(
+        find.text('Lot 1, Fiber Street, Batingan, Binangonan'), findsNothing);
+
+    // Tap on the customer name on the card body
+    await tester.tap(find.text('Blaine Ivory Medel'));
+    await tester.pump();
+
+    // Now expanded: secondary address is visible, but navigation was NOT triggered
+    expect(find.text('Lot 1, Fiber Street, Batingan, Binangonan'),
+        findsOneWidget);
+    expect(find.text('DETAILS'), findsOneWidget);
+    expect(selectedJob, isNull);
+
+    // Tap DETAILS action button to navigate
+    await tester.tap(find.text('DETAILS'));
+    await tester.pump();
+
+    // Navigation was triggered with the correct job
+    expect(selectedJob, isNotNull);
+    expect(selectedJob!.id, 1);
+
+    // Tapping the card body again collapses the secondary address
+    await tester.tap(find.text('Blaine Ivory Medel'));
+    await tester.pump();
+    expect(
+        find.text('Lot 1, Fiber Street, Batingan, Binangonan'), findsNothing);
+    expect(find.text('DETAILS'), findsOneWidget);
+  });
+
+  // Gene - Oct 13, 2026: Verifies trailing '>' shortcut button triggers onSelectJobForReport.
+  testWidgets('trailing > button triggers report creation shortcut',
+      (tester) async {
+    JobOrderDto? reportJob;
+    await seed(tester, [job(1, 'Blaine Ivory Medel')]);
+
+    tester.view.devicePixelRatio = 3.0;
+    tester.view.physicalSize = const Size(402 * 3.0, 1000 * 3.0);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: JobOrdersScreen(
+        jobsSignals: signals,
+        onSelectJobForReport: (j) => reportJob = j,
+      ),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byTooltip('Open report'), findsOneWidget);
+    await tester.tap(find.byTooltip('Open report'));
+    await tester.pump();
+
+    expect(reportJob, isNotNull);
+    expect(reportJob!.id, 1);
+  });
+
+  // Gene - Oct 13, 2026: Verifies Group By toggle switches between Date and Barangay groupings.
+  testWidgets('Group By toggle switches between Date and Barangay groups',
+      (tester) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day, 9);
+    final tomorrow = today.add(const Duration(days: 1));
+
+    // Two jobs on different dates but same barangay (Batingan)
+    final jobs = [
+      job(10, 'Client Today', installed: today, barangay: 'Batingan'),
+      job(11, 'Client Tomorrow', installed: tomorrow, barangay: 'Batingan'),
+      job(12, 'Client Other', installed: today, barangay: 'Tayuman'),
+    ];
+
+    await seed(tester, jobs);
+    await pumpHome(tester, height: 1600);
+
+    // Default: Grouped by Date
+    expect(find.text('Date'), findsOneWidget);
+    expect(find.text('Barangay'), findsOneWidget);
+
+    // Switch to Group by Barangay
+    await tester.tap(find.text('Barangay'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Under Barangay grouping, same barangay (Batingan) has only 1 header with count 2
+    expect(find.text('Brgy. Batingan'), findsOneWidget);
+    expect(find.text('2 jobs'), findsOneWidget);
+    expect(find.text('Brgy. Tayuman'), findsOneWidget);
+    expect(find.text('1 job'), findsOneWidget);
+
+    // Switch back to Date
+    await tester.tap(find.text('Date'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final todayLabel = JobOrdersScreen.dateGroupLabel(today).toUpperCase();
+    expect(find.text(todayLabel), findsOneWidget);
+  });
 }
+
 

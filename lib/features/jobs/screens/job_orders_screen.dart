@@ -1174,6 +1174,7 @@ class _JobRowState extends State<_JobRow> {
           : null,
       statusLabel: label,
       onTap: () => setState(() => _isExpanded = !_isExpanded),
+/*
       actions: _isExpanded
           ? [
               StatusRailAction(
@@ -1198,6 +1199,30 @@ class _JobRowState extends State<_JobRow> {
               ),
             ]
           : null,
+*/
+      // Gene - Oct 13, 2026: Always show action buttons at the bottom of the card/list item, decoupled from expand/collapse.
+      actions: [
+        StatusRailAction(
+          icon: Icons.navigation_rounded,
+          label: 'Navigate',
+          onTap: () => navigateToJob(job),
+        ),
+        StatusRailAction(
+          icon: Icons.call_rounded,
+          label: 'Call',
+          onTap: () => callJob(context, job),
+        ),
+        StatusRailAction(
+          icon: Icons.sms_rounded,
+          label: 'SMS',
+          onTap: () => smsJob(context, job),
+        ),
+        StatusRailAction(
+          icon: Icons.assignment_outlined,
+          label: 'Details',
+          onTap: widget.onTap,
+        ),
+      ],
     );
   }
 }
