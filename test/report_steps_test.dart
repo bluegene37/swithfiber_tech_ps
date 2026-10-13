@@ -75,11 +75,35 @@ void main() {
 
   Finder scrollable() => find.byType(Scrollable).first;
 
+  /*
   testWidgets('the form is five numbered steps with one sticky Save',
       (tester) async {
     await pumpReport(tester);
 
     for (final n in [1, 2, 3, 4, 5]) {
+      final header =
+          find.byWidgetPredicate((w) => w is StepHeader && w.number == n);
+      await tester.scrollUntilVisible(header, 300, scrollable: scrollable());
+      expect(header, findsOneWidget, reason: 'step $n');
+    }
+    expect(find.text('Optical reading'), findsOneWidget);
+    expect(find.text('Customer sign-off'), findsOneWidget);
+
+    // One red verb, pinned, saying what is still missing.
+    expect(find.byType(StickyActionBar), findsOneWidget);
+    expect(find.text('Save report'), findsOneWidget);
+    expect(find.textContaining('Missing: serial number'), findsOneWidget);
+    expect(find.textContaining('7 of 7 photos'), findsOneWidget);
+    expect(find.textContaining('signature'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  */
+  // Gene - Oct 13, 2026: Updated test to assert all six numbered steps matching AppSheet workflow order (1: Hardware, 2: Optical, 3: Materials, 4: Photos, 5: Customer sign-off, 6: Remarks & status).
+  testWidgets('the form is six numbered steps with one sticky Save',
+      (tester) async {
+    await pumpReport(tester);
+
+    for (final n in [1, 2, 3, 4, 5, 6]) {
       final header =
           find.byWidgetPredicate((w) => w is StepHeader && w.number == n);
       await tester.scrollUntilVisible(header, 300, scrollable: scrollable());
@@ -154,6 +178,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  /*
   testWidgets(
       'typing the serial ticks step 2 and drops it from the missing '
       'line', (tester) async {
@@ -172,6 +197,27 @@ void main() {
     await tester.pump();
 
     expect(step2, findsOneWidget);
+    expect(find.textContaining('serial number'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+  */
+  // Gene - Oct 13, 2026: Serial number input is in Step 1 (Network plant & hardware) in AppSheet workflow; assert step 1 ticks upon entry.
+  testWidgets(
+      'typing the serial ticks step 1 and drops it from the missing '
+      'line', (tester) async {
+    await pumpReport(tester);
+    final step1 = find
+        .byWidgetPredicate((w) => w is StepHeader && w.number == 1 && w.done);
+    expect(step1, findsNothing);
+
+    final serialField = find.ancestor(
+        of: find.text('Modem / ONT Serial Number (SN)'),
+        matching: find.byType(TextFormField));
+    await tester.scrollUntilVisible(serialField, 300, scrollable: scrollable());
+    await tester.enterText(serialField, 'HWTC12345678');
+    await tester.pump();
+
+    expect(step1, findsOneWidget);
     expect(find.textContaining('serial number'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -194,7 +240,13 @@ void main() {
     await tester.enterText(field, 'Spliced at NAP 008, 62 m drop');
     await tester.pump();
 
+    /*
     await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    */
+    // Gene - Oct 13, 2026: Scroll toggle button into visible viewport before tapping Done to avoid hit test clipping.
+    await tester.scrollUntilVisible(toggle, 300, scrollable: scrollable());
+    await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(find.text('Spliced at NAP 008, 62 m drop'), findsOneWidget);
     expect(find.text('Edit'), findsOneWidget);

@@ -312,6 +312,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              /*
               // 1. Target Job Order Selector
               _buildJobOrderSummary(rep),
               const SizedBox(height: 16),
@@ -344,6 +345,41 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 key: _signOffSectionKey,
                 child: _buildCustomerSignOffSection(rep),
               ),
+              const SizedBox(height: 24),
+              */
+              // Gene - Oct 13, 2026: Reordered sections into consistent AppSheet field flow:
+              // Context Header -> 1. Network Plant & Hardware -> 2. Optical Reading -> 3. Materials (BOM) -> 4. Photo Proofs -> 5. Customer Sign-Off -> 6. Technician Remarks & Status.
+              _buildJobOrderSummary(rep),
+              const SizedBox(height: 16),
+
+              // Step 1: Network Plant & Hardware Details
+              KeyedSubtree(
+                key: _hardwareSectionKey,
+                child: _buildHardwareSection(rep),
+              ),
+              const SizedBox(height: 16),
+
+              // Step 2: Optical Power Reading Gauge & Input
+              _buildOpticalPowerSection(rep),
+              const SizedBox(height: 16),
+
+              // Step 3: Materials Consumed On-Site (BOM)
+              _buildMaterialsSection(rep),
+              const SizedBox(height: 16),
+
+              // Step 4: Photo Proof Attachments
+              _buildPhotoProofSection(rep),
+              const SizedBox(height: 16),
+
+              // Step 5: Customer Electronic Sign-Off
+              KeyedSubtree(
+                key: _signOffSectionKey,
+                child: _buildCustomerSignOffSection(rep),
+              ),
+              const SizedBox(height: 16),
+
+              // Step 6: Technician Remarks & Status
+              _buildRemarksSection(),
               const SizedBox(height: 24),
 
               const SizedBox(height: 24),
@@ -390,6 +426,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   /// A report always belongs to the job order the technician opened, so the
   /// job is shown read-only rather than as a picker. Letting it be changed
   /// here allowed a report to be filed against the wrong job.
+  /*
   Widget _buildJobOrderSummary(ReportSignals rep) {
     return Card(
       child: Padding(
@@ -447,6 +484,179 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       ),
     );
   }
+  */
+  // Gene - Oct 13, 2026: Enhanced Job Order & Subscriber summary card to display ticket, customer, plan, contact, and barangay/address matching AppSheet header hierarchy.
+  Widget _buildJobOrderSummary(ReportSignals rep) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SignalBuilder(
+          builder: (context) {
+            final job = rep.selectedJobOrder.value;
+            if (job == null) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.receipt_long_rounded,
+                          size: 18, color: AppTheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Job Order & Subscriber',
+                          style: context.text.titleMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No job order is linked to this report.',
+                    style: context.text.bodySmall,
+                  ),
+                ],
+              );
+            }
+
+            final fullAddress = [
+              job.address.trim(),
+              if (job.barangay != null && job.barangay!.trim().isNotEmpty)
+                'Brgy. ${job.barangay!.trim()}',
+              if (job.city != null && job.city!.trim().isNotEmpty)
+                job.city!.trim(),
+            ].where((s) => s.isNotEmpty).join(', ');
+
+            final phone = [
+              if (job.contactNumber != null &&
+                  job.contactNumber!.trim().isNotEmpty)
+                job.contactNumber!.trim(),
+              if (job.secondContactNumber != null &&
+                  job.secondContactNumber!.trim().isNotEmpty)
+                job.secondContactNumber!.trim(),
+            ].join(' · ');
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.receipt_long_rounded,
+                        size: 20, color: AppTheme.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Job Order & Subscriber',
+                        style: context.text.titleMedium,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.fillOf(context),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        job.ticketNumber,
+                        style: context.text.labelSmall!.copyWith(
+                          fontFamily: 'JetBrains Mono',
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.brandInkOf(context),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  job.customerName,
+                  style: context.text.titleSmall!.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (job.planName != null && job.planName!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      /*
+                      Icon(Icons.wifi_rounded,
+                          size: 16, color: AppTheme.secondaryInkOf(context)), // map furniture
+                      */
+                      // Gene - Oct 13, 2026: Set icon size to 20 to meet outdoor readability standard.
+                      Icon(Icons.wifi_rounded,
+                          size: 20, color: AppTheme.secondaryInkOf(context)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${job.planName!} · Fiber to the Home',
+                          style: context.text.bodySmall!.copyWith(
+                            color: AppTheme.secondaryInkOf(context),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (phone.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      /*
+                      Icon(Icons.call_outlined,
+                          size: 16, color: AppTheme.secondaryInkOf(context)), // map furniture
+                      */
+                      // Gene - Oct 13, 2026: Set icon size to 20 to meet outdoor readability standard.
+                      Icon(Icons.call_outlined,
+                          size: 20, color: AppTheme.secondaryInkOf(context)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          phone,
+                          style: context.text.bodySmall!.copyWith(
+                            color: AppTheme.secondaryInkOf(context),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (fullAddress.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child:
+                            /*
+                            Icon(Icons.location_on_outlined,
+                                size: 16, color: AppTheme.secondaryInkOf(context)), // map furniture
+                            */
+                            // Gene - Oct 13, 2026: Set icon size to 20 to meet outdoor readability standard.
+                            Icon(Icons.location_on_outlined,
+                                size: 20, color: AppTheme.secondaryInkOf(context)),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          fullAddress,
+                          style: context.text.bodySmall!.copyWith(
+                            color: AppTheme.secondaryInkOf(context),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
 
   Widget _buildOpticalPowerSection(ReportSignals rep) {
     return Card(
@@ -455,11 +665,22 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            /*
             Row(
               children: [
                 const Expanded(
                   child: StepHeader(
                       number: 1, title: 'Optical reading', done: true),
+                ),
+              ],
+            ),
+            */
+            // Gene - Oct 13, 2026: Set StepHeader number to 2 for Optical reading following Hardware in AppSheet flow.
+            Row(
+              children: [
+                const Expanded(
+                  child: StepHeader(
+                      number: 2, title: 'Optical reading', done: true),
                 ),
               ],
             ),
@@ -781,6 +1002,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            /*
             Row(
               children: [
                 Expanded(
@@ -788,6 +1010,22 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     valueListenable: _serialController,
                     builder: (context, serial, _) => StepHeader(
                       number: 2,
+                      title: 'Hardware & port',
+                      done: serial.text.trim().isNotEmpty,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            */
+            // Gene - Oct 13, 2026: Set StepHeader number to 1 for Hardware & port matching AppSheet workflow.
+            Row(
+              children: [
+                Expanded(
+                  child: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _serialController,
+                    builder: (context, serial, _) => StepHeader(
+                      number: 1,
                       title: 'Hardware & port',
                       done: serial.text.trim().isNotEmpty,
                     ),
@@ -1175,11 +1413,22 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                /*
                 Row(
                   children: [
                     const Expanded(
                       child: StepHeader(
                           number: 4, title: 'Remarks', hint: 'optional'),
+                    ),
+                */
+                // Gene - Oct 13, 2026: Set StepHeader to step 6 (Technician remarks & status) following AppSheet workflow.
+                Row(
+                  children: [
+                    const Expanded(
+                      child: StepHeader(
+                          number: 6,
+                          title: 'Technician remarks & status',
+                          hint: 'optional'),
                     ),
                     Semantics(
                       button: true,
@@ -1278,6 +1527,63 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                           ),
                         ),
                 ),
+                // Gene - Oct 13, 2026: Display technician attribution and final Done completion status matching AppSheet report footer.
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    /*
+                    Icon(Icons.badge_outlined,
+                        size: 16, color: AppTheme.secondaryInkOf(context)), // map furniture
+                    */
+                    // Gene - Oct 13, 2026: Set icon size to 20 to meet outdoor readability standard.
+                    Icon(Icons.badge_outlined,
+                        size: 20, color: AppTheme.secondaryInkOf(context)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        widget.jobsSignals.technicianEmail.value
+                                    ?.trim()
+                                    .isNotEmpty ==
+                                true
+                            ? 'Tech: ${widget.jobsSignals.technicianEmail.value!.trim()}'
+                            : 'Field Technician',
+                        style: context.text.bodySmall!.copyWith(
+                          color: AppTheme.secondaryInkOf(context),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.success.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          /*
+                          const Icon(Icons.check_circle_rounded,
+                              size: 14, color: AppTheme.success), // map furniture
+                          */
+                          // Gene - Oct 13, 2026: Set icon size to 20 to meet outdoor readability standard.
+                          const Icon(Icons.check_circle_rounded,
+                              size: 20, color: AppTheme.success),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Status: Done',
+                            style: context.text.labelSmall!.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.successInkOf(context),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ],
             );
           },
@@ -1297,6 +1603,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             final fastConnectors = materials['SC/APC Fast Connector'] ?? 0;
             final sClamps = materials['S-Clamp'] ?? 0;
 
+            /*
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1308,6 +1615,23 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     Expanded(
                       child: Text('Materials Consumed On-Site',
                           style: context.text.titleMedium),
+                    ),
+                  ],
+                ),
+            */
+            // Gene - Oct 13, 2026: Added StepHeader number 3 for Materials consumed (BOM) following AppSheet workflow.
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: StepHeader(
+                        number: 3,
+                        // Gene - Oct 13, 2026: Set title to Materials Consumed On-Site matching test contract and AppSheet terminology.
+                        title: 'Materials Consumed On-Site',
+                        done: materials.values.any((qty) => qty > 0),
+                      ),
                     ),
                   ],
                 ),
@@ -1358,12 +1682,27 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            /*
             Row(
               children: [
                 Expanded(
                   child: SignalBuilder(
                     builder: (context) => StepHeader(
                       number: 3,
+                      title: 'Photo proofs',
+                      done: rep.attachedPhotoCount.value ==
+                          JobPhoto.values.length,
+                    ),
+                  ),
+                ),
+            */
+            // Gene - Oct 13, 2026: Set StepHeader number to 4 for Photo proofs following Materials in AppSheet workflow.
+            Row(
+              children: [
+                Expanded(
+                  child: SignalBuilder(
+                    builder: (context) => StepHeader(
+                      number: 4,
                       title: 'Photo proofs',
                       done: rep.attachedPhotoCount.value ==
                           JobPhoto.values.length,
@@ -1515,6 +1854,17 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                           ),
                         ],
                       ),
+                      // Gene - Oct 13, 2026: Display subscriber name matching AppSheet signature block footer for existing signature.
+                      if (rep.selectedJobOrder.value != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Signed by: ${rep.selectedJobOrder.value!.customerName}',
+                          style: context.text.bodySmall!.copyWith(
+                            color: AppTheme.secondaryInkOf(context),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ],
                   );
                 }
@@ -1561,6 +1911,17 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                         ),
                       ],
                     ),
+                    // Gene - Oct 13, 2026: Display subscriber name matching AppSheet signature block footer.
+                    if (rep.selectedJobOrder.value != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Signed by: ${rep.selectedJobOrder.value!.customerName}',
+                        style: context.text.bodySmall!.copyWith(
+                          color: AppTheme.secondaryInkOf(context),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ],
                 );
               },
