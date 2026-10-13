@@ -9,6 +9,7 @@ import 'package:swithfiber_tech_ps/features/jobs/screens/job_orders_screen.dart'
 import 'package:swithfiber_tech_ps/features/jobs/services/job_orders_api.dart';
 import 'package:swithfiber_tech_ps/features/jobs/signals/jobs_signals.dart';
 import 'package:swithfiber_tech_ps/features/jobs/widgets/status_change_sheet.dart';
+import 'package:swithfiber_tech_ps/features/reports/screens/create_report_screen.dart';
 
 /// A technician can mark an open job Rescheduled with a reason from a fixed
 /// list, and bring it back to Scheduled. The change is written locally,
@@ -291,7 +292,41 @@ void main() {
           find.text(
               'View only. This job order is rescheduled and cannot be completed or reported on.'),
           findsOneWidget);
+      // Gene - Oct 13, 2026: Assert on-site records verification card is removed from details screen.
+      expect(find.text('On-Site Records & Verification'), findsNothing);
       expect(tester.takeException(), isNull);
+    });
+
+    // Gene - Oct 13, 2026: A rescheduled job disables the '>' report shortcut on JobOrdersScreen to prevent modifying records.
+    testWidgets(
+        'a rescheduled job disables the > report shortcut on JobOrdersScreen',
+        (tester) async {
+      tester.view.devicePixelRatio = 3.0;
+      tester.view.physicalSize = const Size(402 * 3.0, 874 * 3.0);
+      addTearDown(tester.view.reset);
+
+      final rescheduledJob =
+          _job(status: 'Rescheduled', statusRemarks: 'Bad Weather');
+      await tester.runAsync(() => setUpJob(rescheduledJob));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: JobOrdersScreen(jobsSignals: signals),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final shortcut = find.byKey(const ValueKey('job_report_shortcut_42'));
+      expect(shortcut, findsOneWidget);
+      final inkWell = tester.widget<InkWell>(shortcut);
+      expect(inkWell.onTap, isNull);
+
+      await tester.tap(shortcut);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(CreateReportScreen), findsNothing);
     });
   });
 }

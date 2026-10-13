@@ -21,7 +21,10 @@ import '../../lcp_nap/models/lcp_nap_model.dart';
 import '../../lcp_nap/signals/lcp_nap_signals.dart';
 import '../models/job_order_model.dart';
 import '../signals/jobs_signals.dart';
+/*
 import '../widgets/job_photo_gallery.dart';
+*/
+// Gene - Oct 13, 2026: Commented out unused job_photo_gallery import as on-site records verification was removed from details per user request.
 import '../widgets/status_badge.dart';
 import '../widgets/status_change_sheet.dart';
 import '../../reports/screens/create_report_screen.dart';
@@ -31,6 +34,9 @@ import '../../../core/services/map_navigation_service.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/utils/data_url.dart';
 import '../../reports/widgets/photo_capture_tile.dart' show showPhotoViewer;
+// Gene - Oct 13, 2026: Added flutter_map and MapTiles imports to render map location in Job Order details.
+import 'package:flutter_map/flutter_map.dart';
+import '../../lcp_nap/services/map_tiles.dart';
 
 /// Comprehensive details screen for a Job Order with full Dark Mode support
 /// and responsive flex layouts.
@@ -149,8 +155,14 @@ class JobOrderDetailScreen extends StatelessWidget {
                       : () => _handleOpenReport(context, job),
                 ),
           */
-          // Gene - Oct 6, 2026: Explicitly hide the action bar for rescheduled jobs so completion reports cannot be filed.
+          /*
           bottomNavigationBar: readOnly || !job.canActivate || job.isRescheduled
+          */
+          // Gene - Oct 13, 2026: Hide action bar if job is rescheduled or has reschedule site exception so completion reports cannot be filed.
+          bottomNavigationBar: readOnly ||
+                  !job.canActivate ||
+                  job.isRescheduled ||
+                  job.siteException == SiteException.reschedule
               ? null
               : StickyActionBar(
                   label: job.hasCompletedReport
@@ -195,8 +207,11 @@ class JobOrderDetailScreen extends StatelessWidget {
                 const SizedBox(height: 14),
               ],
 
+              /*
               _buildOnsiteRecordsCard(context, job, isDark),
               const SizedBox(height: 14),
+              */
+              // Gene - Oct 13, 2026: Removed on-site records & verification card from details per user request.
 
               _buildCustomerCard(context, job, isDark),
               const SizedBox(height: 14),
@@ -207,9 +222,12 @@ class JobOrderDetailScreen extends StatelessWidget {
               _buildPlantAndHardwareCard(context, job, isDark),
               const SizedBox(height: 14),
 
+              /*
               // Gene - Oct 12, 2026: Placed answering flow card after plant & hardware card so optical power card stays at original scroll offset.
               _buildAnsweringFlowCard(context, job, isDark),
               const SizedBox(height: 14),
+              */
+              // Gene - Oct 13, 2026: Removed answering flow card in details per user request.
 
               if (job.materialsUsed.isNotEmpty) ...[
                 _buildMaterialsUsedCard(context, job, isDark),
@@ -349,6 +367,7 @@ class JobOrderDetailScreen extends StatelessWidget {
     );
   }
 
+  /*
   // Gene - Oct 12, 2026: Visual flow card showing the top-to-bottom installation answering sequence matching AppSheet.
   Widget _buildAnsweringFlowCard(
       BuildContext context, JobOrderDto job, bool isDark) {
@@ -465,6 +484,8 @@ class JobOrderDetailScreen extends StatelessWidget {
       ),
     );
   }
+  */
+  // Gene - Oct 13, 2026: Commented out _buildAnsweringFlowCard declaration since answering flow is removed from details per user request.
 
   /// Interactive Workflow Card showing stages and stage advancement
   Widget _buildWorkflowCard(
@@ -1078,7 +1099,11 @@ class JobOrderDetailScreen extends StatelessWidget {
               }
             },
             child: SizedBox(
+              /*
               height: 160,
+              */
+              // Gene - Oct 13, 2026: Enlarged photo preview height from 160 to 240 for clearer inspection.
+              height: 240,
               width: double.infinity,
               child: Stack(
                 fit: StackFit.expand,
@@ -1193,6 +1218,15 @@ class JobOrderDetailScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 14),
+            // Gene - Oct 13, 2026: Show interactive map location preview of the Job Order based on lat/lng coordinates.
+            if (latLng != null) ...[
+              _JobMapLocationPreview(
+                latLng: latLng,
+                label: job.customerName,
+                isDark: isDark,
+              ),
+              const SizedBox(height: 14),
+            ],
             _buildSpecRow(
               context,
               'Coordinates',
@@ -1834,6 +1868,7 @@ class JobOrderDetailScreen extends StatelessWidget {
     );
   }
 
+  /*
   Widget _buildOnsiteRecordsCard(
       BuildContext context, JobOrderDto job, bool isDark) {
     return Card(
@@ -1894,6 +1929,8 @@ class JobOrderDetailScreen extends StatelessWidget {
       ),
     );
   }
+  */
+  // Gene - Oct 13, 2026: Commented out _buildOnsiteRecordsCard as on-site records verification was removed from details per user request.
 
   static Widget _buildSpecRow(BuildContext context, String label, String value,
       IconData icon, bool isDark) {
@@ -1927,7 +1964,26 @@ class JobOrderDetailScreen extends StatelessWidget {
   /// This used to pop the detail screen first, which left the report sitting
   /// directly on the job list: backing out of it landed the technician on the
   /// main screen instead of the job they were working.
+  /*
   void _handleOpenReport(BuildContext context, JobOrderDto job) {
+    if (onOpenReport != null) {
+      onOpenReport!(job);
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CreateReportScreen(
+          jobsSignals: jobsSignals,
+          reportSignals: ReportSignals()..setJobOrder(job),
+          onReportSubmitted: () => Navigator.of(context).maybePop(),
+        ),
+      ),
+    );
+  }
+  */
+  // Gene - Oct 13, 2026: Guarded _handleOpenReport so rescheduled jobs cannot open report screen or modify records.
+  void _handleOpenReport(BuildContext context, JobOrderDto job) {
+    if (job.isRescheduled || job.siteException == SiteException.reschedule) return;
     if (onOpenReport != null) {
       onOpenReport!(job);
       return;
@@ -2401,6 +2457,189 @@ class JobOrderDetailScreen extends StatelessWidget {
 */
   // Gene - Oct 13, 2026: Replaced duplicated radius account logic with unified job.radiusUsername getter.
   String _radiusAccountOf(JobOrderDto job) => job.radiusUsername;
+}
+
+// Gene - Oct 13, 2026: Visual map location preview for Job Order based on lat/long coordinates.
+class _JobMapLocationPreview extends StatefulWidget {
+  final LatLng latLng;
+  final String label;
+  final bool isDark;
+
+  const _JobMapLocationPreview({
+    required this.latLng,
+    required this.label,
+    required this.isDark,
+  });
+
+  @override
+  State<_JobMapLocationPreview> createState() => _JobMapLocationPreviewState();
+}
+
+class _JobMapLocationPreviewState extends State<_JobMapLocationPreview> {
+  TileProvider? _tiles;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTiles();
+  }
+
+  Future<void> _loadTiles() async {
+    try {
+      final provider = await MapTiles.provider();
+      if (mounted) setState(() => _tiles = provider);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 200,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: widget.isDark ? AppTheme.darkInput : AppTheme.lightBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: widget.isDark ? AppTheme.borderDark : AppTheme.borderLight,
+          width: 0.5,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          FlutterMap(
+            options: MapOptions(
+              initialCenter: widget.latLng,
+              initialZoom: 16.5,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.pinchZoom |
+                    InteractiveFlag.doubleTapZoom,
+              ),
+            ),
+            children: [
+              /*
+              TileLayer(
+                urlTemplate: MapTiles.streetUrl,
+                maxZoom: MapTiles.streetMaxZoom,
+                userAgentPackageName: MapTiles.userAgentPackageName,
+                tileProvider: _tiles,
+              ),
+              */
+              // Gene - Oct 13, 2026: Render TileLayer only when cached provider is ready, preventing unmocked path_provider fallback crashes.
+              if (_tiles != null)
+                TileLayer(
+                  urlTemplate: MapTiles.streetUrl,
+                  maxZoom: MapTiles.streetMaxZoom,
+                  userAgentPackageName: MapTiles.userAgentPackageName,
+                  tileProvider: _tiles,
+                ),
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: widget.latLng,
+                    width: 44,
+                    height: 44,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2.5),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x66000000),
+                            blurRadius: 6,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.home_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Positioned(
+            bottom: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.65),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(CupertinoIcons.zoom_in,
+                      size: 16, color: Colors.white),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Pinch to Zoom',
+                    style: context.text.labelSmall!.copyWith(
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  MapNavigationService.navigateTo(
+                    widget.latLng,
+                    label: widget.label,
+                  );
+                },
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x40000000),
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.navigation_rounded,
+                          size: 16, color: Colors.white),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Navigate',
+                        style: context.text.labelSmall!.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// The straight-line distance between the technician and the job's coordinates.

@@ -125,7 +125,28 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
   }
 
   // Gene - Oct 13, 2026: Opens the completion report directly from the Job Orders list card shortcut.
+  /*
   void _openReport(JobOrderDto job) {
+    if (widget.onSelectJobForReport != null) {
+      widget.onSelectJobForReport!(job);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateReportScreen(
+          jobsSignals: widget.jobsSignals,
+          reportSignals: ReportSignals()..setJobOrder(job),
+          onReportSubmitted: () => Navigator.of(context).maybePop(),
+        ),
+      ),
+    );
+  }
+  */
+  // Gene - Oct 13, 2026: Guarded _openReport so rescheduled jobs cannot open the report screen or modify records.
+  void _openReport(JobOrderDto job) {
+    if (job.isRescheduled || job.siteException == SiteException.reschedule) return;
     if (widget.onSelectJobForReport != null) {
       widget.onSelectJobForReport!(job);
       return;
@@ -1088,6 +1109,7 @@ class _JobRowState extends State<_JobRow> {
         tooltip: _isExpanded ? 'Collapse details' : 'Expand details',
         onPressed: () => setState(() => _isExpanded = !_isExpanded),
       ),
+      /*
       trailing: Tooltip(
         message: 'Open report',
         child: InkWell(
@@ -1105,6 +1127,35 @@ class _JobRowState extends State<_JobRow> {
           ),
         ),
       ),
+      */
+      // Gene - Oct 13, 2026: Disabled report shortcut button '>' for rescheduled jobs to prevent opening reports or modifying records.
+      trailing: () {
+        final isRescheduled = job.isRescheduled ||
+            job.siteException == SiteException.reschedule;
+        return Tooltip(
+          message: isRescheduled
+              ? 'Rescheduled (report locked)'
+              : 'Open report',
+          child: InkWell(
+            key: ValueKey('job_report_shortcut_${job.id}'),
+            onTap: isRescheduled ? null : widget.onOpenReport,
+            child: SizedBox(
+              width: 48,
+              child: Center(
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  size: 26,
+                  color: isRescheduled
+                      ? (Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white24
+                          : Colors.black26)
+                      : AppTheme.primary,
+                ),
+              ),
+            ),
+          ),
+        );
+      }(),
       extra: _isExpanded
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,

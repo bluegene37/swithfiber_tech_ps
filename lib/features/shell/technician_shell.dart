@@ -277,7 +277,23 @@ class _TechnicianShellState extends State<TechnicianShell>
 
   /// Opens the on-site report for a job order as its own page, rather than a
   /// separate tab: a report only ever belongs to a job.
+  /*
   void _openReportForJob(JobOrderDto job) {
+    _reportSignals.setJobOrder(job);
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CreateReportScreen(
+          jobsSignals: widget.jobsSignals,
+          reportSignals: _reportSignals,
+          onReportSubmitted: () => Navigator.of(context).maybePop(),
+        ),
+      ),
+    );
+  }
+  */
+  // Gene - Oct 13, 2026: Guarded _openReportForJob so rescheduled jobs cannot open report screen or modify records.
+  void _openReportForJob(JobOrderDto job) {
+    if (job.isRescheduled || job.siteException == SiteException.reschedule) return;
     _reportSignals.setJobOrder(job);
     Navigator.of(context).push(
       MaterialPageRoute(

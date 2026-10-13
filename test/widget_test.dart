@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
@@ -106,7 +107,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(sampleJob.ticketNumber), findsOneWidget);
+    /*
     expect(find.text(sampleJob.customerName), findsOneWidget);
+    */
+    // Gene - Oct 13, 2026: customerName appears in header and Subscriber card now that on-site records card is removed.
+    expect(find.text(sampleJob.customerName), findsAtLeastNWidgets(1));
     // Subscriber details and the workflow card now sit further down the
     // lazy list (read first, act, then detail), so scroll to them.
     final subscriber = find.text('Subscriber & Location');
@@ -146,7 +151,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     // The list keeps the offset it was scrolled to above, so come back to the
-    // top before asserting on the header.
+    /*
     await tester.dragUntilVisible(
       find.text(sampleJob.customerName),
       find.byType(Scrollable).first,
@@ -155,6 +160,13 @@ void main() {
 
     expect(find.text(sampleJob.ticketNumber), findsOneWidget);
     expect(find.text(sampleJob.customerName), findsOneWidget);
+    */
+    // Gene - Oct 13, 2026: Drag scrollable back to top and assert customerName presence across header and subscriber card.
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, 1000));
+    await tester.pumpAndSettle();
+
+    expect(find.text(sampleJob.ticketNumber), findsOneWidget);
+    expect(find.text(sampleJob.customerName), findsAtLeastNWidgets(1));
 
     await tester.runAsync(() async {
       await jobsSignals.dispose();
@@ -310,6 +322,7 @@ void main() {
       repository = JobRepository(db.jobOrdersDao);
       jobsSignals = JobsSignals(repository);
       await db.jobOrdersDao.insertAllJobs([
+        /*
         JobOrderDto(
           id: 99,
           ticketNumber: 'SF-99',
@@ -317,6 +330,18 @@ void main() {
           address: 'Block 1 Lot 2 Street',
           status: 'Scheduled',
           houseFront: 'uploads/house_front_test.jpg',
+          addressCoordinates: '14.5995,120.9842',
+        ),
+        */
+        // Gene - Oct 13, 2026: Provide coordinates via rawJson so JobOrderDto.latLng parses addressCoordinates correctly.
+        JobOrderDto(
+          id: 99,
+          ticketNumber: 'SF-99',
+          customerName: 'Front House Tester',
+          address: 'Block 1 Lot 2 Street',
+          status: 'Scheduled',
+          houseFront: 'uploads/house_front_test.jpg',
+          rawJson: '{"addressCoordinates": "14.5995, 120.9842"}',
         ),
       ]);
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -337,6 +362,13 @@ void main() {
     await tester.scrollUntilVisible(frontHouse, 300,
         scrollable: find.byType(Scrollable).first);
     expect(frontHouse, findsOneWidget);
+
+    // Gene - Oct 13, 2026: Assert Answering Flow is removed and FlutterMap location is rendered based on lat/long.
+    expect(find.text('Answering Flow'), findsNothing);
+    final map = find.byType(FlutterMap);
+    await tester.scrollUntilVisible(map, 300,
+        scrollable: find.byType(Scrollable).first);
+    expect(map, findsOneWidget);
 
     await tester.runAsync(() async {
       await jobsSignals.dispose();
