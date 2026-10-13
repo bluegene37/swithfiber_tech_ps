@@ -20,6 +20,12 @@ import '../widgets/jobs_map_view.dart';
 import '../widgets/job_contact.dart';
 import '../widgets/today_glance_panel.dart';
 import 'job_order_detail_screen.dart';
+// Gene - Oct 13, 2026: Added imports for direct report creation shortcut from Job Orders list.
+import '../../reports/screens/create_report_screen.dart';
+import '../../reports/signals/report_signals.dart';
+
+// Gene - Oct 13, 2026: Added JobGrouping enum to support grouping jobs by Date or Barangay.
+enum JobGrouping { date, barangay }
 
 /// The Today home (DESIGN.md, Screen placement): the technician's day on one
 /// glance. A read-only panel at the top, the next job lifted with the
@@ -83,6 +89,8 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
   bool _showMap = false;
   bool _showSearch = false;
   int? _selectedJobId;
+  // Gene - Oct 13, 2026: Added _grouping state to toggle grouping by date vs barangay.
+  JobGrouping _grouping = JobGrouping.date;
 
   @override
   void dispose() {
@@ -111,6 +119,25 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
           lcpNapSignals: widget.lcpNapSignals,
           onOpenReport: widget.onSelectJobForReport,
           readOnly: _showDone,
+        ),
+      ),
+    );
+  }
+
+  // Gene - Oct 13, 2026: Opens the completion report directly from the Job Orders list card shortcut.
+  void _openReport(JobOrderDto job) {
+    if (widget.onSelectJobForReport != null) {
+      widget.onSelectJobForReport!(job);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateReportScreen(
+          jobsSignals: widget.jobsSignals,
+          reportSignals: ReportSignals()..setJobOrder(job),
+          onReportSubmitted: () => Navigator.of(context).maybePop(),
         ),
       ),
     );
@@ -348,6 +375,51 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
           ),
         ),
 
+        // Gene - Oct 13, 2026: Added Group By toggle (Date vs Barangay) allowing technicians to group the queue chronologically or geographically.
+        if (!_showDone && !_showMap)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+            child: MediaQuery.withClampedTextScaling(
+              maxScaleFactor: 1.15,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Group by',
+                      style: context.text.bodyMedium!.copyWith(
+                        color: AppTheme.secondaryInkOf(context),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SegmentedButton<JobGrouping>(
+                    segments: const [
+                      ButtonSegment(
+                        value: JobGrouping.date,
+                        label: Text('Date'),
+                      ),
+                      ButtonSegment(
+                        value: JobGrouping.barangay,
+                        label: Text('Barangay'),
+                      ),
+                    ],
+                    selected: {_grouping},
+                    showSelectedIcon: false,
+                    /*
+                    // Gene - Oct 13, 2026: Previously used compact visual density and shrink wrap tap target; commented out to preserve touch target accessibility.
+                    style: ButtonStyle(
+                      visualDensity: VisualDensity.standard,
+                    ),
+                    */
+                    // Gene - Oct 13, 2026: Default SegmentedButton style used to ensure accessible touch target sizes conforming to tap targets audit.
+                    onSelectionChanged: (selection) =>
+                        setState(() => _grouping = selection.first),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
         Expanded(child: _buildBody(context, signals)),
       ],
     );
@@ -486,6 +558,48 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
           ),
         );
 */
+        // Gene - Oct 13, 2026: If grouped by Barangay, group all jobs across all dates strictly by Barangay with 1 header per barangay.
+        if (_grouping == JobGrouping.barangay) {
+          final bgyMap = <String, List<JobOrderDto>>{};
+          for (final job in prioritized) {
+            final bgy = (job.barangay != null &&
+                    job.barangay!.trim().isNotEmpty)
+                ? job.barangay!.trim()
+                : 'Other Area';
+            bgyMap.putIfAbsent(bgy, () => []).add(job);
+          }
+          final sortedBgys = bgyMap.keys.toList()
+            ..sort((a, b) {
+              if (a == 'Other Area') return 1;
+              if (b == 'Other Area') return -1;
+              return a.compareTo(b);
+            });
+
+          return RefreshIndicator(
+            onRefresh: signals.fetchRemote,
+            color: AppTheme.primary,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+              children: [
+                for (final bgy in sortedBgys) ...[
+                  _BarangayHeader(
+                    barangay: bgy,
+                    count: bgyMap[bgy]!.length,
+                  ),
+                  for (final job in bgyMap[bgy]!) ...[
+                    _JobRow(
+                      job: job,
+                      onTap: () => _openDetails(job),
+                      onOpenReport: () => _openReport(job),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ],
+              ],
+            ),
+          );
+        }
+
         // Gene - Oct 12, 2026: Sub-cluster jobs by Barangay under each Date group matching AppSheet hierarchy.
         return RefreshIndicator(
           onRefresh: signals.fetchRemote,
@@ -522,6 +636,7 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
                         _JobRow(
                           job: job,
                           onTap: () => _openDetails(job),
+                          onOpenReport: () => _openReport(job),
                         ),
                         const SizedBox(height: 8),
                       ],
@@ -809,11 +924,13 @@ class _JobRow extends StatelessWidget {
 }
 */
 // Gene - Oct 6, 2026: Made _JobRow expandable so secondary details (address, plant, contact, actions) are collapsed by default and toggleable via trailing chevron button.
+// Gene - Oct 13, 2026: Added onOpenReport callback to trigger direct completion report creation from trailing shortcut.
 class _JobRow extends StatefulWidget {
   final JobOrderDto job;
   final VoidCallback onTap;
+  final VoidCallback? onOpenReport;
 
-  const _JobRow({required this.job, required this.onTap});
+  const _JobRow({required this.job, required this.onTap, this.onOpenReport});
 
   /// A plant value the server left blank or wrote as "0" is unassigned.
   static String? _assigned(String? raw) {
@@ -855,6 +972,7 @@ class _JobRowState extends State<_JobRow> {
     ].join(' · ');
     final email = job.subscriberEmail;
 
+/*
     return StatusRailRow(
       leading: distanceLabelFor(job),
       railColor: rail,
@@ -906,6 +1024,126 @@ class _JobRowState extends State<_JobRow> {
                 icon: Icons.sms_rounded,
                 label: 'SMS',
                 onTap: () => smsJob(context, job),
+              ),
+            ]
+          : null,
+    );
+*/
+    // Gene - Oct 13, 2026: Made card tap toggle expand/collapse so tapping the card never triggers accidental navigation, and moved Details navigation to a dedicated action button at the end of the action footer.
+    return StatusRailRow(
+      leading: distanceLabelFor(job),
+      railColor: rail,
+      statusInk: ink,
+      title: job.customerName,
+      data: _JobRow.ticketLine(job),
+      /*
+      trailing: IconButton(
+        key: ValueKey('job_expand_toggle_${job.id}'),
+        icon: Icon(
+          _isExpanded
+              ? Icons.keyboard_arrow_up_rounded
+              : Icons.keyboard_arrow_down_rounded,
+          color: AppTheme.secondaryInkOf(context),
+        ),
+        tooltip: _isExpanded ? 'Collapse details' : 'Expand details',
+        onPressed: () => setState(() => _isExpanded = !_isExpanded),
+      ),
+      */
+      /*
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            key: ValueKey('job_expand_toggle_${job.id}'),
+            icon: Icon(
+              _isExpanded
+                  ? Icons.keyboard_arrow_up_rounded
+                  : Icons.keyboard_arrow_down_rounded,
+              color: AppTheme.secondaryInkOf(context),
+            ),
+            tooltip: _isExpanded ? 'Collapse details' : 'Expand details',
+            onPressed: () => setState(() => _isExpanded = !_isExpanded),
+          ),
+          IconButton(
+            key: ValueKey('job_report_shortcut_${job.id}'),
+            icon: const Icon(
+              Icons.chevron_right_rounded,
+              color: AppTheme.primary,
+            ),
+            tooltip: 'Open report',
+            onPressed: widget.onOpenReport,
+          ),
+        ],
+      ),
+      */
+      // Gene - Oct 13, 2026: Positioned expand toggle chevron inside the card body, and dedicated trailing '>' button separated by vertical hairline divider.
+      expandToggle: IconButton(
+        key: ValueKey('job_expand_toggle_${job.id}'),
+        icon: Icon(
+          _isExpanded
+              ? Icons.keyboard_arrow_up_rounded
+              : Icons.keyboard_arrow_down_rounded,
+          color: AppTheme.secondaryInkOf(context),
+        ),
+        tooltip: _isExpanded ? 'Collapse details' : 'Expand details',
+        onPressed: () => setState(() => _isExpanded = !_isExpanded),
+      ),
+      trailing: Tooltip(
+        message: 'Open report',
+        child: InkWell(
+          key: ValueKey('job_report_shortcut_${job.id}'),
+          onTap: widget.onOpenReport,
+          child: const SizedBox(
+            width: 48,
+            child: Center(
+              child: Icon(
+                Icons.chevron_right_rounded,
+                size: 26,
+                color: AppTheme.primary,
+              ),
+            ),
+          ),
+        ),
+      ),
+      extra: _isExpanded
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (place.isNotEmpty)
+                  _DetailLine(icon: Icons.location_on_outlined, text: place),
+                if (plant.isNotEmpty)
+                  _DetailLine(
+                      icon: Icons.hub_outlined, text: plant, mono: true),
+                if (job.planName?.isNotEmpty == true)
+                  _DetailLine(icon: Icons.wifi_rounded, text: job.planName!),
+                _ContactLines(phone: phone, email: email, job: job),
+              ],
+            )
+          : null,
+      statusLabel: label,
+      onTap: () => setState(() => _isExpanded = !_isExpanded),
+      actions: _isExpanded
+          ? [
+              StatusRailAction(
+                icon: Icons.navigation_rounded,
+                label: 'Navigate',
+                onTap: () => navigateToJob(job),
+              ),
+              StatusRailAction(
+                icon: Icons.call_rounded,
+                label: 'Call',
+                onTap: () => callJob(context, job),
+              ),
+              StatusRailAction(
+                icon: Icons.sms_rounded,
+                label: 'SMS',
+                onTap: () => smsJob(context, job),
+              ),
+              StatusRailAction(
+                icon: Icons.assignment_outlined,
+                label: 'Details',
+                onTap: widget.onTap,
               ),
             ]
           : null,

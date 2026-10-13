@@ -30,6 +30,8 @@ class StatusRailRow extends StatelessWidget {
   final Widget? extra;
   final String statusLabel;
   final Widget? trailing;
+  // Gene - Oct 13, 2026: Added expandToggle widget placed on the card body before the partitioned trailing divider.
+  final Widget? expandToggle;
   final VoidCallback? onTap;
 
   /// Optional strip of [StatusRailAction]s under the row, split evenly with
@@ -37,6 +39,7 @@ class StatusRailRow extends StatelessWidget {
   /// bottom of the card (DESIGN.md: read at the top, act at the bottom).
   final List<Widget>? actions;
 
+  /*
   const StatusRailRow({
     super.key,
     this.leading,
@@ -49,6 +52,24 @@ class StatusRailRow extends StatelessWidget {
     this.extra,
     required this.statusLabel,
     this.trailing,
+    this.onTap,
+    this.actions,
+  });
+  */
+  // Gene - Oct 13, 2026: Added expandToggle to StatusRailRow constructor.
+  const StatusRailRow({
+    super.key,
+    this.leading,
+    required this.railColor,
+    this.statusInk,
+    required this.title,
+    this.subtitle,
+    this.data,
+    this.footnote,
+    this.extra,
+    required this.statusLabel,
+    this.trailing,
+    this.expandToggle,
     this.onTap,
     this.actions,
   });
@@ -72,6 +93,7 @@ class StatusRailRow extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+/*
           InkWell(
             onTap: onTap,
             child: ConstrainedBox(
@@ -163,6 +185,227 @@ class StatusRailRow extends StatelessWidget {
                   ],
                 )),
               ),
+            ),
+          ),
+*/
+          // Gene - Oct 13, 2026: Positioned trailing outside the InkWell so trailing controls (e.g. expand chevron) never collide with or double-trigger the row onTap gesture.
+          /*
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: onTap,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: minHeight),
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        14,
+                        12,
+                        trailing != null ? 4 : 14,
+                        12,
+                      ),
+                      child: IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (leading != null)
+                              SizedBox(
+                                width: leadingWidth,
+                                child: Text(
+                                  leading!,
+                                  style: context.text.bodyLarge!
+                                      .copyWith(fontWeight: FontWeight.w500),
+                                  maxLines: 3,
+                                ),
+                              ),
+                            Container(
+                              width: 4,
+                              margin: EdgeInsets.only(
+                                  right: 12, left: leading != null ? 0 : 0),
+                              decoration: BoxDecoration(
+                                color: railColor,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            Expanded(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(title, style: context.text.titleMedium),
+                                  if (subtitle != null &&
+                                      subtitle!.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      subtitle!,
+                                      style: context.text.bodySmall,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                  if (data != null && data!.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      data!,
+                                      style: context.text.bodyLarge!.copyWith(
+                                        color: AppTheme.secondaryInkOf(context),
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                  if (footnote != null &&
+                                      footnote!.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      footnote!,
+                                      style: context.text.bodySmall,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                  if (extra != null) ...[
+                                    const SizedBox(height: 6),
+                                    extra!,
+                                  ],
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    statusLabel.toUpperCase(),
+                                    style: context.text.labelMedium!
+                                        .copyWith(color: wordInk),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (trailing != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Center(child: trailing),
+                ),
+            ],
+          ),
+          */
+          // Gene - Oct 13, 2026: Partitioned trailing button with vertical hairline divider from the card body, and placed expandToggle inside card body.
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: onTap,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: minHeight),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                        child: IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (leading != null)
+                                SizedBox(
+                                  width: leadingWidth,
+                                  child: Text(
+                                    leading!,
+                                    style: context.text.bodyLarge!
+                                        .copyWith(fontWeight: FontWeight.w500),
+                                    maxLines: 3,
+                                  ),
+                                ),
+                              Container(
+                                width: 4,
+                                margin: EdgeInsets.only(
+                                    right: 12, left: leading != null ? 0 : 0),
+                                decoration: BoxDecoration(
+                                  color: railColor,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                              Expanded(
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(title,
+                                              style: context.text.titleMedium),
+                                          if (subtitle != null &&
+                                              subtitle!.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              subtitle!,
+                                              style: context.text.bodySmall,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                          if (data != null &&
+                                              data!.isNotEmpty) ...[
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              data!,
+                                              style: context.text.bodyLarge!
+                                                  .copyWith(
+                                                color: AppTheme.secondaryInkOf(
+                                                    context),
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                          if (footnote != null &&
+                                              footnote!.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              footnote!,
+                                              style: context.text.bodySmall,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                          if (extra != null) ...[
+                                            const SizedBox(height: 6),
+                                            extra!,
+                                          ],
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            statusLabel.toUpperCase(),
+                                            style: context.text.labelMedium!
+                                                .copyWith(color: wordInk),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (expandToggle != null) ...[
+                                      const SizedBox(width: 4),
+                                      expandToggle!,
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (trailing != null) ...[
+                  Container(width: 1, color: hairline),
+                  trailing!,
+                ],
+              ],
             ),
           ),
           if (actions != null && actions!.isNotEmpty) ...[
