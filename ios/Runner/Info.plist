@@ -2,25 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Schemes canLaunchUrl may probe, so directions open in the Google
-	     Maps or Waze app when installed instead of the browser. -->
-	<key>LSApplicationQueriesSchemes</key>
-	<array>
-		<string>comgooglemaps</string>
-		<string>waze</string>
-		<string>maps</string>
-		<string>tel</string>
-		<string>sms</string>
-	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
-	<!-- Gene - Oct 08, 2026: Updated CFBundleDisplayName from SF Tech to SwitchFiber Tech -->
 	<key>CFBundleDisplayName</key>
-	<!-- <string>SF Tech</string> -->
-	<!-- Gene - Oct 09, 2026: Updated CFBundleDisplayName to SF Tech for installed app label -->
-	<!-- <string>SwitchFiber Tech</string> -->
 	<string>SF Tech</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
@@ -28,11 +14,7 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
-	<!-- Gene - Oct 08, 2026: Updated CFBundleName from SF Tech to SwitchFiber Tech -->
 	<key>CFBundleName</key>
-	<!-- <string>SF Tech</string> -->
-	<!-- Gene - Oct 09, 2026: Updated CFBundleName to SF Tech for installed app label -->
-	<!-- <string>SwitchFiber Tech</string> -->
 	<string>SF Tech</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
@@ -44,6 +26,14 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>comgooglemaps</string>
+		<string>waze</string>
+		<string>maps</string>
+		<string>tel</string>
+		<string>sms</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -53,10 +43,15 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Take photos of the NAP box reading, ONT reading, installed setup, speed test, port label, signed contract and house front for the job order's completion report.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Attach existing photos to a job order's completion report.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Show the distance to each job, put the nearest job first, and stamp report photos with the site location.</string>
+	<!-- Gene - Oct 14, 2026: Added NSLocationAlwaysAndWhenInUseUsageDescription and NSLocationAlwaysUsageDescription to satisfy Apple App Store validation ITMS-90683 from geolocator APIs -->
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Show the distance to each job, put the nearest job first, and stamp report photos with the site location.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Show the distance to each job, put the nearest job first, and stamp report photos with the site location.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Attach existing photos to a job order's completion report.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
