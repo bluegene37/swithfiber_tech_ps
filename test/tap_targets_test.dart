@@ -102,12 +102,19 @@ void main() {
     // 1x1 PNG fixture above means that decodes cleanly, so no exception
     // needs to be swallowed here.
 
+    /*
     for (final label in ['Call', 'SMS']) {
       final button = find.ancestor(
           of: find.text(label), matching: find.byType(OutlinedButton));
       expect(tester.getSize(button).height, greaterThanOrEqualTo(48),
           reason: '$label button');
     }
+    */
+    // Gene - Oct 13, 2026: Call action button was removed from JobOrderDetailScreen per user request; verifying SMS button tap target.
+    final smsButton = find.ancestor(
+        of: find.text('SMS'), matching: find.byType(OutlinedButton));
+    expect(tester.getSize(smsButton).height, greaterThanOrEqualTo(48),
+        reason: 'SMS button');
     final activate = find.ancestor(
         of: find.text('Complete job'), matching: find.byType(ElevatedButton));
     expect(tester.getSize(activate).height, greaterThanOrEqualTo(52),

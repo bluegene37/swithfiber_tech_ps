@@ -143,7 +143,19 @@ void main() {
     expect(find.text('Select a Job Order'), findsOneWidget);
     expect(find.byType(JobOrderDetailScreen), findsNothing);
 
+    /*
     await tester.tap(find.text('Juan Dela Cruz'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.byType(StatusRailRow), findsOneWidget);
+    expect(find.byType(JobOrderDetailScreen), findsOneWidget);
+    expect(find.text('Select a Job Order'), findsNothing);
+    */
+    // Gene - Oct 13, 2026: Tapping the card expands it; tapping DETAILS selects the job on tablet master-detail view.
+    await tester.tap(find.text('Juan Dela Cruz'));
+    await tester.pump();
+    await tester.tap(find.text('DETAILS'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 

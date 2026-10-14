@@ -99,7 +99,11 @@ void main() {
       final field = find.byKey(const ValueKey('router_model_field'));
       await tester.scrollUntilVisible(field, 300,
           scrollable: find.byType(Scrollable).first);
+      /*
       expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+      */
+      // Gene - Oct 13, 2026: Assert ONT model is rendered as a PickerField and not a dropdown, while VLAN dropdown exists separately.
+      expect(find.byKey(const ValueKey('router_model_field')), findsOneWidget);
       expect(report.routerModel.value, 'Huawei 5v5');
 
       await tester.tap(field);

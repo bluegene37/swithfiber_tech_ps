@@ -192,6 +192,7 @@ void main() {
         await tester.tap(find.text(name).last);
         await tester.pumpAndSettle();
 
+        /*
         if (qty != null) {
           final qtyField = find.byKey(const ValueKey('material_add_qty_field'));
           await tester.enterText(qtyField, qty);
@@ -201,6 +202,20 @@ void main() {
         final addBtn = find.byKey(const ValueKey('add_material_button'));
         await tester.tap(addBtn);
         await tester.pumpAndSettle();
+        */
+        // Gene - Oct 13, 2026: Added materials default to 1; tap Add Material then increment quantity via counter buttons.
+        final addBtn = find.byKey(const ValueKey('add_material_button'));
+        await tester.tap(addBtn);
+        await tester.pumpAndSettle();
+
+        if (qty != null && qty != '1') {
+          String slug = 'drop_cable';
+          if (name.contains('Fast Connector')) slug = 'fast_connectors';
+          if (name.contains('S-Clamp')) slug = 's_clamps';
+          final plusBtn = find.byKey(ValueKey('counter_plus_$slug'));
+          await tester.tap(plusBtn);
+          await tester.pump();
+        }
       }
 
       await addMaterial('Drop Cable (m)', '2');
@@ -350,6 +365,7 @@ void main() {
       await tester.tap(find.text('FLAT CABLE CLIP'));
       await tester.pumpAndSettle();
 
+      /*
       // Enter quantity 5 and tap Add Material
       final qtyField = find.byKey(const ValueKey('material_add_qty_field'));
       await tester.enterText(qtyField, '5');
@@ -362,6 +378,25 @@ void main() {
       expect(reportSignals.materialsUsed.value['FLAT CABLE CLIP'], 5);
       expect(find.text('FLAT CABLE CLIP'), findsOneWidget);
       expect(find.widgetWithText(TextField, '5'), findsOneWidget);
+      */
+      // Gene - Oct 13, 2026: Added materials default to quantity 1; tap counter plus button to increment.
+      final addBtn = find.byKey(const ValueKey('add_material_button'));
+      await tester.tap(addBtn);
+      await tester.pumpAndSettle();
+
+      expect(reportSignals.materialsUsed.value['FLAT CABLE CLIP'], 1);
+      expect(find.text('FLAT CABLE CLIP'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '1'), findsOneWidget);
+
+      // Tap counter plus button to fast increment quantity in the added materials list
+      final plusBtn =
+          find.byKey(const ValueKey('counter_plus_flat_cable_clip'));
+      expect(plusBtn, findsOneWidget);
+      await tester.tap(plusBtn);
+      await tester.pump();
+
+      expect(reportSignals.materialsUsed.value['FLAT CABLE CLIP'], 2);
+      expect(find.widgetWithText(TextField, '2'), findsOneWidget);
 
       // Tap remove button
       final removeBtn = find.byKey(const ValueKey('remove_material_flat_cable_clip'));

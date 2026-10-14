@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
+// Gene - Oct 14, 2026: Import flutter/material.dart for SizedBox widget in tests.
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/database/daos/lcp_nap_dao.dart';
@@ -107,7 +109,16 @@ void main() {
     expect(find.text('Username or Email'), findsNothing,
         reason: 'technicians sign in with a username only');
 
+    /*
     await tester.runAsync(() async {
+      await lcpNapSignals.dispose();
+      await db.close();
+    });
+    */
+    // Gene - Oct 14, 2026: Properly unmount widget and dispose jobsSignals before closing db to prevent AbortException.
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() async {
+      await jobsSignals.dispose();
       await lcpNapSignals.dispose();
       await db.close();
     });

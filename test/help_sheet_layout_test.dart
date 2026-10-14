@@ -1,4 +1,6 @@
 import 'package:flutter/services.dart';
+// Gene - Oct 14, 2026: Import flutter/material.dart for SizedBox widget in tests.
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/database/daos/lcp_nap_dao.dart';
@@ -17,6 +19,8 @@ void main() {
 
   late AppDatabase db;
   late LcpNapSignals lcpNapSignals;
+  // Gene - Oct 14, 2026: Track jobsSignals instance to dispose its db stream subscription cleanly before db.close().
+  late JobsSignals jobsSignals;
 
   Future<void> openHelpSheet(WidgetTester tester) async {
     final store = <String, String>{};
@@ -28,6 +32,7 @@ void main() {
 
     db = AppDatabase.forTesting();
     lcpNapSignals = LcpNapSignals(LcpNapRepository(LcpNapLocationsDao(db)));
+    /*
     final authSignals = AuthSignals.instance;
     authSignals.currentUser.value = null;
 
@@ -35,6 +40,20 @@ void main() {
       SwitchFiberTechApp(
         authSignals: authSignals,
         jobsSignals: JobsSignals(JobRepository(db.jobOrdersDao)),
+        lcpNapSignals: lcpNapSignals,
+        showSplash: false,
+      ),
+    );
+    */
+    // Gene - Oct 14, 2026: Assign jobsSignals explicitly so it can be disposed during teardown.
+    jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao));
+    final authSignals = AuthSignals.instance;
+    authSignals.currentUser.value = null;
+
+    await tester.pumpWidget(
+      SwitchFiberTechApp(
+        authSignals: authSignals,
+        jobsSignals: jobsSignals,
         lcpNapSignals: lcpNapSignals,
         showSplash: false,
       ),
@@ -52,7 +71,16 @@ void main() {
   }
 
   Future<void> disposeAll(WidgetTester tester) async {
+    /*
     await tester.runAsync(() async {
+      await lcpNapSignals.dispose();
+      await db.close();
+    });
+    */
+    // Gene - Oct 14, 2026: Unmount widget and dispose jobsSignals before closing db to avoid AbortException.
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() async {
+      await jobsSignals.dispose();
       await lcpNapSignals.dispose();
       await db.close();
     });

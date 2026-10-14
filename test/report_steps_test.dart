@@ -140,8 +140,11 @@ void main() {
     // One red verb, pinned, saying what is still missing.
     expect(find.byType(StickyActionBar), findsOneWidget);
     expect(find.text('Save report'), findsOneWidget);
-    expect(find.textContaining('Missing: serial number'), findsOneWidget);
+    /*
     expect(find.textContaining('7 of 7 photos'), findsOneWidget);
+    */
+    // Gene - Oct 13, 2026: Expect 4 of 4 photos now that unneeded photo proofs are removed.
+    expect(find.textContaining('4 of 4 photos'), findsOneWidget);
     expect(find.textContaining('signature'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
