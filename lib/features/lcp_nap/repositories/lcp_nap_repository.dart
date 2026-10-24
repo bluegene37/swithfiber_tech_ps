@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:dio/dio.dart';
 import '../../../core/database/daos/lcp_nap_dao.dart';
 import '../../../core/network/api_client.dart';
+import '../models/lcp_nap_images_model.dart';
 import '../models/lcp_nap_model.dart';
 
 /// Repository coordinating LCP NAP locations between the API and the local database.
@@ -117,4 +120,66 @@ class LcpNapRepository {
 
     await _dao.insertAllLocations(sampleSites, synced: true);
   }
+
+  // Gene - Oct 24, 2026: Cached LCP NAP location photos by site ID.
+  final Map<int, LcpNapImagesDto> _imagesCache = {};
+
+  /// Clear in-memory photos cache (useful for tests or refresh).
+  void clearImagesCache() {
+    _imagesCache.clear();
+  }
+
+  /// Fetches site enclosure photos and optical power reading image for an LCP NAP location.
+  /// Calls GET /api/LCPNapLocations/{id}/GetLCPNAPLocationImages
+  /// and fallback GET /api/LCPNapLocations/{id}/GetReadingImage.
+  Future<LcpNapImagesDto?> getLcpNapLocationImages(
+    int locationId, {
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _imagesCache.containsKey(locationId)) {
+      return _imagesCache[locationId];
+    }
+
+    try {
+      final response =
+          await _api.get('/LCPNapLocations/$locationId/GetLCPNAPLocationImages');
+      final data = response.data;
+      if (data is Map<String, dynamic>) {
+        var dto = LcpNapImagesDto.fromJson(data);
+
+        // Fallback to GetReadingImage if readingImage was not included in JSON payload
+        if (dto.readingImage == null) {
+          try {
+            final readingRes = await _api.get(
+              '/LCPNapLocations/$locationId/GetReadingImage',
+              options: Options(responseType: ResponseType.bytes),
+            );
+            if (readingRes.data is List<int> &&
+                (readingRes.data as List<int>).isNotEmpty) {
+              final b64 = base64Encode(readingRes.data as List<int>);
+              final readingFile = LcpNapImageFileDto(
+                fileContents: b64,
+                contentType: 'image/jpeg',
+                fileDownloadName: 'reading_$locationId.jpg',
+              );
+              dto = LcpNapImagesDto(
+                image: dto.image,
+                image2: dto.image2,
+                readingImage: readingFile,
+              );
+            }
+          } catch (_) {}
+        }
+
+        if (dto.hasAnyPhoto) {
+          _imagesCache[locationId] = dto;
+        }
+        return dto;
+      }
+    } catch (_) {
+      // Offline fallback or test mock
+    }
+    return _imagesCache[locationId];
+  }
 }
+

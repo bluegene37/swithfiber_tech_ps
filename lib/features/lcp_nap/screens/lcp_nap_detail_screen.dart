@@ -1,10 +1,20 @@
+// Gene - Oct 24, 2026: Commented out unnecessary dart:typed_data import as flutter/services.dart already exports it.
+/*
+import 'dart:typed_data';
+*/
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/map_navigation_service.dart';
+import '../../../core/services/photo_storage_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/data_url.dart';
+import '../../reports/widgets/photo_capture_tile.dart' show showPhotoViewer;
+import '../models/lcp_nap_images_model.dart';
 import '../models/lcp_nap_model.dart';
 import '../services/map_clustering.dart';
 import '../services/map_tiles.dart';
@@ -15,12 +25,15 @@ class LcpNapDetailScreen extends StatefulWidget {
   final int locationId;
   final LcpNapSignals signals;
   final TileProvider? tileProvider;
+  // Gene - Oct 24, 2026: Optional initial images parameter for testing.
+  final LcpNapImagesDto? initialImagesForTesting;
 
   const LcpNapDetailScreen({
     super.key,
     required this.locationId,
     required this.signals,
     this.tileProvider,
+    this.initialImagesForTesting,
   });
 
   @override
@@ -29,12 +42,26 @@ class LcpNapDetailScreen extends StatefulWidget {
 
 class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
   TileProvider? _tiles;
+  // Gene - Oct 24, 2026: State variables for LCP NAP site enclosure and reading photos.
+  LcpNapImagesDto? _sitePhotos;
 
   @override
   void initState() {
     super.initState();
     _tiles = widget.tileProvider;
+    _sitePhotos = widget.initialImagesForTesting;
     if (_tiles == null) _loadTileProvider();
+    if (_sitePhotos == null) _loadSitePhotos();
+  }
+
+  Future<void> _loadSitePhotos() async {
+    try {
+      final res = await widget.signals.repository
+          .getLcpNapLocationImages(widget.locationId);
+      if (mounted && res != null) {
+        setState(() => _sitePhotos = res);
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadTileProvider() async {
@@ -319,7 +346,12 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 4. GPS Geolocation Card
+              // 4. Site Enclosure & Reading Photos Card
+              // Gene - Oct 24, 2026: Added _buildSitePhotosCard to display enclosure and optical power reading photos.
+              _buildSitePhotosCard(context, location, isDark),
+              const SizedBox(height: 16),
+
+              // 5. GPS Geolocation Card
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -563,6 +595,306 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
         content: const Text('Site summary copied to clipboard!'),
         backgroundColor: isDark ? AppTheme.darkCard : AppTheme.darkSlate,
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // Gene - Oct 24, 2026: Site enclosure and optical power reading photos card.
+  Widget _buildSitePhotosCard(
+    BuildContext context,
+    LcpNapDto location,
+    bool isDark,
+  ) {
+    // Resolve photos from live API DTO or base location DTO
+    final enc1Bytes = _sitePhotos?.image?.bytes ??
+        (location.image != null
+            ? (PhotoStorageService.instance.resolveBytes(location.image!) ??
+                DataUrl.decode(location.image!))
+            : null);
+    final enc1Url = location.image != null &&
+            (location.image!.startsWith('http://') ||
+                location.image!.startsWith('https://'))
+        ? location.image!
+        : null;
+
+    final enc2Bytes = _sitePhotos?.image2?.bytes ??
+        (location.image2 != null
+            ? (PhotoStorageService.instance.resolveBytes(location.image2!) ??
+                DataUrl.decode(location.image2!))
+            : null);
+    final enc2Url = location.image2 != null &&
+            (location.image2!.startsWith('http://') ||
+                location.image2!.startsWith('https://'))
+        ? location.image2!
+        : null;
+
+    final readingBytes = _sitePhotos?.readingImage?.bytes ??
+        (location.readingImage != null
+            ? (PhotoStorageService.instance
+                    .resolveBytes(location.readingImage!) ??
+                DataUrl.decode(location.readingImage!))
+            : null);
+    final readingUrl = location.readingImage != null &&
+            (location.readingImage!.startsWith('http://') ||
+                location.readingImage!.startsWith('https://'))
+        ? location.readingImage!
+        : null;
+
+    final photos = <({
+      String title,
+      String subtitle,
+      IconData icon,
+      Uint8List? bytes,
+      String? remoteUrl
+    })>[
+      if (enc1Bytes != null || enc1Url != null)
+        (
+          title: 'Enclosure Exterior',
+          subtitle: 'NAP Box Enclosure 1',
+          icon: Icons.router_outlined,
+          bytes: enc1Bytes,
+          remoteUrl: enc1Url,
+        ),
+      if (enc2Bytes != null || enc2Url != null)
+        (
+          title: 'Enclosure Interior',
+          subtitle: 'NAP Splicing Tray / Ports',
+          icon: Icons.cable_rounded,
+          bytes: enc2Bytes,
+          remoteUrl: enc2Url,
+        ),
+      if (readingBytes != null || readingUrl != null)
+        (
+          title: 'Optical Power Reading',
+          subtitle: 'OPM Power Capture',
+          icon: Icons.speed_rounded,
+          bytes: readingBytes,
+          remoteUrl: readingUrl,
+        ),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                // Gene - Oct 24, 2026: Kept icon size at 20 standard floor for decorative icons.
+                /*
+                const Icon(Icons.photo_library_outlined,
+                    size: 18, color: AppTheme.primary),
+                */
+                const Icon(Icons.photo_library_outlined,
+                    size: 20, color: AppTheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Site Enclosure & Reading Photos',
+                    style: context.text.titleMedium,
+                  ),
+                ),
+                if (photos.isNotEmpty)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color:
+                          isDark ? AppTheme.darkInput : AppTheme.primarySubtleBg,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isDark
+                            ? AppTheme.borderDark
+                            : AppTheme.primarySubtleBorder,
+                      ),
+                    ),
+                    child: Text(
+                      '${photos.length} photos',
+                      style: context.text.labelSmall!.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.brandInkOf(context),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (photos.isEmpty)
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: isDark ? AppTheme.darkInput : AppTheme.lightBg,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.photo_camera_back_outlined,
+                      size: 32,
+                      color: AppTheme.secondaryInkOf(context),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No enclosure or optical reading photos uploaded yet.',
+                      style: context.text.bodySmall!.copyWith(
+                        color: AppTheme.secondaryInkOf(context),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              )
+            else
+              Column(
+                children: [
+                  for (int i = 0; i < photos.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 12),
+                    _buildPhotoItem(
+                      context,
+                      title: photos[i].title,
+                      subtitle: photos[i].subtitle,
+                      icon: photos[i].icon,
+                      bytes: photos[i].bytes,
+                      remoteUrl: photos[i].remoteUrl,
+                      isDark: isDark,
+                    ),
+                  ],
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhotoItem(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Uint8List? bytes,
+    required String? remoteUrl,
+    required bool isDark,
+  }) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkInput : AppTheme.lightBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+          width: 0.5,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+            child: Row(
+              children: [
+                // Gene - Oct 24, 2026: Set icon size to 20 to match standard decorative icon floor.
+                /*
+                Icon(icon, size: 18, color: AppTheme.primary),
+                */
+                Icon(icon, size: 20, color: AppTheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: context.text.labelMedium!.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: context.text.labelSmall!.copyWith(
+                          color: AppTheme.secondaryInkOf(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          InkWell(
+            onTap: () {
+              if (bytes != null) {
+                showPhotoViewer(context, bytes, title: title);
+              } else if (remoteUrl != null) {
+                launchUrl(Uri.parse(remoteUrl),
+                    mode: LaunchMode.externalApplication);
+              }
+            },
+            child: SizedBox(
+              height: 200,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (bytes != null)
+                    Image.memory(
+                      bytes,
+                      fit: BoxFit.cover,
+                    )
+                  else if (remoteUrl != null)
+                    Image.network(
+                      remoteUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Icon(Icons.broken_image_outlined, size: 32),
+                      ),
+                    )
+                  else
+                    const SizedBox.shrink(),
+                  Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Gene - Oct 24, 2026: Updated zoom icon size from 16 to 20 to conform with standard 20px floor.
+                          /*
+                          const Icon(CupertinoIcons.zoom_in,
+                              size: 16, // map furniture
+                              color: Colors.white),
+                          */
+                          const Icon(CupertinoIcons.zoom_in,
+                              size: 20, color: Colors.white),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Pinch / Zoom',
+                            style: context.text.labelSmall!.copyWith(
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

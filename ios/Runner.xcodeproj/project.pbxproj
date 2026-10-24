@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -159,7 +159,6 @@
 				006634778E4241CA9897AF38 /* Pods-RunnerTests.release.xcconfig */,
 				0245A6E33ECEFE1B412E3F5E /* Pods-RunnerTests.profile.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -486,8 +485,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
-				// Gene - Oct 08, 2026: Updated DEVELOPMENT_TEAM to personal account T7LB768N2Z.
-				/* DEVELOPMENT_TEAM = 8AD458D2K2; */
 				DEVELOPMENT_TEAM = T7LB768N2Z;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
@@ -673,8 +670,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
-				// Gene - Oct 08, 2026: Updated DEVELOPMENT_TEAM to personal account T7LB768N2Z.
-				/* DEVELOPMENT_TEAM = 8AD458D2K2; */
 				DEVELOPMENT_TEAM = T7LB768N2Z;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
@@ -698,8 +693,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
-				// Gene - Oct 08, 2026: Updated DEVELOPMENT_TEAM to personal account T7LB768N2Z.
-				/* DEVELOPMENT_TEAM = 8AD458D2K2; */
 				DEVELOPMENT_TEAM = T7LB768N2Z;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
