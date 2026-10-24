@@ -202,3 +202,66 @@ class LcpOptionDto {
       };
 }
 
+// Gene - Oct 24, 2026: Model for items from GET /api/InventoryItem used for dynamic materials selection.
+class InventoryItemDto {
+  final int id;
+  final String itemId;
+  final String name;
+  final String description;
+  final String supplier;
+  final int quantity;
+  final String? image;
+  final String? category;
+  final String? userEmail;
+  final DateTime? modifiedDate;
+
+  const InventoryItemDto({
+    required this.id,
+    required this.itemId,
+    required this.name,
+    this.description = '',
+    this.supplier = '',
+    this.quantity = 0,
+    this.image,
+    this.category,
+    this.userEmail,
+    this.modifiedDate,
+  });
+
+  factory InventoryItemDto.fromJson(Map<String, dynamic> json) {
+    return InventoryItemDto(
+      id: json['id'] is int
+          ? json['id'] as int
+          : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      itemId: json['itemId']?.toString().trim() ?? '',
+      name: json['name']?.toString().trim() ?? '',
+      description: json['description']?.toString().trim() ?? '',
+      supplier: json['supplier']?.toString().trim() ?? '',
+      quantity: json['quantity'] is int
+          ? json['quantity'] as int
+          : int.tryParse(json['quantity']?.toString() ?? '0') ?? 0,
+      image: json['image']?.toString().trim(),
+      category: json['category']?.toString().trim(),
+      userEmail: json['userEmail']?.toString().trim(),
+      modifiedDate: json['modifiedDate'] != null
+          ? DateTime.tryParse(json['modifiedDate'].toString())
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'itemId': itemId,
+        'name': name,
+        'description': description,
+        'supplier': supplier,
+        'quantity': quantity,
+        if (image != null) 'image': image,
+        if (category != null) 'category': category,
+        if (userEmail != null) 'userEmail': userEmail,
+        if (modifiedDate != null)
+          'modifiedDate': modifiedDate!.toIso8601String(),
+      };
+}
+
+

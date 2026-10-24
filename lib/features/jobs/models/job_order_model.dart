@@ -589,6 +589,17 @@ class JobOrderDto {
     return null;
   }
 
+  // Gene - Oct 24, 2026: Added applicationId getter to resolve customer application ID for image and document retrieval.
+  String? get applicationId {
+    final raw = _rawText('applicationId') ??
+        _rawText('applicationIdValue') ??
+        _rawText('application_id') ??
+        _rawText('applicationid');
+    if (raw != null && raw.trim().isNotEmpty) return raw.trim();
+    return null;
+  }
+
+
   // Gene - Oct 13, 2026: Added username and radiusUsername getters to resolve subscriber PPPoE / RADIUS account identity.
   /// The explicit subscriber account username or PPPoE username if assigned.
   String? get username =>

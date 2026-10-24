@@ -369,4 +369,94 @@ class CatalogService {
     } catch (_) {}
     return _cachedTechnicians ?? fallbackTechnicians;
   }
+
+  // Gene - Oct 24, 2026: Cached inventory items and material names.
+  List<InventoryItemDto>? _cachedInventoryItems;
+  List<String>? _cachedMaterials;
+
+  // Gene - Oct 24, 2026: Bundled fallback materials matching AppSheet / technician catalog.
+  static const List<String> fallbackMaterials = [
+    'APC-SC TO APC-SC (GREEN)',
+    'APC-SC TO UPC-SC (GREEN TO BLUE)',
+    'BROTHER CASSETTE TAPE',
+    'BROTHER LABEL PRINTER',
+    'Drop Cable (m)',
+    'F-CLAMP',
+    'FIBER OPTIC TROLLY',
+    'FLAT CABLE CLIP',
+    'HOUSE BRACKET',
+    'IOO BOX',
+    'MID SPAN',
+    'OPTI-S',
+    'OPTICAL POWER METER',
+    'S-Clamp',
+    'SC CONNECTOR',
+    'SC/APC Fast Connector',
+    'SCREW AND TOX',
+    'SENKO SC CONNECTOR',
+    'ZTE HG260',
+  ];
+
+  // Gene - Oct 24, 2026: Bundled fallback inventory items.
+  static final List<InventoryItemDto> fallbackInventoryItems = [
+    for (int i = 0; i < fallbackMaterials.length; i++)
+      InventoryItemDto(
+        id: i + 1,
+        itemId: 'MAT-${(i + 1).toString().padLeft(3, '0')}',
+        name: fallbackMaterials[i],
+        description: fallbackMaterials[i],
+        supplier: 'Switch Fiber',
+        quantity: 100,
+        category: 'Material',
+      ),
+  ];
+
+  /// Fetch inventory items from `/api/InventoryItem`.
+  /// No types filter for now, per specification.
+  Future<List<InventoryItemDto>> getInventoryItems({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedInventoryItems != null) {
+      return _cachedInventoryItems!;
+    }
+    try {
+      final response = await _api.get('/InventoryItem');
+      final data = response.data;
+      if (data is List) {
+        final items = <InventoryItemDto>[];
+        for (final item in data) {
+          if (item is Map<String, dynamic>) {
+            items.add(InventoryItemDto.fromJson(item));
+          }
+        }
+        if (items.isNotEmpty) {
+          _cachedInventoryItems = items;
+          return items;
+        }
+      }
+    } catch (_) {}
+    return _cachedInventoryItems ?? fallbackInventoryItems;
+  }
+
+  /// Fetch distinct material names from the Inventory API.
+  /// No types filter for now.
+  Future<List<String>> getMaterials({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedMaterials != null) {
+      return _cachedMaterials!;
+    }
+    try {
+      final items = await getInventoryItems(forceRefresh: forceRefresh);
+      final names = items
+          .map((i) => i.name.trim())
+          .where((n) => n.isNotEmpty)
+          .toSet()
+          .toList();
+      if (names.isNotEmpty) {
+        final combined = <String>{...names, ...fallbackMaterials}.toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+        _cachedMaterials = combined;
+        return combined;
+      }
+    } catch (_) {}
+    return _cachedMaterials ?? fallbackMaterials;
+  }
 }
+

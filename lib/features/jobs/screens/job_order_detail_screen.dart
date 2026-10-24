@@ -36,13 +36,18 @@ import '../widgets/status_change_sheet.dart';
 import '../../reports/screens/create_report_screen.dart';
 import '../../reports/signals/report_signals.dart';
 import '../../../core/services/map_navigation_service.dart';
+// Gene - Oct 24, 2026: Commented out photo storage, data_url, and photo viewer imports as they are now used in JobApplicationPhotosWidget.
+/*
 // Gene - Oct 12, 2026: Added imports for landmark photo preview and full-screen viewer.
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/utils/data_url.dart';
 import '../../reports/widgets/photo_capture_tile.dart' show showPhotoViewer;
+*/
 // Gene - Oct 13, 2026: Added flutter_map and MapTiles imports to render map location in Job Order details.
 import 'package:flutter_map/flutter_map.dart';
 import '../../lcp_nap/services/map_tiles.dart';
+// Gene - Oct 24, 2026: Added JobApplicationPhotosWidget import for application image and KYC viewing.
+import '../widgets/job_application_photos_widget.dart';
 
 /// Comprehensive details screen for a Job Order with full Dark Mode support
 /// and responsive flex layouts.
@@ -1006,6 +1011,7 @@ class JobOrderDetailScreen extends StatelessWidget {
                   context, job.installationLandmark!, isDark),
             ],
             */
+            /*
             // Gene - Oct 13, 2026: Display Front House Image in Job Order details.
             if (job.houseFront != null && job.houseFront!.trim().isNotEmpty) ...[
               const SizedBox(height: 10),
@@ -1030,6 +1036,12 @@ class JobOrderDetailScreen extends StatelessWidget {
                 icon: Icons.photo_camera_outlined,
               ),
             ],
+            */
+            // Gene - Oct 24, 2026: Render Front House, Landmark, and applicant KYC documents via JobApplicationPhotosWidget using Application Image API.
+            JobApplicationPhotosWidget(
+              job: job,
+              isDark: isDark,
+            ),
             const SizedBox(height: 14),
             Divider(
                 height: 1,
@@ -1076,6 +1088,8 @@ class JobOrderDetailScreen extends StatelessWidget {
   Widget _buildLandmarkPhotoPreview(
       BuildContext context, String landmark, bool isDark) {
   */
+  // Gene - Oct 24, 2026: Commented out _buildLandmarkPhotoPreview as photo rendering is now handled by JobApplicationPhotosWidget.
+  /*
   // Gene - Oct 13, 2026: Added title and icon parameters to display Front House Image or Installation Landmark in details.
   Widget _buildLandmarkPhotoPreview(
       BuildContext context, String landmark, bool isDark,
@@ -1104,18 +1118,6 @@ class JobOrderDetailScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
             child: Row(
               children: [
-                /*
-                const Icon(Icons.photo_camera_outlined,
-                    size: 20, color: AppTheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  'Installation Landmark',
-                  style: context.text.labelMedium!.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                */
-                // Gene - Oct 13, 2026: Render dynamic icon and title (e.g. Front House Image or Installation Landmark).
                 Icon(icon, size: 20, color: AppTheme.primary),
                 const SizedBox(width: 8),
                 Text(
@@ -1130,10 +1132,6 @@ class JobOrderDetailScreen extends StatelessWidget {
           InkWell(
             onTap: () {
               if (bytes != null) {
-                /*
-                showPhotoViewer(context, bytes, title: 'Installation Landmark');
-                */
-                // Gene - Oct 13, 2026: Pass preview title to full-screen photo viewer.
                 showPhotoViewer(context, bytes, title: title);
               } else if (isHttp) {
                 launchUrl(Uri.parse(clean),
@@ -1141,10 +1139,6 @@ class JobOrderDetailScreen extends StatelessWidget {
               }
             },
             child: SizedBox(
-              /*
-              height: 160,
-              */
-              // Gene - Oct 13, 2026: Enlarged photo preview height from 160 to 240 for clearer inspection.
               height: 240,
               width: double.infinity,
               child: Stack(
@@ -1218,6 +1212,7 @@ class JobOrderDetailScreen extends StatelessWidget {
       ),
     );
   }
+  */
 
   /*
   // Gene - Oct 13, 2026: Resolves Job Order coordinates falling back to assigned NAP site or service center so map pin is always shown.

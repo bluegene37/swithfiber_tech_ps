@@ -80,6 +80,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   List<LcpOptionDto> _availableLcps = CatalogService.fallbackLcps;
   List<PlanDto> _availablePlans = CatalogService.fallbackPlans;
   */
+  /*
   // Gene - Oct 13, 2026: Added _availableTechnicians to populate Visit By and Visit With dropdowns.
   List<RouterDto> _availableRouters = CatalogService.fallbackRouters;
   List<NapDto> _availableNaps = CatalogService.fallbackNaps;
@@ -87,6 +88,15 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   List<LcpOptionDto> _availableLcps = CatalogService.fallbackLcps;
   List<PlanDto> _availablePlans = CatalogService.fallbackPlans;
   List<String> _availableTechnicians = CatalogService.fallbackTechnicians;
+  */
+  // Gene - Oct 24, 2026: Added _availableMaterials populated dynamically from CatalogService using the Inventory API.
+  List<RouterDto> _availableRouters = CatalogService.fallbackRouters;
+  List<NapDto> _availableNaps = CatalogService.fallbackNaps;
+  List<PortDto> _availablePorts = CatalogService.fallbackPorts;
+  List<LcpOptionDto> _availableLcps = CatalogService.fallbackLcps;
+  List<PlanDto> _availablePlans = CatalogService.fallbackPlans;
+  List<String> _availableTechnicians = CatalogService.fallbackTechnicians;
+  List<String> _availableMaterials = CatalogService.fallbackMaterials;
 
   /// Whether the NAP port tiles are open. Closed by default: the header
   /// already names the port the job arrived with, and sixteen tiles pushed
@@ -180,6 +190,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     });
   }
 */
+  /*
   // Gene - Oct 13, 2026: Fetch available technicians to populate Visit By and Visit With dropdowns.
   Future<void> _loadCatalog() async {
     final routersFuture = CatalogService.instance.getRouters();
@@ -204,6 +215,36 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       _availableLcps = results[3] as List<LcpOptionDto>;
       _availablePlans = results[4] as List<PlanDto>;
       _availableTechnicians = results[5] as List<String>;
+    });
+  }
+  */
+  // Gene - Oct 24, 2026: Fetch dynamic materials from CatalogService.getMaterials() using the Inventory API (no types filter).
+  Future<void> _loadCatalog() async {
+    final routersFuture = CatalogService.instance.getRouters();
+    final napsFuture = CatalogService.instance.getNaps();
+    final portsFuture = CatalogService.instance.getPorts();
+    final lcpsFuture = CatalogService.instance.getLcps();
+    final plansFuture = CatalogService.instance.getPlans();
+    final techFuture = CatalogService.instance.getTechnicians();
+    final materialsFuture = CatalogService.instance.getMaterials();
+    final results = await Future.wait([
+      routersFuture,
+      napsFuture,
+      portsFuture,
+      lcpsFuture,
+      plansFuture,
+      techFuture,
+      materialsFuture,
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _availableRouters = results[0] as List<RouterDto>;
+      _availableNaps = results[1] as List<NapDto>;
+      _availablePorts = results[2] as List<PortDto>;
+      _availableLcps = results[3] as List<LcpOptionDto>;
+      _availablePlans = results[4] as List<PlanDto>;
+      _availableTechnicians = results[5] as List<String>;
+      _availableMaterials = results[6] as List<String>;
     });
   }
 
@@ -2375,6 +2416,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   }
   */
 
+  // Gene - Oct 24, 2026: Commented out kAvailableMaterials as materials are now loaded from CatalogService.getMaterials() using the Inventory API.
+  /*
   // Gene - Oct 13, 2026: Hardcoded available materials list copied from AppSheet web dropdown.
   static const List<String> kAvailableMaterials = [
     'APC-SC TO APC-SC (GREEN)',
@@ -2397,6 +2440,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     'SENKO SC CONNECTOR',
     'ZTE HG260',
   ];
+  */
 
   static String _unitForMaterial(String material) {
     final lower = material.toLowerCase();
@@ -2426,6 +2470,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         .replaceAll(RegExp(r'^_+|_+$'), '');
   }
 
+  /*
   Future<void> _showMaterialPickerDialog(
       BuildContext context, bool isDark) async {
     final picked = await SearchablePickerSheet.show<String>(
@@ -2434,6 +2479,22 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       icon: Icons.inventory_2_outlined,
       searchHint: 'Filter material list (e.g. F-Clamp, Cable)...',
       items: kAvailableMaterials,
+      titleOf: (m) => m,
+      subtitleOf: (m) => 'Unit: ${_unitForMaterial(m)}',
+      matches: (m, q) => m.toLowerCase().contains(q),
+      isSelected: (m) => m == _selectedMaterialToAdd,
+      emptyMessage: (q) => 'No material matching "$q"',
+    );
+  */
+  // Gene - Oct 24, 2026: Use dynamic _availableMaterials loaded from Inventory API instead of hardcoded list.
+  Future<void> _showMaterialPickerDialog(
+      BuildContext context, bool isDark) async {
+    final picked = await SearchablePickerSheet.show<String>(
+      context,
+      title: 'Select Material',
+      icon: Icons.inventory_2_outlined,
+      searchHint: 'Filter material list (e.g. F-Clamp, Cable)...',
+      items: _availableMaterials,
       titleOf: (m) => m,
       subtitleOf: (m) => 'Unit: ${_unitForMaterial(m)}',
       matches: (m, q) => m.toLowerCase().contains(q),
