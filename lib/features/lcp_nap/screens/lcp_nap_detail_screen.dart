@@ -13,7 +13,13 @@ import '../../../core/services/photo_storage_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/data_url.dart';
+/*
 import '../../reports/widgets/photo_capture_tile.dart' show showPhotoViewer;
+*/
+// Gene - Oct 29, 2026: Import image_picker, PhotoCaptureTile and ImageCaptureService to support capturing and uploading site photos.
+import 'package:image_picker/image_picker.dart';
+import '../../../core/services/image_capture_service.dart';
+import '../../reports/widgets/photo_capture_tile.dart';
 import '../models/lcp_nap_images_model.dart';
 import '../models/lcp_nap_model.dart';
 import '../services/map_clustering.dart';
@@ -27,13 +33,26 @@ class LcpNapDetailScreen extends StatefulWidget {
   final TileProvider? tileProvider;
   // Gene - Oct 24, 2026: Optional initial images parameter for testing.
   final LcpNapImagesDto? initialImagesForTesting;
+  // Gene - Oct 29, 2026: Optional image picker callback for testing.
+  final Future<String?> Function(ImageSource source)? pickImageForTesting;
 
+  /*
   const LcpNapDetailScreen({
     super.key,
     required this.locationId,
     required this.signals,
     this.tileProvider,
     this.initialImagesForTesting,
+  });
+  */
+  // Gene - Oct 29, 2026: Added pickImageForTesting parameter.
+  const LcpNapDetailScreen({
+    super.key,
+    required this.locationId,
+    required this.signals,
+    this.tileProvider,
+    this.initialImagesForTesting,
+    this.pickImageForTesting,
   });
 
   @override
@@ -695,6 +714,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                     style: context.text.titleMedium,
                   ),
                 ),
+                /*
                 if (photos.isNotEmpty)
                   Container(
                     padding:
@@ -717,6 +737,46 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                       ),
                     ),
                   ),
+                */
+                // Gene - Oct 29, 2026: Added photo count badge and Update action button in site photos header.
+                if (photos.isNotEmpty) ...[
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color:
+                          isDark ? AppTheme.darkInput : AppTheme.primarySubtleBg,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isDark
+                            ? AppTheme.borderDark
+                            : AppTheme.primarySubtleBorder,
+                      ),
+                    ),
+                    child: Text(
+                      '${photos.length} photos',
+                      style: context.text.labelSmall!.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.brandInkOf(context),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _showUploadPhotosSheet(context, location),
+                    /*
+                    icon: const Icon(Icons.add_a_photo_outlined, size: 16), // map furniture
+                    */
+                    // Gene - Oct 29, 2026: Set icon size to 18 to comply with UI icon floor standard.
+                    icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+                    label: const Text('Update'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      minimumSize: const Size(0, 32),
+                    ),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 14),
@@ -740,12 +800,32 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                       color: AppTheme.secondaryInkOf(context),
                     ),
                     const SizedBox(height: 8),
+                    /*
                     Text(
                       'No enclosure or optical reading photos uploaded yet.',
                       style: context.text.bodySmall!.copyWith(
                         color: AppTheme.secondaryInkOf(context),
                       ),
                       textAlign: TextAlign.center,
+                    ),
+                    */
+                    // Gene - Oct 29, 2026: Added action button to upload site photos from the empty state.
+                    Text(
+                      'No enclosure or optical reading photos uploaded yet.',
+                      style: context.text.bodySmall!.copyWith(
+                        color: AppTheme.secondaryInkOf(context),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: () => _showUploadPhotosSheet(context, location),
+                      icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+                      label: const Text('Upload Site Photos'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
+                      ),
                     ),
                   ],
                 ),
@@ -891,6 +971,273 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Gene - Oct 29, 2026: Opens modal bottom sheet to capture and upload LCP NAP site enclosure and reading photos.
+  Future<void> _showUploadPhotosSheet(
+    BuildContext context,
+    LcpNapDto location,
+  ) async {
+    final updated = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _LcpNapUploadPhotosSheet(
+        location: location,
+        signals: widget.signals,
+        initialImages: _sitePhotos,
+        pickImageForTesting: widget.pickImageForTesting,
+      ),
+    );
+
+    if (updated == true) {
+      await _loadSitePhotos();
+      if (!mounted) return;
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded,
+                  color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text('Site photos uploaded successfully!'),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+}
+
+// Gene - Oct 29, 2026: Modal bottom sheet for capturing and uploading LCP NAP site enclosure and reading photos.
+class _LcpNapUploadPhotosSheet extends StatefulWidget {
+  final LcpNapDto location;
+  final LcpNapSignals signals;
+  final LcpNapImagesDto? initialImages;
+  final Future<String?> Function(ImageSource source)? pickImageForTesting;
+
+  const _LcpNapUploadPhotosSheet({
+    required this.location,
+    required this.signals,
+    this.initialImages,
+    this.pickImageForTesting,
+  });
+
+  @override
+  State<_LcpNapUploadPhotosSheet> createState() =>
+      _LcpNapUploadPhotosSheetState();
+}
+
+class _LcpNapUploadPhotosSheetState extends State<_LcpNapUploadPhotosSheet> {
+  String? _enc1;
+  String? _enc2;
+  String? _reading;
+  bool _isUploading = false;
+  String? _uploadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _enc1 = widget.initialImages?.image?.dataUrl;
+    _enc2 = widget.initialImages?.image2?.dataUrl;
+    _reading = widget.initialImages?.readingImage?.dataUrl;
+  }
+
+  Future<void> _submit() async {
+    setState(() {
+      _isUploading = true;
+      _uploadError = null;
+    });
+
+    final enc1Bytes = _enc1 != null ? DataUrl.decode(_enc1!) : null;
+    final enc2Bytes = _enc2 != null ? DataUrl.decode(_enc2!) : null;
+    final readingBytes = _reading != null ? DataUrl.decode(_reading!) : null;
+
+    final success = await widget.signals.uploadLocationPhotos(
+      locationId: widget.location.id,
+      location: widget.location,
+      imageBytes: enc1Bytes,
+      image2Bytes: enc2Bytes,
+      readingImageBytes: readingBytes,
+    );
+
+    if (!mounted) return;
+    if (success) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() {
+        _isUploading = false;
+        _uploadError = widget.signals.errorMessage.value ??
+            'Failed to upload photos. Please check your connection.';
+      });
+    }
+  }
+
+  Future<String?> _pick(ImageSource source) {
+    if (widget.pickImageForTesting != null) {
+      return widget.pickImageForTesting!(source);
+    }
+    return ImageCaptureService.instance.pickAsDataUrl(
+      source,
+      fallbackLat: widget.location.latitude,
+      fallbackLng: widget.location.longitude,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.9,
+      ),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkCard : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 10),
+          // iOS Grabber Pill
+          Container(
+            width: 36,
+            height: 4.5,
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF38383A) : const Color(0xFFD1D1D6),
+              borderRadius: BorderRadius.circular(2.5),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Upload Site Photos',
+                        style: context.text.titleLarge,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.location.lcpNap,
+                        style: context.text.bodySmall!.copyWith(
+                          color: AppTheme.secondaryInkOf(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed:
+                      _isUploading ? null : () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (_uploadError != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.danger.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: AppTheme.danger.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      _uploadError!,
+                      style: context.text.bodySmall!
+                          .copyWith(color: AppTheme.danger),
+                    ),
+                  ),
+                ],
+                PhotoCaptureTile(
+                  key: const ValueKey('enc1'),
+                  label: 'Enclosure Exterior',
+                  hint: 'NAP Box Enclosure 1',
+                  icon: Icons.router_outlined,
+                  value: _enc1,
+                  pick: _pick,
+                  onChanged: (v) => setState(() => _enc1 = v),
+                ),
+                const SizedBox(height: 12),
+                PhotoCaptureTile(
+                  key: const ValueKey('enc2'),
+                  label: 'Enclosure Interior',
+                  hint: 'NAP Splicing Tray / Ports',
+                  icon: Icons.cable_rounded,
+                  value: _enc2,
+                  pick: _pick,
+                  onChanged: (v) => setState(() => _enc2 = v),
+                ),
+                const SizedBox(height: 12),
+                PhotoCaptureTile(
+                  key: const ValueKey('reading'),
+                  label: 'Optical Power Reading',
+                  hint: 'OPM Power Capture',
+                  icon: Icons.speed_rounded,
+                  value: _reading,
+                  pick: _pick,
+                  onChanged: (v) => setState(() => _reading = v),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: EdgeInsets.fromLTRB(
+                16, 12, 16, bottomPadding > 0 ? bottomPadding : 16),
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(
+                  color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+                  width: 0.5,
+                ),
+              ),
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                onPressed: _isUploading ? null : _submit,
+                icon: _isUploading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.cloud_upload_outlined, size: 20),
+                label: Text(_isUploading
+                    ? 'Uploading Photos...'
+                    : 'Save & Upload Photos'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
               ),
             ),
           ),

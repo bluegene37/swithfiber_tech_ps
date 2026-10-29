@@ -1,13 +1,37 @@
 // Gene - Oct 24, 2026: Comprehensive unit and widget tests for LCP NAP Site Enclosure and Optical Power Reading photos.
+// Gene - Oct 29, 2026: Added unit and widget tests for LCP NAP photo upload and update flows.
+import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+// import 'package:image_picker/image_picker.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/database/daos/lcp_nap_dao.dart';
+import 'package:swithfiber_tech_ps/core/network/api_client.dart';
 import 'package:swithfiber_tech_ps/core/theme/app_theme.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/models/lcp_nap_images_model.dart';
+import 'package:swithfiber_tech_ps/features/lcp_nap/models/lcp_nap_model.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/repositories/lcp_nap_repository.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/screens/lcp_nap_detail_screen.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/signals/lcp_nap_signals.dart';
+
+// Gene - Oct 29, 2026: Recording adapter to intercept and verify multipart photo upload payloads.
+class _RecordingAdapter implements HttpClientAdapter {
+  final captured = <RequestOptions>[];
+
+  @override
+  Future<ResponseBody> fetch(RequestOptions options,
+      Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async {
+    captured.add(options);
+    return ResponseBody.fromString('{}', 200, headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType]
+    });
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -263,6 +287,194 @@ void main() {
       expect(find.text('Site Enclosure & Reading Photos'), findsOneWidget);
       expect(find.text('1 photos'), findsOneWidget);
       expect(find.text('Enclosure Exterior'), findsOneWidget);
+    });
+
+    // Gene - Oct 29, 2026: Added tests for Upload Site Photos button and bottom sheet modal interaction.
+    testWidgets(
+        'renders Upload Site Photos button when empty and opens upload sheet',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      const emptyImages = LcpNapImagesDto();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: LcpNapDetailScreen(
+            locationId: 1,
+            signals: signals,
+            initialImagesForTesting: emptyImages,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('Upload Site Photos'), findsOneWidget);
+
+      // Tap Upload Site Photos button
+      await tester.tap(find.text('Upload Site Photos'));
+      /*
+      await tester.pumpAndSettle();
+      */
+      // Gene - Oct 29, 2026: Use discrete pumps to prevent timeout from infinite map progress spinner animations.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // Verify the modal sheet opens with title and 3 photo slots
+      expect(find.text('Upload Site Photos'),
+          findsNWidgets(2)); // Card button + Sheet title
+      expect(find.text('Enclosure Exterior'), findsOneWidget);
+      expect(find.text('Enclosure Interior'), findsOneWidget);
+      expect(find.text('Optical Power Reading'), findsOneWidget);
+      expect(find.text('Save & Upload Photos'), findsOneWidget);
+    });
+
+    // Gene - Oct 29, 2026: Added test for Update button in header when photos are present.
+    testWidgets('renders Update button in header when photos are present',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final samplePhoto = LcpNapImageFileDto(
+        fileContents: sampleBase64,
+        contentType: 'image/png',
+        fileDownloadName: 'sample.png',
+      );
+      final testImages = LcpNapImagesDto(
+        image: samplePhoto,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: LcpNapDetailScreen(
+            locationId: 1,
+            signals: signals,
+            initialImagesForTesting: testImages,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('Update'), findsOneWidget);
+
+      // Tap Update button
+      await tester.tap(find.text('Update'));
+      /*
+      await tester.pumpAndSettle();
+      */
+      // Gene - Oct 29, 2026: Use discrete pumps to prevent timeout from infinite map progress spinner animations.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // Verify sheet opens
+      expect(find.text('Save & Upload Photos'), findsOneWidget);
+    });
+  });
+
+  // Gene - Oct 29, 2026: Unit tests for LCP NAP photo upload multipart request formatting.
+  group('LcpNapRepository Upload Photos Tests', () {
+    late _RecordingAdapter adapter;
+    late AppDatabase db;
+    late LcpNapRepository repository;
+    late LcpNapSignals signals;
+
+    setUp(() {
+      // Gene - Oct 29, 2026: Provide mock secure storage store for ApiClient auth token lookup during tests.
+      FlutterSecureStorage.setMockInitialValues({});
+      adapter = _RecordingAdapter();
+      final dio = ApiClient.instance.dio;
+      ApiClient.blockNetworkForTesting = false;
+      final original = dio.httpClientAdapter;
+      dio.httpClientAdapter = adapter;
+
+      db = AppDatabase.forTesting();
+      repository = LcpNapRepository(LcpNapLocationsDao(db));
+      signals = LcpNapSignals(repository);
+
+      addTearDown(() {
+        ApiClient.blockNetworkForTesting = true;
+        dio.httpClientAdapter = original;
+        signals.dispose();
+        db.close();
+      });
+    });
+
+    test(
+        'uploadLcpNapPhotos constructs multipart PUT request with fields and files',
+        () async {
+      final loc = LcpNapDto(
+        id: 42,
+        lcp: 'LCP 01',
+        nap: 'NAP 02',
+        lcpNap: 'LCP 01 - NAP 02',
+        portTotal: 16,
+        coordinates: '14.5862, 121.0618',
+        street: 'Main Street',
+        barangay: 'San Antonio',
+        city: 'Pasig',
+        region: 'Rizal',
+      );
+
+      final dummyBytes = Uint8List.fromList([1, 2, 3, 4, 5]);
+
+      final success = await repository.uploadLcpNapPhotos(
+        locationId: 42,
+        location: loc,
+        imageBytes: dummyBytes,
+        image2Bytes: dummyBytes,
+        readingImageBytes: dummyBytes,
+      );
+
+      expect(success, isTrue);
+      expect(adapter.captured.length, 1);
+
+      final req = adapter.captured.single;
+      expect(req.method, 'PUT');
+      expect(req.path, '/LCPNapLocations/42');
+      expect(req.data, isA<FormData>());
+
+      final formData = req.data as FormData;
+      final fields = Map.fromEntries(formData.fields);
+      expect(fields['LCP'], 'LCP 01');
+      expect(fields['NAP'], 'NAP 02');
+      expect(fields['LCPNAP'], 'LCP 01 - NAP 02');
+      expect(fields['PortTotal'], '16');
+      expect(fields['Coordinates'], '14.5862, 121.0618');
+      expect(fields['Street'], 'Main Street');
+      expect(fields['Barangay'], 'San Antonio');
+      expect(fields['City'], 'Pasig');
+      expect(fields['Region'], 'Rizal');
+
+      final files = Map.fromEntries(formData.files);
+      expect(files.containsKey('Image'), isTrue);
+      expect(files.containsKey('Image2'), isTrue);
+      expect(files.containsKey('ReadingImage'), isTrue);
+    });
+
+    test('uploadLocationPhotos on signals delegates to repository', () async {
+      final loc = LcpNapDto(
+        id: 10,
+        lcp: 'LCP 10',
+        nap: 'NAP 01',
+        lcpNap: 'LCP 10 - NAP 01',
+      );
+
+      final success = await signals.uploadLocationPhotos(
+        locationId: 10,
+        location: loc,
+      );
+
+      expect(success, isTrue);
+      expect(adapter.captured.length, 1);
+      final req = adapter.captured.single;
+      expect(req.method, 'PUT');
+      expect(req.path, '/LCPNapLocations/10');
     });
   });
 }

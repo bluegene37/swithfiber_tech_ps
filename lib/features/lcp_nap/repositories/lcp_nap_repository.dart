@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import '../../../core/database/daos/lcp_nap_dao.dart';
 import '../../../core/network/api_client.dart';
@@ -9,9 +10,15 @@ import '../models/lcp_nap_model.dart';
 /// Repository coordinating LCP NAP locations between the API and the local database.
 class LcpNapRepository {
   final LcpNapLocationsDao _dao;
+  /*
   final ApiClient _api = ApiClient.instance;
 
   LcpNapRepository(this._dao);
+  */
+  // Gene - Oct 29, 2026: Allow optional ApiClient injection for unit testing upload and image endpoints.
+  final ApiClient _api;
+
+  LcpNapRepository(this._dao, [ApiClient? api]) : _api = api ?? ApiClient.instance;
 
   /// Watch reactive stream of all locations from the local database
   Stream<List<LcpNapDto>> watchLocations() => _dao.watchAllLocations();
@@ -180,6 +187,81 @@ class LcpNapRepository {
       // Offline fallback or test mock
     }
     return _imagesCache[locationId];
+  }
+
+  // Gene - Oct 29, 2026: Uploads LCP NAP site enclosure and optical power reading photos via multipart/form-data PUT /api/LCPNapLocations/{id}.
+  Future<bool> uploadLcpNapPhotos({
+    required int locationId,
+    required LcpNapDto location,
+    Uint8List? imageBytes,
+    Uint8List? image2Bytes,
+    Uint8List? readingImageBytes,
+  }) async {
+    try {
+      final map = <String, dynamic>{
+        'LCP': location.lcp,
+        'NAP': location.nap,
+        'LCPNAP': location.lcpNap,
+        'PortTotal': location.portTotal.toString(),
+        if (location.coordinates != null) 'Coordinates': location.coordinates,
+        if (location.street != null) 'Street': location.street,
+        if (location.barangay != null) 'Barangay': location.barangay,
+        if (location.city != null) 'City': location.city,
+        if (location.region != null) 'Region': location.region,
+      };
+
+      // 1. Enclosure Exterior (image)
+      if (imageBytes != null && imageBytes.isNotEmpty) {
+        map['Image'] = MultipartFile.fromBytes(imageBytes, filename: 'image.jpg');
+      } else {
+        final existingBytes = _imagesCache[locationId]?.image?.bytes;
+        if (existingBytes != null && existingBytes.isNotEmpty) {
+          map['Image'] = MultipartFile.fromBytes(existingBytes, filename: 'image.jpg');
+        }
+      }
+
+      // 2. Enclosure Interior (image2)
+      if (image2Bytes != null && image2Bytes.isNotEmpty) {
+        map['Image2'] = MultipartFile.fromBytes(image2Bytes, filename: 'image2.jpg');
+      } else {
+        final existingBytes = _imagesCache[locationId]?.image2?.bytes;
+        if (existingBytes != null && existingBytes.isNotEmpty) {
+          map['Image2'] = MultipartFile.fromBytes(existingBytes, filename: 'image2.jpg');
+        }
+      }
+
+      // 3. Optical Power Reading (readingImage)
+      if (readingImageBytes != null && readingImageBytes.isNotEmpty) {
+        map['ReadingImage'] = MultipartFile.fromBytes(readingImageBytes, filename: 'readingImage.jpg');
+      } else {
+        final existingBytes = _imagesCache[locationId]?.readingImage?.bytes;
+        if (existingBytes != null && existingBytes.isNotEmpty) {
+          map['ReadingImage'] = MultipartFile.fromBytes(existingBytes, filename: 'readingImage.jpg');
+        }
+      }
+
+      final formData = FormData.fromMap(map);
+      final response = await _api.put(
+        '/LCPNapLocations/$locationId',
+        data: formData,
+        options: Options(contentType: 'multipart/form-data'),
+      );
+
+      final isSuccess = response.statusCode == 200 || response.statusCode == 204;
+      /*
+      if (isSuccess) {
+        _imagesCache.remove(locationId);
+        await getLcpNapLocationImages(locationId, forceRefresh: true);
+      }
+      */
+      // Gene - Oct 29, 2026: Invalidate image cache upon successful upload; callers refresh on demand.
+      if (isSuccess) {
+        _imagesCache.remove(locationId);
+      }
+      return isSuccess;
+    } catch (_) {
+      return false;
+    }
   }
 }
 

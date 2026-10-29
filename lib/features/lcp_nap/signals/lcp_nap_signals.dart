@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/widgets/loading_states.dart';
 import '../models/lcp_nap_model.dart';
@@ -203,6 +204,33 @@ class LcpNapSignals {
   /// Select a site for detail inspection
   void selectLocation(LcpNapDto location) {
     selectedLocation.value = location;
+  }
+
+  // Gene - Oct 29, 2026: Coordinate photo upload for an LCP NAP location.
+  Future<bool> uploadLocationPhotos({
+    required int locationId,
+    required LcpNapDto location,
+    Uint8List? imageBytes,
+    Uint8List? image2Bytes,
+    Uint8List? readingImageBytes,
+  }) async {
+    isLoading.value = true;
+    errorMessage.value = null;
+    try {
+      final success = await repository.uploadLcpNapPhotos(
+        locationId: locationId,
+        location: location,
+        imageBytes: imageBytes,
+        image2Bytes: image2Bytes,
+        readingImageBytes: readingImageBytes,
+      );
+      return success;
+    } catch (e) {
+      errorMessage.value = e.toString();
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   Future<void> dispose() async {
