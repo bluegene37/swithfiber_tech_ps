@@ -78,6 +78,8 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
   TileProvider? _tiles;
   // Gene - Oct 24, 2026: State variables for LCP NAP site enclosure and reading photos.
   LcpNapImagesDto? _sitePhotos;
+  // Gene - Oct 31, 2026: Loading indicator for fetching site enclosure and reading photos.
+  bool _isLoadingPhotos = false;
 
   @override
   void initState() {
@@ -89,13 +91,17 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
   }
 
   Future<void> _loadSitePhotos() async {
+    if (mounted) setState(() => _isLoadingPhotos = true);
     try {
       final res = await widget.signals.repository
           .getLcpNapLocationImages(widget.locationId);
       if (mounted && res != null) {
         setState(() => _sitePhotos = res);
       }
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _isLoadingPhotos = false);
+    }
   }
 
   Future<void> _loadTileProvider() async {
@@ -170,10 +176,25 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
               ),
             ],
           ),
+          /*
           body: ListView(
             padding: EdgeInsets.fromLTRB(
                 16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom),
             children: [
+          */
+          // Gene - Oct 31, 2026: Wrapped ListView in RefreshIndicator to allow technicians to pull-to-refresh photos and latest site data.
+          body: RefreshIndicator(
+            onRefresh: () async {
+              await Future.wait([
+                widget.signals.fetchRemote(),
+                _loadSitePhotos(),
+              ]);
+            },
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                  16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom),
+              children: [
               // 1. Overview Header Card
               Card(
                 child: Padding(
@@ -542,6 +563,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
               ),
             ],
           ),
+          ),
         );
       },
     );
@@ -850,7 +872,37 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
               ],
             ),
             const SizedBox(height: 14),
-            if (photos.isEmpty)
+            if (_isLoadingPhotos)
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: isDark ? AppTheme.darkInput : AppTheme.lightBg,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Loading site photos from server...',
+                      style: context.text.bodySmall!.copyWith(
+                        color: AppTheme.secondaryInkOf(context),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              )
+            else if (photos.isEmpty)
               Container(
                 width: double.infinity,
                 padding:
@@ -870,16 +922,6 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                       color: AppTheme.secondaryInkOf(context),
                     ),
                     const SizedBox(height: 8),
-                    /*
-                    Text(
-                      'No enclosure or optical reading photos uploaded yet.',
-                      style: context.text.bodySmall!.copyWith(
-                        color: AppTheme.secondaryInkOf(context),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    */
-                    // Gene - Oct 29, 2026: Added action button to upload site photos from the empty state.
                     Text(
                       'No enclosure or optical reading photos uploaded yet.',
                       style: context.text.bodySmall!.copyWith(

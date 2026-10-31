@@ -64,10 +64,30 @@ class LcpNapImagesDto {
   });
 
   factory LcpNapImagesDto.fromJson(Map<String, dynamic> json) {
+    /*
     LcpNapImageFileDto? parseFile(dynamic val) {
       if (val is Map<String, dynamic>) {
         final dto = LcpNapImageFileDto.fromJson(val);
         return dto.hasImage ? dto : null;
+      }
+      return null;
+    }
+    */
+    // Gene - Oct 31, 2026: Enhanced parseFile to support Map<String, dynamic>, Map, and raw Base64 string data.
+    LcpNapImageFileDto? parseFile(dynamic val) {
+      if (val == null) return null;
+      if (val is Map) {
+        final map = Map<String, dynamic>.from(val);
+        final dto = LcpNapImageFileDto.fromJson(map);
+        return dto.hasImage ? dto : null;
+      }
+      if (val is String && val.trim().isNotEmpty) {
+        final trimmed = val.trim();
+        return LcpNapImageFileDto(
+          fileContents: trimmed,
+          contentType: 'image/jpeg',
+          fileDownloadName: 'photo.jpg',
+        );
       }
       return null;
     }

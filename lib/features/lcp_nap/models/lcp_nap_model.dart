@@ -101,6 +101,34 @@ class LcpNapDto {
             ? '$lcpStr - $napStr'
             : (lcpStr.isNotEmpty ? lcpStr : napStr));
 
+    // Gene - Oct 31, 2026: Parse image fields cleanly. In the backend API, image fields can be either:
+    // 1. A string (URL, base64 data URL, or file path).
+    // 2. A map with 'fileContents' (base64 string) from FileContentResult.
+    // 3. A map representing an uploaded file metadata (e.g. IFormFile with fileName, name, contentType).
+    // If the map only contains file metadata without fileContents, do not convert the map to a string "{...}".
+    String? parseImageField(dynamic raw) {
+      if (raw == null) return null;
+      if (raw is String) {
+        final trimmed = raw.trim();
+        return trimmed.isNotEmpty ? trimmed : null;
+      }
+      if (raw is Map) {
+        if (raw.containsKey('fileContents') && raw['fileContents'] != null) {
+          final fc = raw['fileContents'].toString().trim();
+          if (fc.isNotEmpty) {
+            final mime = raw['contentType']?.toString().trim().isNotEmpty == true
+                ? raw['contentType'].toString().trim()
+                : 'image/jpeg';
+            return fc.startsWith('data:') ? fc : 'data:$mime;base64,$fc';
+          }
+        }
+        // If it's an uploaded file object without base64 contents (e.g. IFormFile metadata with fileName),
+        // we return null here so the client fetches the actual image bytes via GetLCPNAPLocationImages.
+        return null;
+      }
+      return raw.toString();
+    }
+
     return LcpNapDto(
       id: json['id'] is int
           ? json['id']
@@ -117,9 +145,15 @@ class LcpNapDto {
       barangay: json['barangay']?.toString(),
       city: json['city']?.toString(),
       region: json['region']?.toString(),
+      /*
       image: json['image']?.toString(),
       image2: json['image2']?.toString(),
       readingImage: json['readingImage']?.toString(),
+      */
+      // Gene - Oct 31, 2026: Use parseImageField to handle both string payloads and ASP.NET FileResult maps.
+      image: parseImageField(json['image']),
+      image2: parseImageField(json['image2']),
+      readingImage: parseImageField(json['readingImage'] ?? json['reading_image']),
       modifiedBy: json['modifiedBy']?.toString(),
       userEmail: json['userEmail']?.toString(),
       modifiedDate: DateTime.tryParse(json['modifiedDate']?.toString() ?? ''),

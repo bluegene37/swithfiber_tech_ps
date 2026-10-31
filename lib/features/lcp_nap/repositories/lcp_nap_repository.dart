@@ -178,13 +178,30 @@ class LcpNapRepository {
           } catch (_) {}
         }
 
+        /*
         if (dto.hasAnyPhoto) {
           _imagesCache[locationId] = dto;
         }
         return dto;
+        */
+        // Gene - Oct 31, 2026: Cache photo result whenever a valid response is returned.
+        _imagesCache[locationId] = dto;
+        return dto;
       }
     } catch (_) {
       // Offline fallback or test mock
+      // Gene - Oct 31, 2026: Fallback to single record endpoint GET /api/LCPNapLocations/{id} if GetLCPNAPLocationImages is unavailable.
+      try {
+        final singleRes = await _api.get('/LCPNapLocations/$locationId');
+        final singleData = singleRes.data;
+        if (singleData is Map<String, dynamic>) {
+          final dto = LcpNapImagesDto.fromJson(singleData);
+          if (dto.hasAnyPhoto) {
+            _imagesCache[locationId] = dto;
+            return dto;
+          }
+        }
+      } catch (_) {}
     }
     return _imagesCache[locationId];
   }

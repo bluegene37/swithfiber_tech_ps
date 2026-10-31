@@ -149,6 +149,60 @@ void main() {
       expect(dto.image2, isNull);
       expect(dto.readingImage, isNull);
     });
+
+    // Gene - Oct 31, 2026: Test that LcpNapImagesDto parses raw Base64 string fields properly.
+    test('parses raw Base64 strings for image, image2, and readingImage', () {
+      final json = {
+        'image': sampleBase64,
+        'image2': sampleBase64,
+        'readingImage': sampleBase64,
+      };
+      final dto = LcpNapImagesDto.fromJson(json);
+      expect(dto.hasAnyPhoto, isTrue);
+      expect(dto.image?.hasImage, isTrue);
+      expect(dto.image2?.hasImage, isTrue);
+      expect(dto.readingImage?.hasImage, isTrue);
+    });
+  });
+
+  // Gene - Oct 31, 2026: Unit tests for LcpNapDto image fields parsing ASP.NET IFormFile map metadata and base64.
+  group('LcpNapDto Image Fields Parsing Tests', () {
+    test('ignores IFormFile map metadata without fileContents and preserves null', () {
+      final json = {
+        'id': 1503,
+        'lcp': 'CAR LCP 001',
+        'nap': 'NAP 001',
+        'image': {
+          'contentType': 'image/jpeg',
+          'contentDisposition': '',
+          'headers': {'Content-Type': ['image/jpeg']},
+          'length': 22399,
+          'name': 'CAR LCP 001 NAP 001-Image..jpg',
+          'fileName': 'CAR LCP 001 NAP 001-Image..jpg',
+        },
+        'image2': null,
+        'readingImage': null,
+      };
+      final dto = LcpNapDto.fromJson(json);
+      expect(dto.image, isNull);
+      expect(dto.image2, isNull);
+      expect(dto.readingImage, isNull);
+    });
+
+    test('parses FileContentResult map with fileContents into data URL', () {
+      final json = {
+        'id': 1503,
+        'lcp': 'CAR LCP 001',
+        'nap': 'NAP 001',
+        'readingImage': {
+          'fileContents': sampleBase64,
+          'contentType': 'image/jpeg',
+          'fileDownloadName': 'reading.jpg',
+        },
+      };
+      final dto = LcpNapDto.fromJson(json);
+      expect(dto.readingImage, startsWith('data:image/jpeg;base64,'));
+    });
   });
 
   group('LcpNapRepository Cache Tests', () {
