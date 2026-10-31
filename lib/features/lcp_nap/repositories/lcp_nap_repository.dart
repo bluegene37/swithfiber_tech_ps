@@ -263,5 +263,87 @@ class LcpNapRepository {
       return false;
     }
   }
+
+  // Gene - Oct 31, 2026: Updates LCP NAP location coordinates and address fields via multipart/form-data PUT /api/LCPNapLocations/{id} and saves to local SQLite.
+  Future<bool> updateLocationCoordinates({
+    required int locationId,
+    required LcpNapDto location,
+    required String coordinates,
+    String? street,
+    String? barangay,
+    String? city,
+    String? region,
+  }) async {
+    try {
+      final map = <String, dynamic>{
+        'LCP': location.lcp,
+        'NAP': location.nap,
+        'LCPNAP': location.lcpNap,
+        'PortTotal': location.portTotal.toString(),
+        'Coordinates': coordinates,
+        if (street != null || location.street != null)
+          'Street': street ?? location.street,
+        if (barangay != null || location.barangay != null)
+          'Barangay': barangay ?? location.barangay,
+        if (city != null || location.city != null)
+          'City': city ?? location.city,
+        if (region != null || location.region != null)
+          'Region': region ?? location.region,
+      };
+
+      // Preserve existing cached photos if available
+      final existingEnc1 = _imagesCache[locationId]?.image?.bytes;
+      if (existingEnc1 != null && existingEnc1.isNotEmpty) {
+        map['Image'] =
+            MultipartFile.fromBytes(existingEnc1, filename: 'image.jpg');
+      }
+      final existingEnc2 = _imagesCache[locationId]?.image2?.bytes;
+      if (existingEnc2 != null && existingEnc2.isNotEmpty) {
+        map['Image2'] =
+            MultipartFile.fromBytes(existingEnc2, filename: 'image2.jpg');
+      }
+      final existingReading = _imagesCache[locationId]?.readingImage?.bytes;
+      if (existingReading != null && existingReading.isNotEmpty) {
+        map['ReadingImage'] = MultipartFile.fromBytes(existingReading,
+            filename: 'readingImage.jpg');
+      }
+
+      final formData = FormData.fromMap(map);
+      final response = await _api.put(
+        '/LCPNapLocations/$locationId',
+        data: formData,
+        options: Options(contentType: 'multipart/form-data'),
+      );
+
+      final isSuccess =
+          response.statusCode == 200 || response.statusCode == 204;
+      if (isSuccess) {
+        final updatedDto = location.copyWith(
+          coordinates: coordinates,
+          street: street ?? location.street,
+          barangay: barangay ?? location.barangay,
+          city: city ?? location.city,
+          region: region ?? location.region,
+          isSynced: true,
+          updatedAt: DateTime.now(),
+        );
+        await _dao.insertOrUpdateLocation(updatedDto, synced: true);
+      }
+      return isSuccess;
+    } catch (_) {
+      // Local optimistic fallback when offline
+      final updatedDto = location.copyWith(
+        coordinates: coordinates,
+        street: street ?? location.street,
+        barangay: barangay ?? location.barangay,
+        city: city ?? location.city,
+        region: region ?? location.region,
+        isSynced: false,
+        updatedAt: DateTime.now(),
+      );
+      await _dao.insertOrUpdateLocation(updatedDto, synced: false);
+      return true;
+    }
+  }
 }
 

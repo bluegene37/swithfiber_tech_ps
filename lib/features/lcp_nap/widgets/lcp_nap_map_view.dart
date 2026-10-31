@@ -11,6 +11,8 @@ import '../services/map_tiles.dart';
 import '../signals/lcp_nap_signals.dart';
 import 'lcp_nap_pin_popup.dart';
 import 'map_search_bar.dart';
+// Gene - Oct 31, 2026: Imported LcpNapLocationPickerSheet to support mapping unmapped sites from the map.
+import 'lcp_nap_location_picker_sheet.dart';
 
 /// Map of LCP NAP sites, driven by the same filtered signal as the list view.
 ///
@@ -91,6 +93,159 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
       _showLegend = false;
     });
     _mapController.move(target, 17);
+  }
+
+  // Gene - Oct 31, 2026: Shows modal bottom sheet listing unmapped sites to allow technicians to map their GPS locations.
+  Future<void> _showUnmappedSitesSheet(
+      BuildContext context, List<LcpNapDto> unmappedSites) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.75,
+        ),
+        decoration: BoxDecoration(
+          color: isDark ? AppTheme.darkCard : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 36,
+              height: 4.5,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF38383A)
+                    : const Color(0xFFD1D1D6),
+                borderRadius: BorderRadius.circular(2.5),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 16, 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.location_off_outlined,
+                      size: 22, color: AppTheme.warning),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Unmapped Sites (${unmappedSites.length})',
+                          style: context.text.titleMedium,
+                        ),
+                        Text(
+                          'Select a site to map its GPS coordinates',
+                          style: context.text.bodySmall!.copyWith(
+                            color: AppTheme.secondaryInkOf(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.all(16),
+                itemCount: unmappedSites.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final site = unmappedSites[index];
+                  final hue = lcpColorSeed(site.lcp);
+                  final color =
+                      HSLColor.fromAHSL(1, hue, 0.62, 0.44).toColor();
+
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isDark ? AppTheme.darkInput : AppTheme.lightBg,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isDark
+                            ? AppTheme.borderDark
+                            : AppTheme.borderLight,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                site.lcpNap,
+                                style: context.text.labelLarge!.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              if (site.barangay != null || site.city != null)
+                                Text(
+                                  [site.barangay, site.city]
+                                      .where((s) => s != null && s.isNotEmpty)
+                                      .join(', '),
+                                  style: context.text.labelSmall!.copyWith(
+                                    color: AppTheme.secondaryInkOf(context),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            Navigator.of(ctx).pop();
+                            await showModalBottomSheet<bool>(
+                              context: context,
+                              isScrollControlled: true,
+                              backgroundColor: Colors.transparent,
+                              builder: (sheetCtx) => LcpNapLocationPickerSheet(
+                                location: site,
+                                signals: widget.signals,
+                                tileProvider: _tiles,
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.add_location_alt_rounded,
+                              size: 18),
+                          label: const Text('Map'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
+                            minimumSize: const Size(0, 32),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Pixels the top overlay covers, including its 8px margins, capped so a
@@ -292,7 +447,14 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                   // Sites the map cannot place, so they are visibly missing.
                   if (unmapped > 0) ...[
                     const SizedBox(height: 8),
+                    /*
                     _UnmappedNotice(sites: unmappedSites),
+                    */
+                    // Gene - Oct 31, 2026: Made unmapped notice tappable to open unmapped sites sheet and map coordinates.
+                    _UnmappedNotice(
+                      sites: unmappedSites,
+                      onTap: () => _showUnmappedSitesSheet(context, unmappedSites),
+                    ),
                   ],
                   const SizedBox(height: 8),
                   // Legend on the left, base layer on the right; when the
@@ -537,6 +699,7 @@ class _BaseLayerToggle extends StatelessWidget {
   }
 }
 
+/*
 class _UnmappedNotice extends StatelessWidget {
   final List<LcpNapDto> sites;
 
@@ -578,6 +741,70 @@ class _UnmappedNotice extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+*/
+// Gene - Oct 31, 2026: Added optional onTap handler to _UnmappedNotice with tap feedback and chevron indicator.
+class _UnmappedNotice extends StatelessWidget {
+  final List<LcpNapDto> sites;
+  final VoidCallback? onTap;
+
+  const _UnmappedNotice({
+    required this.sites,
+    this.onTap,
+  });
+
+  /// Names the records so a technician can go fix their coordinates, rather
+  /// than only being told a number is missing.
+  String get _summary {
+    final names = sites
+        .take(3)
+        .map((s) => s.lcpNap.trim().isEmpty ? 'record #${s.id}' : s.lcpNap)
+        .join(', ');
+    final rest = sites.length - 3;
+    return rest > 0 ? '$names and $rest more' : names;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppTheme.warningSubtle,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFFDE68A)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Icon(Icons.location_off_outlined,
+                  size: 20, color: Color(0xFF92400E)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${sites.length} site${sites.length == 1 ? '' : 's'} '
+                  'without a GPS fix: $_summary. Tap to map.',
+                  style: context.text.labelMedium!.copyWith(
+                    color: AppTheme.warningInkOf(context),
+                  ),
+                ),
+              ),
+              if (onTap != null)
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20,
+                  color: Color(0xFF92400E),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

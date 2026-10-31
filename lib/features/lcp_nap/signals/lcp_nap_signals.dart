@@ -233,6 +233,37 @@ class LcpNapSignals {
     }
   }
 
+  // Gene - Oct 31, 2026: Coordinate LCP NAP location coordinates and address update.
+  Future<bool> updateLocationCoordinates({
+    required int locationId,
+    required LcpNapDto location,
+    required String coordinates,
+    String? street,
+    String? barangay,
+    String? city,
+    String? region,
+  }) async {
+    isLoading.value = true;
+    errorMessage.value = null;
+    try {
+      final success = await repository.updateLocationCoordinates(
+        locationId: locationId,
+        location: location,
+        coordinates: coordinates,
+        street: street,
+        barangay: barangay,
+        city: city,
+        region: region,
+      );
+      return success;
+    } catch (e) {
+      errorMessage.value = e.toString();
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   Future<void> dispose() async {
     await _driftSubscription?.cancel();
     _driftSubscription = null;

@@ -25,6 +25,11 @@ import '../models/lcp_nap_model.dart';
 import '../services/map_clustering.dart';
 import '../services/map_tiles.dart';
 import '../signals/lcp_nap_signals.dart';
+// Gene - Oct 31, 2026: Imported LocationService, PlaceLookup, geocoding, and LcpNapLocationPickerSheet for mapping LCP NAP coordinates.
+import 'package:geocoding/geocoding.dart' as geo;
+import '../../../core/services/location_service.dart';
+import '../widgets/lcp_nap_location_picker_sheet.dart';
+import '../widgets/map_search_bar.dart' show PlaceLookup;
 
 /// Screen displaying comprehensive details and status controls for an LCP NAP site with full Dark Mode support.
 class LcpNapDetailScreen extends StatefulWidget {
@@ -35,16 +40,13 @@ class LcpNapDetailScreen extends StatefulWidget {
   final LcpNapImagesDto? initialImagesForTesting;
   // Gene - Oct 29, 2026: Optional image picker callback for testing.
   final Future<String?> Function(ImageSource source)? pickImageForTesting;
+  // Gene - Oct 31, 2026: Optional testing parameters for location mapping.
+  final LocationService? locationServiceForTesting;
+  final PlaceLookup? placeLookupForTesting;
+  final Future<List<geo.Placemark>> Function(double lat, double lng)?
+      reverseGeocodeForTesting;
 
   /*
-  const LcpNapDetailScreen({
-    super.key,
-    required this.locationId,
-    required this.signals,
-    this.tileProvider,
-    this.initialImagesForTesting,
-  });
-  */
   // Gene - Oct 29, 2026: Added pickImageForTesting parameter.
   const LcpNapDetailScreen({
     super.key,
@@ -53,6 +55,19 @@ class LcpNapDetailScreen extends StatefulWidget {
     this.tileProvider,
     this.initialImagesForTesting,
     this.pickImageForTesting,
+  });
+  */
+  // Gene - Oct 31, 2026: Added locationServiceForTesting, placeLookupForTesting, and reverseGeocodeForTesting parameters.
+  const LcpNapDetailScreen({
+    super.key,
+    required this.locationId,
+    required this.signals,
+    this.tileProvider,
+    this.initialImagesForTesting,
+    this.pickImageForTesting,
+    this.locationServiceForTesting,
+    this.placeLookupForTesting,
+    this.reverseGeocodeForTesting,
   });
 
   @override
@@ -382,9 +397,30 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                           const Icon(Icons.pin_drop_outlined,
                               size: 18, color: AppTheme.primary),
                           const SizedBox(width: 8),
-                          Text(
-                            'GPS Geolocation Coordinates',
-                            style: context.text.titleMedium,
+                          Expanded(
+                            child: Text(
+                              'GPS Geolocation Coordinates',
+                              style: context.text.titleMedium,
+                            ),
+                          ),
+                          // Gene - Oct 31, 2026: Added quick Map/Update button in GPS header.
+                          OutlinedButton.icon(
+                            key: const ValueKey('btnHeaderMapLocation'),
+                            onPressed: () =>
+                                _showLocationMappingSheet(context, location),
+                            icon: Icon(
+                              location.isMappable
+                                  ? Icons.edit_location_alt_outlined
+                                  : Icons.add_location_alt_outlined,
+                              size: 18,
+                            ),
+                            label: Text(
+                                location.isMappable ? 'Update GPS' : 'Map Site'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              minimumSize: const Size(0, 32),
+                            ),
                           ),
                         ],
                       ),
@@ -442,6 +478,24 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                           ],
                         ),
                       ),
+                      // Gene - Oct 31, 2026: If site has no coordinates, show prominent Map This Site button.
+                      if (!location.isMappable) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            key: const ValueKey('btnMapUnmappedSite'),
+                            onPressed: () =>
+                                _showLocationMappingSheet(context, location),
+                            icon: const Icon(Icons.add_location_alt_rounded,
+                                size: 18),
+                            label: const Text('Map This Site (Set GPS)'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                      ],
                       if (location.isMappable) ...[
                         const SizedBox(height: 12),
                         SizedBox(
@@ -462,6 +516,22 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                             label: const Text('Start Turn-by-Turn Navigation'),
                             style: ElevatedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        // Gene - Oct 31, 2026: Added secondary button to update coordinates.
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            key: const ValueKey('btnUpdateSiteCoordinates'),
+                            onPressed: () =>
+                                _showLocationMappingSheet(context, location),
+                            icon: const Icon(Icons.edit_location_alt_outlined,
+                                size: 18),
+                            label: const Text('Update GPS Coordinates'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 11),
                             ),
                           ),
                         ),
@@ -1008,6 +1078,46 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
               const SizedBox(width: 10),
               const Expanded(
                 child: Text('Site photos uploaded successfully!'),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  // Gene - Oct 31, 2026: Opens modal bottom sheet to map or update LCP NAP location coordinates.
+  Future<void> _showLocationMappingSheet(
+    BuildContext context,
+    LcpNapDto location,
+  ) async {
+    final updated = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => LcpNapLocationPickerSheet(
+        location: location,
+        signals: widget.signals,
+        tileProvider: _tiles,
+        locationService: widget.locationServiceForTesting,
+        placeLookup: widget.placeLookupForTesting,
+        reverseGeocodeForTesting: widget.reverseGeocodeForTesting,
+      ),
+    );
+
+    if (updated == true && mounted) {
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded,
+                  color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              const Expanded(
+                child:
+                    Text('LCP NAP location coordinates updated successfully!'),
               ),
             ],
           ),

@@ -171,4 +171,47 @@ class LcpNapDto {
         'is_synced': boolInt(synced),
         'updated_at': dateText(updatedAt ?? DateTime.now()),
       };
+
+  // Gene - Oct 31, 2026: Added copyWith method to LcpNapDto to support updating location coordinates and metadata.
+  LcpNapDto copyWith({
+    int? id,
+    String? lcp,
+    String? nap,
+    String? lcpNap,
+    int? portTotal,
+    String? coordinates,
+    String? street,
+    String? barangay,
+    String? city,
+    String? region,
+    String? image,
+    String? image2,
+    String? readingImage,
+    String? modifiedBy,
+    String? userEmail,
+    DateTime? modifiedDate,
+    bool? isSynced,
+    DateTime? updatedAt,
+  }) {
+    return LcpNapDto(
+      id: id ?? this.id,
+      lcp: lcp ?? this.lcp,
+      nap: nap ?? this.nap,
+      lcpNap: lcpNap ?? this.lcpNap,
+      portTotal: portTotal ?? this.portTotal,
+      coordinates: coordinates ?? this.coordinates,
+      street: street ?? this.street,
+      barangay: barangay ?? this.barangay,
+      city: city ?? this.city,
+      region: region ?? this.region,
+      image: image ?? this.image,
+      image2: image2 ?? this.image2,
+      readingImage: readingImage ?? this.readingImage,
+      modifiedBy: modifiedBy ?? this.modifiedBy,
+      userEmail: userEmail ?? this.userEmail,
+      modifiedDate: modifiedDate ?? this.modifiedDate,
+      isSynced: isSynced ?? this.isSynced,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
 }
