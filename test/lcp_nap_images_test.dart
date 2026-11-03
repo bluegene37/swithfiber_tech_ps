@@ -511,6 +511,31 @@ void main() {
       expect(files.containsKey('ReadingImage'), isTrue);
     });
 
+    // Gene - Oct 31, 2026: Test that clearing an image sends an empty file per backend API specification.
+    test('uploadLcpNapPhotos with clearImage sends empty image file to delete', () async {
+      final loc = LcpNapDto(
+        id: 55,
+        lcp: 'CAR LCP 001',
+        nap: 'NAP 001',
+        lcpNap: 'CAR LCP 001 NAP 001',
+      );
+
+      final success = await repository.uploadLcpNapPhotos(
+        locationId: 55,
+        location: loc,
+        clearImage: true,
+      );
+
+      expect(success, isTrue);
+      expect(adapter.captured.length, 1);
+
+      final req = adapter.captured.single;
+      final formData = req.data as FormData;
+      final files = Map.fromEntries(formData.files);
+      expect(files.containsKey('Image'), isTrue);
+      expect(files['Image']?.length, 0);
+    });
+
     test('uploadLocationPhotos on signals delegates to repository', () async {
       final loc = LcpNapDto(
         id: 10,

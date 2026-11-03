@@ -207,12 +207,16 @@ class LcpNapSignals {
   }
 
   // Gene - Oct 29, 2026: Coordinate photo upload for an LCP NAP location.
+  // Gene - Oct 31, 2026: Added clear flags (clearImage, clearImage2, clearReadingImage) to support photo deletion.
   Future<bool> uploadLocationPhotos({
     required int locationId,
     required LcpNapDto location,
     Uint8List? imageBytes,
     Uint8List? image2Bytes,
     Uint8List? readingImageBytes,
+    bool clearImage = false,
+    bool clearImage2 = false,
+    bool clearReadingImage = false,
   }) async {
     isLoading.value = true;
     errorMessage.value = null;
@@ -223,6 +227,9 @@ class LcpNapSignals {
         imageBytes: imageBytes,
         image2Bytes: image2Bytes,
         readingImageBytes: readingImageBytes,
+        clearImage: clearImage,
+        clearImage2: clearImage2,
+        clearReadingImage: clearReadingImage,
       );
       return success;
     } catch (e) {

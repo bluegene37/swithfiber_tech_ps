@@ -207,12 +207,16 @@ class LcpNapRepository {
   }
 
   // Gene - Oct 29, 2026: Uploads LCP NAP site enclosure and optical power reading photos via multipart/form-data PUT /api/LCPNapLocations/{id}.
+  // Gene - Oct 31, 2026: Added clear flags (clearImage, clearImage2, clearReadingImage) to support deleting/clearing photos by sending empty image file/omission per backend API contract.
   Future<bool> uploadLcpNapPhotos({
     required int locationId,
     required LcpNapDto location,
     Uint8List? imageBytes,
     Uint8List? image2Bytes,
     Uint8List? readingImageBytes,
+    bool clearImage = false,
+    bool clearImage2 = false,
+    bool clearReadingImage = false,
   }) async {
     try {
       final map = <String, dynamic>{
@@ -228,7 +232,10 @@ class LcpNapRepository {
       };
 
       // 1. Enclosure Exterior (image)
-      if (imageBytes != null && imageBytes.isNotEmpty) {
+      if (clearImage) {
+        // Gene - Oct 31, 2026: Send empty 0-byte file when explicitly clearing/deleting photo per backend team instructions
+        map['Image'] = MultipartFile.fromBytes(<int>[], filename: '');
+      } else if (imageBytes != null && imageBytes.isNotEmpty) {
         map['Image'] = MultipartFile.fromBytes(imageBytes, filename: 'image.jpg');
       } else {
         final existingBytes = _imagesCache[locationId]?.image?.bytes;
@@ -238,7 +245,9 @@ class LcpNapRepository {
       }
 
       // 2. Enclosure Interior (image2)
-      if (image2Bytes != null && image2Bytes.isNotEmpty) {
+      if (clearImage2) {
+        map['Image2'] = MultipartFile.fromBytes(<int>[], filename: '');
+      } else if (image2Bytes != null && image2Bytes.isNotEmpty) {
         map['Image2'] = MultipartFile.fromBytes(image2Bytes, filename: 'image2.jpg');
       } else {
         final existingBytes = _imagesCache[locationId]?.image2?.bytes;
@@ -248,7 +257,9 @@ class LcpNapRepository {
       }
 
       // 3. Optical Power Reading (readingImage)
-      if (readingImageBytes != null && readingImageBytes.isNotEmpty) {
+      if (clearReadingImage) {
+        map['ReadingImage'] = MultipartFile.fromBytes(<int>[], filename: '');
+      } else if (readingImageBytes != null && readingImageBytes.isNotEmpty) {
         map['ReadingImage'] = MultipartFile.fromBytes(readingImageBytes, filename: 'readingImage.jpg');
       } else {
         final existingBytes = _imagesCache[locationId]?.readingImage?.bytes;

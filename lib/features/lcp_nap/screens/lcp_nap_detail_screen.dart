@@ -752,6 +752,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
         : null;
 
     final photos = <({
+      String key,
       String title,
       String subtitle,
       IconData icon,
@@ -760,6 +761,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
     })>[
       if (enc1Bytes != null || enc1Url != null)
         (
+          key: 'enc1',
           title: 'Enclosure Exterior',
           subtitle: 'NAP Box Enclosure 1',
           icon: Icons.router_outlined,
@@ -768,6 +770,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
         ),
       if (enc2Bytes != null || enc2Url != null)
         (
+          key: 'enc2',
           title: 'Enclosure Interior',
           subtitle: 'NAP Splicing Tray / Ports',
           icon: Icons.cable_rounded,
@@ -776,6 +779,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
         ),
       if (readingBytes != null || readingUrl != null)
         (
+          key: 'reading',
           title: 'Optical Power Reading',
           subtitle: 'OPM Power Capture',
           icon: Icons.speed_rounded,
@@ -949,6 +953,8 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                     if (i > 0) const SizedBox(height: 12),
                     _buildPhotoItem(
                       context,
+                      location: location,
+                      photoKey: photos[i].key,
                       title: photos[i].title,
                       subtitle: photos[i].subtitle,
                       icon: photos[i].icon,
@@ -967,6 +973,8 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
 
   Widget _buildPhotoItem(
     BuildContext context, {
+    required LcpNapDto location,
+    required String photoKey,
     required String title,
     required String subtitle,
     required IconData icon,
@@ -989,7 +997,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+            padding: const EdgeInsets.fromLTRB(12, 8, 8, 6),
             child: Row(
               children: [
                 // Gene - Oct 24, 2026: Set icon size to 20 to match standard decorative icon floor.
@@ -1015,6 +1023,18 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                         ),
                       ),
                     ],
+                  ),
+                ),
+                // Gene - Oct 31, 2026: Added direct delete photo button to clear/delete image on the server.
+                IconButton(
+                  icon: const Icon(CupertinoIcons.trash, size: 20),
+                  color: AppTheme.dangerInkOf(context),
+                  tooltip: 'Delete $title',
+                  onPressed: () => _confirmDeletePhoto(
+                    context,
+                    location,
+                    photoKey: photoKey,
+                    photoTitle: title,
                   ),
                 ),
               ],
@@ -1089,6 +1109,81 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
         ],
       ),
     );
+  }
+
+  // Gene - Oct 31, 2026: Confirms and deletes/clears a single photo directly from the photo card.
+  Future<void> _confirmDeletePhoto(
+    BuildContext context,
+    LcpNapDto location, {
+    required String photoKey,
+    required String photoTitle,
+  }) async {
+    /*
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    */
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete $photoTitle?'),
+        content: Text(
+          'Are you sure you want to delete this photo for ${location.lcpNap}? This will clear the image on the server.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final success = await widget.signals.uploadLocationPhotos(
+      locationId: location.id,
+      location: location,
+      clearImage: photoKey == 'enc1',
+      clearImage2: photoKey == 'enc2',
+      clearReadingImage: photoKey == 'reading',
+    );
+
+    if (!mounted) return;
+    if (success) {
+      await _loadSitePhotos();
+      if (!mounted) return;
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded,
+                  color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('$photoTitle deleted successfully!'),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.signals.errorMessage.value ??
+                'Failed to delete photo. Please check your connection.',
+          ),
+          backgroundColor: AppTheme.danger,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   // Gene - Oct 29, 2026: Opens modal bottom sheet to capture and upload LCP NAP site enclosure and reading photos.
@@ -1211,9 +1306,24 @@ class _LcpNapUploadPhotosSheetState extends State<_LcpNapUploadPhotosSheet> {
       _uploadError = null;
     });
 
-    final enc1Bytes = _enc1 != null ? DataUrl.decode(_enc1!) : null;
-    final enc2Bytes = _enc2 != null ? DataUrl.decode(_enc2!) : null;
-    final readingBytes = _reading != null ? DataUrl.decode(_reading!) : null;
+    final enc1Bytes = _enc1 != null && _enc1!.trim().isNotEmpty
+        ? DataUrl.decode(_enc1!)
+        : null;
+    final enc2Bytes = _enc2 != null && _enc2!.trim().isNotEmpty
+        ? DataUrl.decode(_enc2!)
+        : null;
+    final readingBytes = _reading != null && _reading!.trim().isNotEmpty
+        ? DataUrl.decode(_reading!)
+        : null;
+
+    // Gene - Oct 31, 2026: Determine whether an image was explicitly deleted/cleared (was previously present, now empty/null).
+    final hadEnc1 = widget.initialImages?.image?.hasImage == true;
+    final hadEnc2 = widget.initialImages?.image2?.hasImage == true;
+    final hadReading = widget.initialImages?.readingImage?.hasImage == true;
+
+    final clearEnc1 = hadEnc1 && (enc1Bytes == null || enc1Bytes.isEmpty);
+    final clearEnc2 = hadEnc2 && (enc2Bytes == null || enc2Bytes.isEmpty);
+    final clearReading = hadReading && (readingBytes == null || readingBytes.isEmpty);
 
     final success = await widget.signals.uploadLocationPhotos(
       locationId: widget.location.id,
@@ -1221,6 +1331,9 @@ class _LcpNapUploadPhotosSheetState extends State<_LcpNapUploadPhotosSheet> {
       imageBytes: enc1Bytes,
       image2Bytes: enc2Bytes,
       readingImageBytes: readingBytes,
+      clearImage: clearEnc1,
+      clearImage2: clearEnc2,
+      clearReadingImage: clearReading,
     );
 
     if (!mounted) return;
