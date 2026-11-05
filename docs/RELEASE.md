@@ -434,7 +434,11 @@ regenerated later.
       that syncs when the connection returns.
 - [ ] Play Console *Data safety* form completed: the app collects technician
       account data and job-order records, transmitted over TLS, not shared.
+<!-- Gene - Nov 05, 2026: Added reference to docs/APP_STORE_LISTING.md for Apple App Store production metadata, review credentials, and ATS declarations.
 - [ ] App Store Connect privacy questions answered to match.
+-->
+- [ ] App Store Connect privacy questions answered to match (see `docs/APP_STORE_LISTING.md`).
+- [ ] Apple App Review notes and demo credentials configured per `docs/APP_STORE_LISTING.md`.
 - [ ] Certificate pin in `AppConstants.pinnedApiCertSha256` matches the
       production server's current certificate. A reissued server certificate
       breaks every installed build until an update ships.

@@ -95,6 +95,8 @@ AuthKey_*.p8
 !/README.md
 !/CHANGELOG.md
 !/docs/RELEASE.md
+# Gene - Nov 05, 2026: Allow docs/APP_STORE_LISTING.md to be committed to repository.
+!/docs/APP_STORE_LISTING.md
 
 # AI Tool Directories, Caches & Transcripts
 .agents/
