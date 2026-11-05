@@ -12,7 +12,8 @@ import 'package:swithfiber_tech_ps/features/service_orders/models/service_order_
 import 'package:swithfiber_tech_ps/features/service_orders/screens/service_order_detail_screen.dart';
 import 'package:swithfiber_tech_ps/features/service_orders/signals/service_orders_signals.dart';
 
-class _QuietApi implements JobOrdersApi {
+// Gene - Nov 5, 2026: Extended JobOrdersApi to inherit default image and multipart methods.
+class _QuietApi extends JobOrdersApi {
   @override
   Future<List<Map<String, dynamic>>> fetchByStatus(String status) async => [];
 

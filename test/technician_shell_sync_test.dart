@@ -13,7 +13,8 @@ import 'package:swithfiber_tech_ps/features/service_orders/services/service_orde
 import 'package:swithfiber_tech_ps/features/service_orders/signals/service_orders_signals.dart';
 import 'package:swithfiber_tech_ps/features/shell/technician_shell.dart';
 
-class _TrackingJobsApi implements JobOrdersApi {
+// Gene - Nov 5, 2026: Extended JobOrdersApi to inherit default image and multipart methods.
+class _TrackingJobsApi extends JobOrdersApi {
   int fetchCallCount = 0;
 
   @override

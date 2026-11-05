@@ -14,7 +14,8 @@ import 'package:swithfiber_tech_ps/features/reports/screens/create_report_screen
 /// A technician can mark an open job Rescheduled with a reason from a fixed
 /// list, and bring it back to Scheduled. The change is written locally,
 /// queued for sync, and the job stays on the Today queue.
-class _RecordingApi implements JobOrdersApi {
+// Gene - Nov 5, 2026: Extended JobOrdersApi to inherit default image and multipart methods.
+class _RecordingApi extends JobOrdersApi {
   final List<Map<String, dynamic>> updates = [];
   Map<String, dynamic>? fetchByIdResult;
   @override

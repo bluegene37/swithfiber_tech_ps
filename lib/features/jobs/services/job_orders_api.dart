@@ -31,9 +31,19 @@ abstract class JobOrdersApi {
   /// null when it no longer exists.
   Future<Map<String, dynamic>?> fetchById(int id);
 
+  // Gene - Nov 5, 2026: Added fetchImages to retrieve base64 photo proofs and signature from GET /api/JobOrders/{id}/GetJobOrderImage.
+  /// `GET /api/JobOrders/{id}/GetJobOrderImage`: base64 file payloads for
+  /// photo proofs and subscriber signature.
+  Future<Map<String, dynamic>?> fetchImages(int id) async => null;
+
   /// `PUT /api/JobOrders/{id}` with the complete record. Throws an
   /// [ApiException] whose `statusCode` is 404 when the record is gone.
   Future<void> update(int id, Map<String, dynamic> body);
+
+  // Gene - Nov 5, 2026: Added updateMultipart to support multipart/form-data image uploads via PUT /api/JobOrders/{id}.
+  /// `PUT /api/JobOrders/{id}` with multipart form data including photo files.
+  Future<void> updateMultipart(int id, FormData formData) async =>
+      update(id, {});
 }
 
 /// [JobOrdersApi] over the shared, certificate-pinned [ApiClient].
@@ -119,6 +129,19 @@ class DioJobOrdersApi implements JobOrdersApi {
     }
   }
 
+  // Gene - Nov 5, 2026: Implemented fetchImages over GET /JobOrders/{id}/GetJobOrderImage.
+  @override
+  Future<Map<String, dynamic>?> fetchImages(int id) async {
+    try {
+      final response = await _api.get('/JobOrders/$id/GetJobOrderImage');
+      final data = response.data;
+      return data is Map<String, dynamic> ? data : null;
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
   /// Sent with no `Authorization` header. The endpoint accepts the update
   /// without one: the owner's bare curl with this exact body succeeds where
   /// the app's tokened request was answered with HTTP 500, so the token is
@@ -129,6 +152,19 @@ class DioJobOrdersApi implements JobOrdersApi {
       '/JobOrders/$id',
       data: body,
       options: Options(extra: {ApiClient.skipAuthOption: true}),
+    );
+  }
+
+  // Gene - Nov 5, 2026: Implemented updateMultipart over PUT /JobOrders/{id} with multipart/form-data.
+  @override
+  Future<void> updateMultipart(int id, FormData formData) async {
+    await _api.put(
+      '/JobOrders/$id',
+      data: formData,
+      options: Options(
+        contentType: 'multipart/form-data',
+        extra: {ApiClient.skipAuthOption: true},
+      ),
     );
   }
 }

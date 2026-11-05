@@ -19,7 +19,8 @@ import 'package:swithfiber_tech_ps/features/service_orders/signals/service_order
 /// The ONT model is picked from the same searchable sheet as the NAP box, on
 /// the completion report and on the repair form, because the approved
 /// catalog keeps growing.
-class _QuietApi implements JobOrdersApi {
+// Gene - Nov 5, 2026: Extended JobOrdersApi to inherit default image and multipart methods.
+class _QuietApi extends JobOrdersApi {
   @override
   Future<List<Map<String, dynamic>>> fetchByStatus(String status) async => [];
   @override

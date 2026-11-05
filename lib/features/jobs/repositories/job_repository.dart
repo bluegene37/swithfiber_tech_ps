@@ -2,6 +2,7 @@ import 'dart:async';
 import '../../../core/database/daos/job_orders_dao.dart';
 import '../../../core/database/daos/sync_error_logs_dao.dart';
 import '../../../core/services/photo_storage_service.dart';
+import '../models/job_order_images_model.dart';
 import '../models/job_order_model.dart';
 import '../services/job_orders_api.dart';
 import '../services/sync_worker.dart';
@@ -19,6 +20,40 @@ class JobRepository {
   JobRepository(this._dao, {JobOrdersApi? api, this.errorLog})
       : _api = api ?? DioJobOrdersApi() {
     syncWorker = SyncWorker(_dao, api: _api, errorLog: errorLog);
+  }
+
+  // Gene - Nov 5, 2026: Cached Job Order site photo proofs and customer signature by job ID.
+  final Map<int, JobOrderImagesDto> _imagesCache = {};
+
+  /// Clear in-memory photos cache (useful for tests or refresh).
+  void clearImagesCache([int? id]) {
+    if (id != null) {
+      _imagesCache.remove(id);
+    } else {
+      _imagesCache.clear();
+    }
+  }
+
+  /// Fetches photo proofs and signature for a Job Order from GET /api/JobOrders/{id}/GetJobOrderImage.
+  Future<JobOrderImagesDto?> getJobOrderImages(
+    int jobId, {
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _imagesCache.containsKey(jobId)) {
+      return _imagesCache[jobId];
+    }
+
+    try {
+      final data = await _api.fetchImages(jobId);
+      if (data != null) {
+        final dto = JobOrderImagesDto.fromJson(data);
+        _imagesCache[jobId] = dto;
+        return dto;
+      }
+    } catch (_) {
+      // Offline fallback or test mock
+    }
+    return _imagesCache[jobId];
   }
 
   /// Watch reactive stream of all jobs directly from the local database
@@ -349,6 +384,9 @@ class JobRepository {
       isSynced: false,
     );
 
+    // Gene - Nov 5, 2026: Invalidate cached photos so subsequent views fetch fresh server uploads.
+    _imagesCache.remove(id);
+
     await syncWorker.refreshPendingCount();
     unawaited(syncWorker.syncPendingJobs());
   }
@@ -425,6 +463,9 @@ class JobRepository {
       materialsUsed: materialsUsed,
       isSynced: false,
     );
+
+    // Gene - Nov 5, 2026: Invalidate cached photos so subsequent views fetch fresh server uploads.
+    _imagesCache.remove(id);
 
     await syncWorker.refreshPendingCount();
     unawaited(syncWorker.syncPendingJobs());
@@ -504,6 +545,9 @@ class JobRepository {
       materialsUsed: materialsUsed,
       isSynced: false,
     );
+
+    // Gene - Nov 5, 2026: Invalidate cached photos so subsequent views fetch fresh server uploads.
+    _imagesCache.remove(id);
 
     await syncWorker.refreshPendingCount();
     unawaited(syncWorker.syncPendingJobs());

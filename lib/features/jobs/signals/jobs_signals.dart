@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/services/sound_service.dart';
 import '../../../core/widgets/loading_states.dart';
+import '../models/job_order_images_model.dart';
 import '../models/job_order_model.dart';
 import '../repositories/job_repository.dart';
 import '../services/sync_worker.dart';
@@ -59,6 +60,11 @@ class JobsSignals {
   final searchQuery = signal<String>('');
   final selectedJob = signal<JobOrderDto?>(null);
   final isRefreshing = signal<bool>(false);
+
+  // Gene - Nov 5, 2026: Fetches site photo proofs and subscriber signature for a Job Order with optional force refresh.
+  Future<JobOrderImagesDto?> getJobOrderImages(int jobId,
+          {bool forceRefresh = false}) =>
+      repository.getJobOrderImages(jobId, forceRefresh: forceRefresh);
   // First-load presentation: downloading -> skeleton -> ready. Stays ready for
   // pull-to-refresh and manual syncs so existing data is never hidden.
   final loadPhase = signal<DataLoadPhase>(DataLoadPhase.ready);

@@ -33,6 +33,8 @@ import '../widgets/job_photo_gallery.dart';
 // Gene - Oct 13, 2026: Commented out unused job_photo_gallery import as on-site records verification was removed from details per user request.
 import '../widgets/status_badge.dart';
 import '../widgets/status_change_sheet.dart';
+// Gene - Nov 5, 2026: Imported JobSitePhotosCard for remote photo proofs gallery and full-screen lightbox preview.
+import '../widgets/job_site_photos_card.dart';
 import '../../reports/screens/create_report_screen.dart';
 import '../../reports/signals/report_signals.dart';
 import '../../../core/services/map_navigation_service.dart';
@@ -226,6 +228,13 @@ class JobOrderDetailScreen extends StatelessWidget {
               const SizedBox(height: 14),
 
               _buildPlantAndHardwareCard(context, job, isDark),
+              const SizedBox(height: 14),
+
+              // Gene - Nov 5, 2026: Rendered Site Photo Proofs card fetching from GET /api/JobOrders/{id}/GetJobOrderImage with refresh and zoom.
+              JobSitePhotosCard(
+                job: job,
+                jobsSignals: jobsSignals,
+              ),
               const SizedBox(height: 14),
 
               /*

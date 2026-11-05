@@ -7,6 +7,7 @@ import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/data_url.dart';
 import '../../reports/widgets/photo_capture_tile.dart' show showPhotoViewer;
+import '../models/job_order_images_model.dart';
 import '../models/job_order_model.dart';
 
 /// Read-only grid of the photo proofs and signature attached to a job.
@@ -15,17 +16,25 @@ import '../models/job_order_model.dart';
 /// the office uploaded) are listed as stored on the server.
 class JobPhotoGallery extends StatelessWidget {
   final JobOrderDto job;
+  // Gene - Nov 5, 2026: Added optional serverImages to support rendering base64 photo proofs from GetJobOrderImage.
+  final JobOrderImagesDto? serverImages;
 
-  const JobPhotoGallery({super.key, required this.job});
+  const JobPhotoGallery({super.key, required this.job, this.serverImages});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final entries = <(String, String)>[
+    final entries = <(String, String, Uint8List?)>[
       for (final p in JobPhoto.values)
-        if (job.hasImage(p)) (p.label, job.imageFor(p)!),
-      if (job.hasSignature) ('Subscriber Signature', job.clientSignature!),
+        if (job.hasImage(p) || _serverBytesFor(p) != null)
+          (p.label, job.imageFor(p) ?? '', _serverBytesFor(p)),
+      if (job.hasSignature || serverImages?.clientSignature?.bytes != null)
+        (
+          'Subscriber Signature',
+          job.clientSignature ?? '',
+          serverImages?.clientSignature?.bytes
+        ),
     ];
 
     if (entries.isEmpty) {
@@ -66,9 +75,10 @@ class JobPhotoGallery extends StatelessWidget {
       ),
       itemCount: entries.length,
       itemBuilder: (context, index) {
-        final (label, value) = entries[index];
-        final bytes = PhotoStorageService.instance.resolveBytes(value) ??
-            DataUrl.decode(value);
+        final (label, value, serverBytes) = entries[index];
+        final bytes = serverBytes ??
+            (PhotoStorageService.instance.resolveBytes(value) ??
+                DataUrl.decode(value));
         return _PhotoThumb(
           label: label,
           bytes: bytes,
@@ -79,6 +89,20 @@ class JobPhotoGallery extends StatelessWidget {
         );
       },
     );
+  }
+
+  // Gene - Nov 5, 2026: Resolves base64 bytes for a standard JobPhoto proof from serverImages if present.
+  Uint8List? _serverBytesFor(JobPhoto p) {
+    if (serverImages == null) return null;
+    return switch (p) {
+      JobPhoto.setup => serverImages!.setupImage?.bytes,
+      JobPhoto.routerReading => serverImages!.routerReadingImage?.bytes,
+      JobPhoto.boxReading => serverImages!.boxReadingImage?.bytes,
+      JobPhoto.signedContract => serverImages!.signedContractImage?.bytes,
+      JobPhoto.portLabel => serverImages!.portLabelImage?.bytes,
+      JobPhoto.houseFront => serverImages!.houseFront?.bytes,
+      _ => null,
+    };
   }
 }
 

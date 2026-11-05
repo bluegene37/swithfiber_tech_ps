@@ -8,7 +8,8 @@ import 'package:swithfiber_tech_ps/features/jobs/signals/jobs_signals.dart';
 
 /// Canned server: answers `GET /JobOrders/status/{status}` from a map and
 /// records every PUT.
-class FakeJobOrdersApi implements JobOrdersApi {
+// Gene - Nov 5, 2026: Extended JobOrdersApi to inherit default image and multipart methods.
+class FakeJobOrdersApi extends JobOrdersApi {
   final Map<String, List<Map<String, dynamic>>> byStatus;
   final List<String> requestedStatuses = [];
   final List<(String, String?)> requestedAssigned = [];

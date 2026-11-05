@@ -69,10 +69,22 @@ class SyncWorker {
         // body that was refused.
         Map<String, dynamic>? body;
         try {
+          /*
           // Replay the full record with the technician's edits applied.
           body = await dto.toApiJsonAsync();
           payloadBytes = utf8.encode(json.encode(body)).length;
           await _api.update(dto.id, body);
+          */
+          // Gene - Nov 5, 2026: Use multipart/form-data upload when captured photo proofs exist, otherwise standard JSON update.
+          if (dto.hasCapturedPhotos) {
+            final formData = await dto.toMultipartFormData();
+            payloadBytes = formData.length;
+            await _api.updateMultipart(dto.id, formData);
+          } else {
+            body = await dto.toApiJsonAsync();
+            payloadBytes = utf8.encode(json.encode(body)).length;
+            await _api.update(dto.id, body);
+          }
           await _replaceWithServerCopy(dto.id);
           await _errorLog?.markResolved('JOB_ORDER', dto.id);
           syncedSuccess++;

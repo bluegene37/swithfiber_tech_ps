@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:latlong2/latlong.dart';
 import '../../../core/services/photo_storage_service.dart';
+import '../../../core/utils/data_url.dart';
 import '../../../core/database/sql_values.dart';
 import '../../catalogs/services/catalog_service.dart';
 
@@ -2038,5 +2040,70 @@ class JobOrderDto {
       }
     }
     return map;
+  }
+
+  // Gene - Nov 5, 2026: Helper to detect if this job carries any locally captured photos or signatures that should be uploaded via multipart/form-data.
+  bool get hasCapturedPhotos {
+    final storage = PhotoStorageService.instance;
+    return (setupImage != null && storage.isCapturedImage(setupImage!)) ||
+        (routerReadingImage != null &&
+            storage.isCapturedImage(routerReadingImage!)) ||
+        (signedContractImage != null &&
+            storage.isCapturedImage(signedContractImage!)) ||
+        (boxReadingImage != null &&
+            storage.isCapturedImage(boxReadingImage!)) ||
+        (clientSignature != null &&
+            storage.isCapturedImage(clientSignature!)) ||
+        (houseFront != null && storage.isCapturedImage(houseFront!)) ||
+        (portLabelImage != null && storage.isCapturedImage(portLabelImage!));
+  }
+
+  // Gene - Nov 5, 2026: Builds multipart FormData payload uploading real photo files and signature to PUT /api/JobOrders/{id}.
+  Future<FormData> toMultipartFormData() async {
+    final storage = PhotoStorageService.instance;
+    final jsonMap = toApiJson();
+    final formDataMap = <String, dynamic>{};
+
+    // Mapping from DTO/API field keys to ASP.NET Core multipart parameter names
+    const fileParamMap = {
+      'setupImage': 'SetupImage',
+      'routerReadingImage': 'RouterReadingImage',
+      'signedContractImage': 'SignedContractImage',
+      'clientSignature': 'ClientSignature',
+      'houseFront': 'HouseFront',
+      'boxReadingImage': 'BoxReadingImage',
+      'portLabelImage': 'PortLabelImage',
+    };
+
+    for (final entry in jsonMap.entries) {
+      final key = entry.key;
+      final val = entry.value;
+      if (val == null) continue;
+
+      if (fileParamMap.containsKey(key)) {
+        final paramName = fileParamMap[key]!;
+        final valStr = val.toString().trim();
+        if (storage.isCapturedImage(valStr)) {
+          final bytes =
+              storage.resolveBytes(valStr) ?? DataUrl.decode(valStr);
+          if (bytes != null && bytes.isNotEmpty) {
+            formDataMap[paramName] = MultipartFile.fromBytes(
+              bytes,
+              filename: '${paramName.toLowerCase()}.jpg',
+            );
+            continue;
+          }
+        }
+        // If not a newly captured file, preserve the existing server path or URL string
+        if (valStr.isNotEmpty) {
+          formDataMap[key] = valStr;
+        }
+      } else {
+        // Scalar text fields
+        formDataMap[key] = val.toString();
+      }
+    }
+
+    return FormData.fromMap(formDataMap);
   }
 }
