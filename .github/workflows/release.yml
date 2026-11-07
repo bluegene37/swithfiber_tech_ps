@@ -136,17 +136,36 @@ jobs:
       #     fi
       #     echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"
       #     echo "track=$TRACK" >> "$GITHUB_OUTPUT"
+      # Gene - Nov, 07, 2026: Enforce a minimum base build offset of 25 so Android versionCode never drops below previously published Closed Testing builds even if pubspec.yaml build number is reset on version bumps.
+      # - name: Resolve build parameters
+      #   id: params
+      #   run: |
+      #     BUILD_NUM="${{ inputs.build_number }}"
+      #     if [ -z "$BUILD_NUM" ]; then
+      #       PUBSPEC_BUILD=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -s -f2)
+      #       if [ -n "$PUBSPEC_BUILD" ]; then
+      #         BUILD_NUM=$(( PUBSPEC_BUILD + ${{ github.run_number }} ))
+      #       else
+      #         BUILD_NUM="${{ github.run_number }}"
+      #       fi
+      #     fi
+      #     TRACK="${{ inputs.track }}"
+      #     if [ -z "$TRACK" ]; then
+      #       TRACK="alpha"
+      #     fi
+      #     echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"
+      #     echo "track=$TRACK" >> "$GITHUB_OUTPUT"
       - name: Resolve build parameters
         id: params
         run: |
           BUILD_NUM="${{ inputs.build_number }}"
           if [ -z "$BUILD_NUM" ]; then
             PUBSPEC_BUILD=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -s -f2)
-            if [ -n "$PUBSPEC_BUILD" ]; then
-              BUILD_NUM=$(( PUBSPEC_BUILD + ${{ github.run_number }} ))
-            else
-              BUILD_NUM="${{ github.run_number }}"
+            BASE_BUILD="${PUBSPEC_BUILD:-0}"
+            if [ "$BASE_BUILD" -lt 25 ]; then
+              BASE_BUILD=25
             fi
+            BUILD_NUM=$(( BASE_BUILD + ${{ github.run_number }} ))
           fi
           TRACK="${{ inputs.track }}"
           if [ -z "$TRACK" ]; then

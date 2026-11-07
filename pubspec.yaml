@@ -7,7 +7,9 @@ publish_to: 'none'
 # Gene - Oct 24, 2026: Bumped version to 1.0.2+1 for LCP NAP features.
 # version: 1.0.2+1
 # Gene - Nov 03, 2026: Incremented version to 1.0.3+1 for Apple TestFlight release.
-version: 1.0.3+1
+# version: 1.0.3+1
+# Gene - Nov, 07, 2026: Bumped build number to 26 (above Play Console Closed Testing versionCode 25) for v1.0.3 Android Closed Testing release.
+version: 1.0.3+26
 
 environment:
   sdk: ^3.5.0
