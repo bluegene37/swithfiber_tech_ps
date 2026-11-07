@@ -167,7 +167,9 @@ void main() {
 
   // Gene - Oct 31, 2026: Unit tests for LcpNapDto image fields parsing ASP.NET IFormFile map metadata and base64.
   group('LcpNapDto Image Fields Parsing Tests', () {
-    test('ignores IFormFile map metadata without fileContents and preserves null', () {
+    test(
+        'ignores IFormFile map metadata without fileContents and preserves null',
+        () {
       final json = {
         'id': 1503,
         'lcp': 'CAR LCP 001',
@@ -175,7 +177,9 @@ void main() {
         'image': {
           'contentType': 'image/jpeg',
           'contentDisposition': '',
-          'headers': {'Content-Type': ['image/jpeg']},
+          'headers': {
+            'Content-Type': ['image/jpeg']
+          },
           'length': 22399,
           'name': 'CAR LCP 001 NAP 001-Image..jpg',
           'fileName': 'CAR LCP 001 NAP 001-Image..jpg',
@@ -303,8 +307,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(find.text('Site Enclosure & Reading Photos'), findsOneWidget);
-      expect(
-          find.text('No enclosure or optical reading photos uploaded yet.'),
+      expect(find.text('No enclosure or optical reading photos uploaded yet.'),
           findsOneWidget);
       expect(find.text('3 photos'), findsNothing);
     });
@@ -512,7 +515,8 @@ void main() {
     });
 
     // Gene - Oct 31, 2026: Test that clearing an image sends an empty file per backend API specification.
-    test('uploadLcpNapPhotos with clearImage sends empty image file to delete', () async {
+    test('uploadLcpNapPhotos with clearImage sends empty image file to delete',
+        () async {
       final loc = LcpNapDto(
         id: 55,
         lcp: 'CAR LCP 001',

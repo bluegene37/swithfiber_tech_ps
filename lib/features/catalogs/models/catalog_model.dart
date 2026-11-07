@@ -263,5 +263,3 @@ class InventoryItemDto {
           'modifiedDate': modifiedDate!.toIso8601String(),
       };
 }
-
-

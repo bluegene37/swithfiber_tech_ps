@@ -65,13 +65,13 @@ void main() {
       expect(CatalogService.fallbackInventoryItems, isNotEmpty);
       expect(CatalogService.fallbackInventoryItems.length,
           CatalogService.fallbackMaterials.length);
-      expect(CatalogService.fallbackMaterials,
-          contains('Drop Cable (m)'));
-      expect(CatalogService.fallbackMaterials,
-          contains('SC/APC Fast Connector'));
+      expect(CatalogService.fallbackMaterials, contains('Drop Cable (m)'));
+      expect(
+          CatalogService.fallbackMaterials, contains('SC/APC Fast Connector'));
     });
 
-    test('getMaterials returns all materials without filtering by category/type',
+    test(
+        'getMaterials returns all materials without filtering by category/type',
         () async {
       final catalog = CatalogService();
       final materials = await catalog.getMaterials();

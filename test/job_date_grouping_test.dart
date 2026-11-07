@@ -32,7 +32,6 @@ void main() {
       expect(job.scheduledDate, modified);
     });
 
-
     test('falls back to updatedAt when no earlier dates exist', () {
       final updated = DateTime(2026, 5, 1);
       final job = JobOrderDto(

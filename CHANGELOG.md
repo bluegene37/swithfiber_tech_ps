@@ -6,10 +6,15 @@ All notable changes to Switch Fiber Tech are recorded here. The format follows
 
 ## [Unreleased]
 
-Everything below shipped to the working branch between 2026-09-03 and
-2026-09-07 and has not been tagged yet.
+## [1.0.3] - 2026-11-07
 
 ### Added
+- **Job Order Photo Proofs & Multipart Upload.** View remote site photos and upload installation photo proofs (NAP reading, ONT reading, installation setup, speed test, house front, signed contract, port label) via multipart API.
+- **LCP NAP Location Mapping.** Current GPS lock, interactive map pin picker sheet, and coordinate update API integration.
+- **LCP NAP Photo Capture & Upload.** Site enclosure and reading photo proofs with camera capture, photo clearance, and multipart upload.
+- **Apple App Store Production Package.** Full App Store Connect metadata pack, reviewer credentials, support URLs, and Guideline 2.1 compliance guide.
+- **iOS TestFlight Automated CI/CD.** Ephemeral keychain, automated certificate and profile signing, and TestFlight deployment via `release.yml` and `./scripts/deploy.sh`.
+- **Dynamic Materials Picker.** Searchable inventory materials selector and usage counter on job order reports.
 - **Repairs tab.** Service orders (trouble tickets) are pulled from the API,
   persisted in their own Drift table, and completed offline: hardware swap or
   pullout, materials consumed, three photo proofs plus house front, and a
@@ -129,5 +134,6 @@ First production release for Switch Fiber field technicians.
 - Session data is stored in the platform keychain / keystore; sensitive profile
   fields returned by the API are never persisted.
 
-[Unreleased]: https://github.com/bluegene37/switchfiber_tech/compare/main...HEAD
-[1.0.0]: https://github.com/bluegene37/switchfiber_tech/commits/main
+[Unreleased]: https://github.com/bluegene37/switchfiber_tech/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/bluegene37/switchfiber_tech/compare/v1.0.0...v1.0.3
+[1.0.0]: https://github.com/bluegene37/switchfiber_tech/commits/v1.0.0

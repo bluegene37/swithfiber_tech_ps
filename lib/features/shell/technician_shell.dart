@@ -293,7 +293,12 @@ class _TechnicianShellState extends State<TechnicianShell>
   */
   // Gene - Oct 13, 2026: Guarded _openReportForJob so rescheduled jobs cannot open report screen or modify records.
   void _openReportForJob(JobOrderDto job) {
-    if (job.isRescheduled || job.siteException == SiteException.reschedule) return;
+    // Gene - Nov 07, 2026: Wrapped single-line if statement in curly braces for linter compliance (curly_braces_in_flow_control_structures).
+    // if (job.isRescheduled || job.siteException == SiteException.reschedule)
+    //   return;
+    if (job.isRescheduled || job.siteException == SiteException.reschedule) {
+      return;
+    }
     _reportSignals.setJobOrder(job);
     Navigator.of(context).push(
       MaterialPageRoute(

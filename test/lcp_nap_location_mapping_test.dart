@@ -283,17 +283,17 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify coordinates input is filled
-      final coordField = tester.widget<TextField>(
-          find.byKey(const ValueKey('inputCoordinates')));
+      final coordField = tester
+          .widget<TextField>(find.byKey(const ValueKey('inputCoordinates')));
       expect(coordField.controller?.text, '14.586200, 121.061800');
 
       // Verify reverse-geocoded address fields are populated
-      final streetField = tester
-          .widget<TextField>(find.byKey(const ValueKey('inputStreet')));
+      final streetField =
+          tester.widget<TextField>(find.byKey(const ValueKey('inputStreet')));
       expect(streetField.controller?.text, 'Ortigas Ave');
 
-      final barangayField = tester
-          .widget<TextField>(find.byKey(const ValueKey('inputBarangay')));
+      final barangayField =
+          tester.widget<TextField>(find.byKey(const ValueKey('inputBarangay')));
       expect(barangayField.controller?.text, 'San Antonio');
 
       final cityField =
@@ -301,7 +301,8 @@ void main() {
       expect(cityField.controller?.text, 'Pasig');
     });
 
-    testWidgets('renders validation error when saving without valid coordinates',
+    testWidgets(
+        'renders validation error when saving without valid coordinates',
         (tester) async {
       final loc = LcpNapDto(
         id: 2,
@@ -380,7 +381,8 @@ void main() {
 
       expect(find.text('Pin Location on Map'), findsOneWidget);
       expect(find.text('LCP 03 - NAP 05'), findsOneWidget);
-      expect(find.byKey(const ValueKey('btnConfirmPinLocation')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('btnConfirmPinLocation')), findsOneWidget);
 
       // Tap confirm button
       await tester.tap(find.byKey(const ValueKey('btnConfirmPinLocation')));
@@ -493,9 +495,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(find.text('14.586200, 121.061800'), findsWidgets);
+      expect(find.byKey(const ValueKey('btnUpdateSiteCoordinates')),
+          findsOneWidget);
       expect(
-          find.byKey(const ValueKey('btnUpdateSiteCoordinates')), findsOneWidget);
-      expect(find.byKey(const ValueKey('btnHeaderMapLocation')), findsOneWidget);
+          find.byKey(const ValueKey('btnHeaderMapLocation')), findsOneWidget);
     });
   });
 }

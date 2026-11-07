@@ -1,6 +1,7 @@
 // Gene - Nov 5, 2026: Comprehensive unit and widget tests for Job Order photo proofs and multipart upload.
-import 'dart:convert';
-import 'dart:typed_data';
+// Gene - Nov 07, 2026: Commented out unused dart:convert and dart:typed_data imports to satisfy static analysis and pre-release verification gates.
+// import 'dart:convert';
+// import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -240,8 +241,7 @@ void main() {
       expect(api.calls, isEmpty);
 
       // Force refresh bypasses cache
-      final res3 =
-          await repository.getJobOrderImages(4119, forceRefresh: true);
+      final res3 = await repository.getJobOrderImages(4119, forceRefresh: true);
       expect(res3, isNotNull);
       expect(api.calls, contains('fetchImages(4119)'));
     });
@@ -324,7 +324,10 @@ void main() {
       expect(formData.files.any((f) => f.key == 'HouseFront'), isTrue);
 
       // Verify scalar fields are present
-      expect(formData.fields.any((f) => f.key == 'status' && f.value == 'Completed'), isTrue);
+      expect(
+          formData.fields
+              .any((f) => f.key == 'status' && f.value == 'Completed'),
+          isTrue);
     });
 
     test('SyncWorker triggers updateMultipart when job has captured photos',

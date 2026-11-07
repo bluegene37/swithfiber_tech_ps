@@ -269,7 +269,8 @@ void main() {
   });
 
   // Gene - Oct 13, 2026: Verifies that tapping anywhere on the card toggles expansion instead of opening details, and that tapping DETAILS invokes onSelectJobForDetails.
-  testWidgets('card tap toggles expand/collapse and DETAILS button triggers details navigation',
+  testWidgets(
+      'card tap toggles expand/collapse and DETAILS button triggers details navigation',
       (tester) async {
     JobOrderDto? selectedJob;
     await seed(tester, [job(1, 'Blaine Ivory Medel')]);
@@ -301,8 +302,8 @@ void main() {
     await tester.pump();
 
     // Now expanded: secondary address is visible, but navigation was NOT triggered
-    expect(find.text('Lot 1, Fiber Street, Batingan, Binangonan'),
-        findsOneWidget);
+    expect(
+        find.text('Lot 1, Fiber Street, Batingan, Binangonan'), findsOneWidget);
     expect(find.text('DETAILS'), findsOneWidget);
     expect(selectedJob, isNull);
 
@@ -391,5 +392,3 @@ void main() {
     expect(find.text(todayLabel), findsOneWidget);
   });
 }
-
-

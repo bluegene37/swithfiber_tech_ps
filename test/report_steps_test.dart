@@ -295,7 +295,8 @@ void main() {
       (tester) async {
     await pumpReport(tester);
     final vlanDropdown = find.byKey(const ValueKey('vlan_dropdown_field'));
-    await tester.scrollUntilVisible(vlanDropdown, 300, scrollable: scrollable());
+    await tester.scrollUntilVisible(vlanDropdown, 300,
+        scrollable: scrollable());
     expect(vlanDropdown, findsOneWidget);
     expect(find.text('1000 (Default)'), findsOneWidget);
     expect(report.vlan.value, '1000');

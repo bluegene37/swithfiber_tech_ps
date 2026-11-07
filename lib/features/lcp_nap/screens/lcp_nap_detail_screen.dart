@@ -195,374 +195,384 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
               padding: EdgeInsets.fromLTRB(
                   16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom),
               children: [
-              // 1. Overview Header Card
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          // The name column takes whatever width the ports
-                          // badge leaves. Without a flex factor the two sides
-                          // only fit when the NAP name happens to be short;
-                          // "CAR LCP 001 NAP 006" overflowed by 16px.
-                          Expanded(
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: cabinetColor.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                        color: cabinetColor.withValues(
-                                            alpha: 0.3)),
-                                  ),
-                                  child: Icon(Icons.router_rounded,
-                                      color: cabinetColor, size: 24),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        location.lcpNap,
-                                        style: context.text.titleMedium,
-                                      ),
-                                      Text(
-                                        '${location.lcp} Distribution Point',
-                                        style: context.text.labelMedium!
-                                            .copyWith(color: cabinetColor),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? const Color(0xFF3F2327)
-                                  : AppTheme.primarySubtleBg,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isDark
-                                    ? const Color(0xFF882933)
-                                    : AppTheme.primarySubtleBorder,
-                              ),
-                            ),
-                            child: Text(
-                              '${location.portTotal} ports',
-                              style: context.text.labelLarge!.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: AppTheme.brandInkOf(context),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Divider(
-                          height: 1,
-                          color: isDark
-                              ? AppTheme.borderDark
-                              : AppTheme.borderLight),
-                      const SizedBox(height: 14),
-
-                      // Location hierarchy
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.location_city_rounded,
-                            size: 20,
-                            color: AppTheme.secondaryInkOf(context),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '${location.street != null ? "${location.street}, " : ""}${location.barangay ?? "N/A"}, ${location.city ?? "Metro Manila"}',
-                              style: context.text.titleSmall,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // 2. Mini Interactive Map Card (if location is mappable)
-              if (location.isMappable) ...[
-                _buildMiniMapCard(context, location, cabinetColor, isDark),
-                const SizedBox(height: 16),
-              ],
-
-              // 3. Port Matrix & Visual Grid
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          // Title wraps at large text; the total keeps
-                          // its size.
-                          Expanded(
-                            child: Row(
-                              children: [
-                                const Icon(Icons.hub_outlined,
-                                    size: 18, color: AppTheme.primary),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Port Matrix & Capacity',
-                                    style: context.text.titleMedium,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${location.portTotal} ports total',
-                            style: context.text.labelLarge!.copyWith(
-                              color: AppTheme.brandInkOf(context),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Visual Ports Grid
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 4,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
-                          childAspectRatio: 1.8,
-                        ),
-                        itemCount: location.portTotal,
-                        itemBuilder: (context, index) {
-                          final portNumber = index + 1;
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? AppTheme.darkInput
-                                  : AppTheme.lightBg,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: isDark
-                                    ? AppTheme.borderDark
-                                    : AppTheme.borderLight,
-                              ),
-                            ),
-                            child: Center(
+                // 1. Overview Header Card
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            // The name column takes whatever width the ports
+                            // badge leaves. Without a flex factor the two sides
+                            // only fit when the NAP name happens to be short;
+                            // "CAR LCP 001 NAP 006" overflowed by 16px.
+                            Expanded(
                               child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(
-                                    Icons.circle_outlined,
-                                    size: 20,
-                                    color: AppTheme.secondaryInkOf(context),
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          cabinetColor.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                          color: cabinetColor.withValues(
+                                              alpha: 0.3)),
+                                    ),
+                                    child: Icon(Icons.router_rounded,
+                                        color: cabinetColor, size: 24),
                                   ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'P$portNumber',
-                                    style: context.text.labelSmall!
-                                        .copyWith(fontWeight: FontWeight.w800),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          location.lcpNap,
+                                          style: context.text.titleMedium,
+                                        ),
+                                        Text(
+                                          '${location.lcp} Distribution Point',
+                                          style: context.text.labelMedium!
+                                              .copyWith(color: cabinetColor),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Standard NAP distribution box. Ready for drop cable splicing.',
-                        style: context.text.labelSmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // 4. Site Enclosure & Reading Photos Card
-              // Gene - Oct 24, 2026: Added _buildSitePhotosCard to display enclosure and optical power reading photos.
-              _buildSitePhotosCard(context, location, isDark),
-              const SizedBox(height: 16),
-
-              // 5. GPS Geolocation Card
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.pin_drop_outlined,
-                              size: 18, color: AppTheme.primary),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'GPS Geolocation Coordinates',
-                              style: context.text.titleMedium,
-                            ),
-                          ),
-                          // Gene - Oct 31, 2026: Added quick Map/Update button in GPS header.
-                          OutlinedButton.icon(
-                            key: const ValueKey('btnHeaderMapLocation'),
-                            onPressed: () =>
-                                _showLocationMappingSheet(context, location),
-                            icon: Icon(
-                              location.isMappable
-                                  ? Icons.edit_location_alt_outlined
-                                  : Icons.add_location_alt_outlined,
-                              size: 18,
-                            ),
-                            label: Text(
-                                location.isMappable ? 'Update GPS' : 'Map Site'),
-                            style: OutlinedButton.styleFrom(
+                            const SizedBox(width: 8),
+                            Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 10, vertical: 4),
-                              minimumSize: const Size(0, 32),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? const Color(0xFF3F2327)
+                                    : AppTheme.primarySubtleBg,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isDark
+                                      ? const Color(0xFF882933)
+                                      : AppTheme.primarySubtleBorder,
+                                ),
+                              ),
+                              child: Text(
+                                '${location.portTotal} ports',
+                                style: context.text.labelLarge!.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: AppTheme.brandInkOf(context),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Divider(
+                            height: 1,
+                            color: isDark
+                                ? AppTheme.borderDark
+                                : AppTheme.borderLight),
+                        const SizedBox(height: 14),
+
+                        // Location hierarchy
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.location_city_rounded,
+                              size: 20,
+                              color: AppTheme.secondaryInkOf(context),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${location.street != null ? "${location.street}, " : ""}${location.barangay ?? "N/A"}, ${location.city ?? "Metro Manila"}',
+                                style: context.text.titleSmall,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // 2. Mini Interactive Map Card (if location is mappable)
+                if (location.isMappable) ...[
+                  _buildMiniMapCard(context, location, cabinetColor, isDark),
+                  const SizedBox(height: 16),
+                ],
+
+                // 3. Port Matrix & Visual Grid
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            // Title wraps at large text; the total keeps
+                            // its size.
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.hub_outlined,
+                                      size: 18, color: AppTheme.primary),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Port Matrix & Capacity',
+                                      style: context.text.titleMedium,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${location.portTotal} ports total',
+                              style: context.text.labelLarge!.copyWith(
+                                color: AppTheme.brandInkOf(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Visual Ports Grid
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 4,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                            childAspectRatio: 1.8,
+                          ),
+                          itemCount: location.portTotal,
+                          itemBuilder: (context, index) {
+                            final portNumber = index + 1;
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? AppTheme.darkInput
+                                    : AppTheme.lightBg,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: isDark
+                                      ? AppTheme.borderDark
+                                      : AppTheme.borderLight,
+                                ),
+                              ),
+                              child: Center(
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.circle_outlined,
+                                      size: 20,
+                                      color: AppTheme.secondaryInkOf(context),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'P$portNumber',
+                                      style: context.text.labelSmall!.copyWith(
+                                          fontWeight: FontWeight.w800),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Standard NAP distribution box. Ready for drop cable splicing.',
+                          style: context.text.labelSmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // 4. Site Enclosure & Reading Photos Card
+                // Gene - Oct 24, 2026: Added _buildSitePhotosCard to display enclosure and optical power reading photos.
+                _buildSitePhotosCard(context, location, isDark),
+                const SizedBox(height: 16),
+
+                // 5. GPS Geolocation Card
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.pin_drop_outlined,
+                                size: 18, color: AppTheme.primary),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'GPS Geolocation Coordinates',
+                                style: context.text.titleMedium,
+                              ),
+                            ),
+                            // Gene - Oct 31, 2026: Added quick Map/Update button in GPS header.
+                            OutlinedButton.icon(
+                              key: const ValueKey('btnHeaderMapLocation'),
+                              onPressed: () =>
+                                  _showLocationMappingSheet(context, location),
+                              icon: Icon(
+                                location.isMappable
+                                    ? Icons.edit_location_alt_outlined
+                                    : Icons.add_location_alt_outlined,
+                                size: 18,
+                              ),
+                              label: Text(location.isMappable
+                                  ? 'Update GPS'
+                                  : 'Map Site'),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                minimumSize: const Size(0, 32),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color:
+                                isDark ? AppTheme.darkInput : AppTheme.lightBg,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isDark
+                                  ? AppTheme.borderDark
+                                  : AppTheme.borderLight,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'WGS84 Coordinates',
+                                    style: context.text.labelSmall!
+                                        .copyWith(fontWeight: FontWeight.w600),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    location.coordinates ??
+                                        'No GPS fix recorded',
+                                    style: context.text.titleSmall!
+                                        .copyWith(fontFamily: 'monospace'),
+                                  ),
+                                ],
+                              ),
+                              if (location.coordinates != null)
+                                IconButton(
+                                  icon:
+                                      const Icon(Icons.copy_rounded, size: 18),
+                                  tooltip: 'Copy coordinates',
+                                  onPressed: () {
+                                    Clipboard.setData(
+                                      ClipboardData(
+                                          text: location.coordinates!),
+                                    );
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                            'Copied: ${location.coordinates}'),
+                                        behavior: SnackBarBehavior.floating,
+                                        backgroundColor: isDark
+                                            ? AppTheme.darkCard
+                                            : AppTheme.darkSlate,
+                                      ),
+                                    );
+                                  },
+                                ),
+                            ],
+                          ),
+                        ),
+                        // Gene - Oct 31, 2026: If site has no coordinates, show prominent Map This Site button.
+                        if (!location.isMappable) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              key: const ValueKey('btnMapUnmappedSite'),
+                              onPressed: () =>
+                                  _showLocationMappingSheet(context, location),
+                              icon: const Icon(Icons.add_location_alt_rounded,
+                                  size: 18),
+                              label: const Text('Map This Site (Set GPS)'),
+                              style: ElevatedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                              ),
                             ),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: isDark ? AppTheme.darkInput : AppTheme.lightBg,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: isDark
-                                ? AppTheme.borderDark
-                                : AppTheme.borderLight,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'WGS84 Coordinates',
-                                  style: context.text.labelSmall!
-                                      .copyWith(fontWeight: FontWeight.w600),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  location.coordinates ?? 'No GPS fix recorded',
-                                  style: context.text.titleSmall!
-                                      .copyWith(fontFamily: 'monospace'),
-                                ),
-                              ],
-                            ),
-                            if (location.coordinates != null)
-                              IconButton(
-                                icon: const Icon(Icons.copy_rounded, size: 18),
-                                tooltip: 'Copy coordinates',
-                                onPressed: () {
-                                  Clipboard.setData(
-                                    ClipboardData(text: location.coordinates!),
-                                  );
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                          'Copied: ${location.coordinates}'),
-                                      behavior: SnackBarBehavior.floating,
-                                      backgroundColor: isDark
-                                          ? AppTheme.darkCard
-                                          : AppTheme.darkSlate,
-                                    ),
-                                  );
-                                },
+                        if (location.isMappable) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                MapNavigationService.showNavigationChooser(
+                                  context: context,
+                                  latitude: location.latLng!.latitude,
+                                  longitude: location.latLng!.longitude,
+                                  title: location.lcpNap,
+                                  subtitle:
+                                      '${location.street ?? ""}, ${location.barangay ?? ""}, ${location.city ?? ""}',
+                                );
+                              },
+                              icon: const Icon(Icons.navigation_rounded,
+                                  size: 18),
+                              label:
+                                  const Text('Start Turn-by-Turn Navigation'),
+                              style: ElevatedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
                               ),
-                          ],
-                        ),
-                      ),
-                      // Gene - Oct 31, 2026: If site has no coordinates, show prominent Map This Site button.
-                      if (!location.isMappable) ...[
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            key: const ValueKey('btnMapUnmappedSite'),
-                            onPressed: () =>
-                                _showLocationMappingSheet(context, location),
-                            icon: const Icon(Icons.add_location_alt_rounded,
-                                size: 18),
-                            label: const Text('Map This Site (Set GPS)'),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
                           ),
-                        ),
+                          // Gene - Oct 31, 2026: Added secondary button to update coordinates.
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              key: const ValueKey('btnUpdateSiteCoordinates'),
+                              onPressed: () =>
+                                  _showLocationMappingSheet(context, location),
+                              icon: const Icon(Icons.edit_location_alt_outlined,
+                                  size: 18),
+                              label: const Text('Update GPS Coordinates'),
+                              style: OutlinedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 11),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
-                      if (location.isMappable) ...[
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              MapNavigationService.showNavigationChooser(
-                                context: context,
-                                latitude: location.latLng!.latitude,
-                                longitude: location.latLng!.longitude,
-                                title: location.lcpNap,
-                                subtitle:
-                                    '${location.street ?? ""}, ${location.barangay ?? ""}, ${location.city ?? ""}',
-                              );
-                            },
-                            icon:
-                                const Icon(Icons.navigation_rounded, size: 18),
-                            label: const Text('Start Turn-by-Turn Navigation'),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                          ),
-                        ),
-                        // Gene - Oct 31, 2026: Added secondary button to update coordinates.
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            key: const ValueKey('btnUpdateSiteCoordinates'),
-                            onPressed: () =>
-                                _showLocationMappingSheet(context, location),
-                            icon: const Icon(Icons.edit_location_alt_outlined,
-                                size: 18),
-                            label: const Text('Update GPS Coordinates'),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 11),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
           ),
         );
       },
@@ -840,8 +850,9 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color:
-                          isDark ? AppTheme.darkInput : AppTheme.primarySubtleBg,
+                      color: isDark
+                          ? AppTheme.darkInput
+                          : AppTheme.primarySubtleBg,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: isDark
@@ -935,7 +946,8 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton.icon(
-                      onPressed: () => _showUploadPhotosSheet(context, location),
+                      onPressed: () =>
+                          _showUploadPhotosSheet(context, location),
                       icon: const Icon(Icons.cloud_upload_outlined, size: 18),
                       label: const Text('Upload Site Photos'),
                       style: ElevatedButton.styleFrom(
@@ -1323,7 +1335,8 @@ class _LcpNapUploadPhotosSheetState extends State<_LcpNapUploadPhotosSheet> {
 
     final clearEnc1 = hadEnc1 && (enc1Bytes == null || enc1Bytes.isEmpty);
     final clearEnc2 = hadEnc2 && (enc2Bytes == null || enc2Bytes.isEmpty);
-    final clearReading = hadReading && (readingBytes == null || readingBytes.isEmpty);
+    final clearReading =
+        hadReading && (readingBytes == null || readingBytes.isEmpty);
 
     final success = await widget.signals.uploadLocationPhotos(
       locationId: widget.location.id,

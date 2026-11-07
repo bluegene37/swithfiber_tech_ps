@@ -1102,8 +1102,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 // RADIUS / Wi-Fi dedicated account identity
                 Container(
                   key: const ValueKey('radius_username_banner'),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: isDark ? AppTheme.darkInput : AppTheme.fillLight,
                     borderRadius: BorderRadius.circular(8),
@@ -1723,8 +1723,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                       // Gene - Oct 12, 2026: Updated icon to 20px and styled label using theme tokens without fontSize literal.
                                       Icon(Icons.info_outline_rounded,
                                           size: 20,
-                                          color: AppTheme.secondaryInkOf(
-                                              context)),
+                                          color:
+                                              AppTheme.secondaryInkOf(context)),
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
@@ -2659,9 +2659,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                       color: AppTheme.fillOf(context),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: isDark
-                            ? AppTheme.borderDark
-                            : AppTheme.borderLight,
+                        color:
+                            isDark ? AppTheme.borderDark : AppTheme.borderLight,
                       ),
                     ),
                     child: Center(
@@ -3298,7 +3297,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                       Container(
                         height: 160,
                         decoration: BoxDecoration(
-                          color: isDark ? AppTheme.darkInput : AppTheme.fillLight,
+                          color:
+                              isDark ? AppTheme.darkInput : AppTheme.fillLight,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: isDark
@@ -3346,8 +3346,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                       Icon(
                                         Icons.lock_outline_rounded,
                                         size: 20,
-                                        color:
-                                            AppTheme.secondaryInkOf(context),
+                                        color: AppTheme.secondaryInkOf(context),
                                       ),
                                       const SizedBox(width: 4),
                                       Flexible(
@@ -3355,7 +3354,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                           'Locked to prevent scroll marks',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: context.text.bodySmall!.copyWith(
+                                          style:
+                                              context.text.bodySmall!.copyWith(
                                             color: AppTheme.secondaryInkOf(
                                                 context),
                                           ),
@@ -3419,7 +3419,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 12, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.primary.withValues(alpha: 0.1),
+                                  color:
+                                      AppTheme.primary.withValues(alpha: 0.1),
                                   borderRadius: const BorderRadius.vertical(
                                       top: Radius.circular(10)),
                                 ),
@@ -3433,7 +3434,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                         'Signing active · Sign in box',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: context.text.labelSmall!.copyWith(
+                                        style:
+                                            context.text.labelSmall!.copyWith(
                                           fontWeight: FontWeight.w600,
                                           color: AppTheme.primary,
                                         ),

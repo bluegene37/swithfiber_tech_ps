@@ -119,9 +119,8 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
               width: 36,
               height: 4.5,
               decoration: BoxDecoration(
-                color: isDark
-                    ? const Color(0xFF38383A)
-                    : const Color(0xFFD1D1D6),
+                color:
+                    isDark ? const Color(0xFF38383A) : const Color(0xFFD1D1D6),
                 borderRadius: BorderRadius.circular(2.5),
               ),
             ),
@@ -166,8 +165,7 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                 itemBuilder: (context, index) {
                   final site = unmappedSites[index];
                   final hue = lcpColorSeed(site.lcp);
-                  final color =
-                      HSLColor.fromAHSL(1, hue, 0.62, 0.44).toColor();
+                  final color = HSLColor.fromAHSL(1, hue, 0.62, 0.44).toColor();
 
                   return Container(
                     padding: const EdgeInsets.all(12),
@@ -175,9 +173,8 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                       color: isDark ? AppTheme.darkInput : AppTheme.lightBg,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: isDark
-                            ? AppTheme.borderDark
-                            : AppTheme.borderLight,
+                        color:
+                            isDark ? AppTheme.borderDark : AppTheme.borderLight,
                       ),
                     ),
                     child: Row(
@@ -453,7 +450,8 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                     // Gene - Oct 31, 2026: Made unmapped notice tappable to open unmapped sites sheet and map coordinates.
                     _UnmappedNotice(
                       sites: unmappedSites,
-                      onTap: () => _showUnmappedSitesSheet(context, unmappedSites),
+                      onTap: () =>
+                          _showUnmappedSitesSheet(context, unmappedSites),
                     ),
                   ],
                   const SizedBox(height: 8),

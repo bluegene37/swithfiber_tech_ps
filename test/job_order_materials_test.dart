@@ -400,7 +400,8 @@ void main() {
       expect(find.widgetWithText(TextField, '2'), findsOneWidget);
 
       // Tap remove button
-      final removeBtn = find.byKey(const ValueKey('remove_material_flat_cable_clip'));
+      final removeBtn =
+          find.byKey(const ValueKey('remove_material_flat_cable_clip'));
       expect(removeBtn, findsOneWidget);
       await tester.tap(removeBtn);
       await tester.pumpAndSettle();

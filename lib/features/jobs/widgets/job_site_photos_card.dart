@@ -338,7 +338,8 @@ class _PhotoProofItem {
     this.isServerSynced = false,
   });
 
-  bool get hasImage => bytes != null || (httpUrl != null && httpUrl!.isNotEmpty);
+  bool get hasImage =>
+      bytes != null || (httpUrl != null && httpUrl!.isNotEmpty);
 }
 
 class _PhotoProofTile extends StatelessWidget {

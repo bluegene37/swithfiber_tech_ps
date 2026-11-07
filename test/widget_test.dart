@@ -318,7 +318,8 @@ void main() {
   });
 
   // Gene - Oct 13, 2026: Verify that the Front House Image is displayed in JobOrderDetailScreen details.
-  testWidgets('JobOrderDetailScreen renders Front House Image in details when present',
+  testWidgets(
+      'JobOrderDetailScreen renders Front House Image in details when present',
       (WidgetTester tester) async {
     late final AppDatabase db;
     late final JobRepository repository;

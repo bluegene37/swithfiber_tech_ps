@@ -308,7 +308,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('radius_username_banner')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('radius_username_banner')), findsOneWidget);
     expect(find.text('RADIUS / Wi-Fi Username'), findsOneWidget);
     expect(find.text('accountt0601261206'), findsOneWidget);
     expect(find.byKey(const ValueKey('copy_radius_username_button')),
@@ -369,8 +370,8 @@ void main() {
     // Tap Done to lock again
     await tester.tap(find.byKey(const ValueKey('lock_signature_pad_button')));
     await tester.pumpAndSettle();
-    expect(
-        find.byKey(const ValueKey('unlock_signature_pad_button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('unlock_signature_pad_button')),
+        findsOneWidget);
   });
 
   // Gene - Oct 13, 2026: Added test verifying drawing signature, saving with Done/Save to lock, and unlocking to sign again.
@@ -415,8 +416,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Draw a stroke on the signature pad
-    await tester.timedDrag(padFinder, const Offset(50, 20),
-        const Duration(milliseconds: 200));
+    await tester.timedDrag(
+        padFinder, const Offset(50, 20), const Duration(milliseconds: 200));
     await tester.pump();
 
     // Check that Clear button is enabled after drawing ink
@@ -581,7 +582,9 @@ void main() {
   });
 
   // Gene - Oct 13, 2026: Added test verifying Connection Type dropdown renders with Fiber default, options (Fiber, Local, Antenna), and updates signal.
-  testWidgets('connection type dropdown defaults to Fiber and supports Local and Antenna', (tester) async {
+  testWidgets(
+      'connection type dropdown defaults to Fiber and supports Local and Antenna',
+      (tester) async {
     await tester.runAsync(() async {
       db = AppDatabase.forTesting();
       jobsSignals =
@@ -611,7 +614,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    final dropdownFinder = find.byKey(const ValueKey('connection_type_dropdown_field'));
+    final dropdownFinder =
+        find.byKey(const ValueKey('connection_type_dropdown_field'));
     await tester.ensureVisible(dropdownFinder);
     await tester.pumpAndSettle();
     expect(dropdownFinder, findsOneWidget);
@@ -693,8 +697,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    final visitByFinder =
-        find.byKey(const ValueKey('visit_by_dropdown_field'));
+    final visitByFinder = find.byKey(const ValueKey('visit_by_dropdown_field'));
     final visitWithFinder =
         find.byKey(const ValueKey('visit_with_dropdown_field'));
 

@@ -151,8 +151,10 @@ class CatalogService {
 
   // Gene - Oct 12, 2026: Added fallback LCPs and getLcps method for hierarchical LCP-first selection flow.
   static const List<LcpOptionDto> fallbackLcps = [
-    LcpOptionDto(id: 1, name: 'LCP 01', description: 'Binangonan Central Cabinet'),
-    LcpOptionDto(id: 2, name: 'LCP 02', description: 'Batingan Distribution Cabinet'),
+    LcpOptionDto(
+        id: 1, name: 'LCP 01', description: 'Binangonan Central Cabinet'),
+    LcpOptionDto(
+        id: 2, name: 'LCP 02', description: 'Batingan Distribution Cabinet'),
     LcpOptionDto(id: 3, name: 'LCP 03', description: 'Bangad Optical Hub'),
     LcpOptionDto(id: 4, name: 'LCP 04', description: 'Libis Feeder Hub'),
   ];
@@ -343,12 +345,18 @@ class CatalogService {
                 : int.tryParse(item['accesslevel_id']?.toString() ?? '') ??
                     (item['accessLevelId'] is int
                         ? item['accessLevelId'] as int
-                        : int.tryParse(item['accessLevelId']?.toString() ?? '') ?? 0);
+                        : int.tryParse(
+                                item['accessLevelId']?.toString() ?? '') ??
+                            0);
 
             final username = item['username']?.toString() ?? '';
-            final fname = item['fname']?.toString() ?? item['firstName']?.toString() ?? '';
-            final lname = item['lname']?.toString() ?? item['lastName']?.toString() ?? '';
-            final fullName = '$fname $lname'.trim().replaceAll(RegExp(r'\s+'), ' ');
+            final fname = item['fname']?.toString() ??
+                item['firstName']?.toString() ??
+                '';
+            final lname =
+                item['lname']?.toString() ?? item['lastName']?.toString() ?? '';
+            final fullName =
+                '$fname $lname'.trim().replaceAll(RegExp(r'\s+'), ' ');
 
             final isTech = matchingAccessIds.contains(accessId) ||
                 accessId == 8 ||
@@ -361,7 +369,8 @@ class CatalogService {
           }
         }
         if (names.isNotEmpty) {
-          final combined = <String>{...names, ...fallbackTechnicians}.toList()..sort();
+          final combined = <String>{...names, ...fallbackTechnicians}.toList()
+            ..sort();
           _cachedTechnicians = combined;
           return combined;
         }
@@ -413,7 +422,8 @@ class CatalogService {
 
   /// Fetch inventory items from `/api/InventoryItem`.
   /// No types filter for now, per specification.
-  Future<List<InventoryItemDto>> getInventoryItems({bool forceRefresh = false}) async {
+  Future<List<InventoryItemDto>> getInventoryItems(
+      {bool forceRefresh = false}) async {
     if (!forceRefresh && _cachedInventoryItems != null) {
       return _cachedInventoryItems!;
     }
@@ -459,4 +469,3 @@ class CatalogService {
     return _cachedMaterials ?? fallbackMaterials;
   }
 }
-

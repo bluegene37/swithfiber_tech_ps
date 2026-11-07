@@ -18,7 +18,8 @@ class LcpNapRepository {
   // Gene - Oct 29, 2026: Allow optional ApiClient injection for unit testing upload and image endpoints.
   final ApiClient _api;
 
-  LcpNapRepository(this._dao, [ApiClient? api]) : _api = api ?? ApiClient.instance;
+  LcpNapRepository(this._dao, [ApiClient? api])
+      : _api = api ?? ApiClient.instance;
 
   /// Watch reactive stream of all locations from the local database
   Stream<List<LcpNapDto>> watchLocations() => _dao.watchAllLocations();
@@ -148,8 +149,8 @@ class LcpNapRepository {
     }
 
     try {
-      final response =
-          await _api.get('/LCPNapLocations/$locationId/GetLCPNAPLocationImages');
+      final response = await _api
+          .get('/LCPNapLocations/$locationId/GetLCPNAPLocationImages');
       final data = response.data;
       if (data is Map<String, dynamic>) {
         var dto = LcpNapImagesDto.fromJson(data);
@@ -236,11 +237,13 @@ class LcpNapRepository {
         // Gene - Oct 31, 2026: Send empty 0-byte file when explicitly clearing/deleting photo per backend team instructions
         map['Image'] = MultipartFile.fromBytes(<int>[], filename: '');
       } else if (imageBytes != null && imageBytes.isNotEmpty) {
-        map['Image'] = MultipartFile.fromBytes(imageBytes, filename: 'image.jpg');
+        map['Image'] =
+            MultipartFile.fromBytes(imageBytes, filename: 'image.jpg');
       } else {
         final existingBytes = _imagesCache[locationId]?.image?.bytes;
         if (existingBytes != null && existingBytes.isNotEmpty) {
-          map['Image'] = MultipartFile.fromBytes(existingBytes, filename: 'image.jpg');
+          map['Image'] =
+              MultipartFile.fromBytes(existingBytes, filename: 'image.jpg');
         }
       }
 
@@ -248,11 +251,13 @@ class LcpNapRepository {
       if (clearImage2) {
         map['Image2'] = MultipartFile.fromBytes(<int>[], filename: '');
       } else if (image2Bytes != null && image2Bytes.isNotEmpty) {
-        map['Image2'] = MultipartFile.fromBytes(image2Bytes, filename: 'image2.jpg');
+        map['Image2'] =
+            MultipartFile.fromBytes(image2Bytes, filename: 'image2.jpg');
       } else {
         final existingBytes = _imagesCache[locationId]?.image2?.bytes;
         if (existingBytes != null && existingBytes.isNotEmpty) {
-          map['Image2'] = MultipartFile.fromBytes(existingBytes, filename: 'image2.jpg');
+          map['Image2'] =
+              MultipartFile.fromBytes(existingBytes, filename: 'image2.jpg');
         }
       }
 
@@ -260,11 +265,13 @@ class LcpNapRepository {
       if (clearReadingImage) {
         map['ReadingImage'] = MultipartFile.fromBytes(<int>[], filename: '');
       } else if (readingImageBytes != null && readingImageBytes.isNotEmpty) {
-        map['ReadingImage'] = MultipartFile.fromBytes(readingImageBytes, filename: 'readingImage.jpg');
+        map['ReadingImage'] = MultipartFile.fromBytes(readingImageBytes,
+            filename: 'readingImage.jpg');
       } else {
         final existingBytes = _imagesCache[locationId]?.readingImage?.bytes;
         if (existingBytes != null && existingBytes.isNotEmpty) {
-          map['ReadingImage'] = MultipartFile.fromBytes(existingBytes, filename: 'readingImage.jpg');
+          map['ReadingImage'] = MultipartFile.fromBytes(existingBytes,
+              filename: 'readingImage.jpg');
         }
       }
 
@@ -275,7 +282,8 @@ class LcpNapRepository {
         options: Options(contentType: 'multipart/form-data'),
       );
 
-      final isSuccess = response.statusCode == 200 || response.statusCode == 204;
+      final isSuccess =
+          response.statusCode == 200 || response.statusCode == 204;
       /*
       if (isSuccess) {
         _imagesCache.remove(locationId);
@@ -374,4 +382,3 @@ class LcpNapRepository {
     }
   }
 }
-

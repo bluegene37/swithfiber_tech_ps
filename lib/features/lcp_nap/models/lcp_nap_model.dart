@@ -116,9 +116,10 @@ class LcpNapDto {
         if (raw.containsKey('fileContents') && raw['fileContents'] != null) {
           final fc = raw['fileContents'].toString().trim();
           if (fc.isNotEmpty) {
-            final mime = raw['contentType']?.toString().trim().isNotEmpty == true
-                ? raw['contentType'].toString().trim()
-                : 'image/jpeg';
+            final mime =
+                raw['contentType']?.toString().trim().isNotEmpty == true
+                    ? raw['contentType'].toString().trim()
+                    : 'image/jpeg';
             return fc.startsWith('data:') ? fc : 'data:$mime;base64,$fc';
           }
         }
@@ -153,7 +154,8 @@ class LcpNapDto {
       // Gene - Oct 31, 2026: Use parseImageField to handle both string payloads and ASP.NET FileResult maps.
       image: parseImageField(json['image']),
       image2: parseImageField(json['image2']),
-      readingImage: parseImageField(json['readingImage'] ?? json['reading_image']),
+      readingImage:
+          parseImageField(json['readingImage'] ?? json['reading_image']),
       modifiedBy: json['modifiedBy']?.toString(),
       userEmail: json['userEmail']?.toString(),
       modifiedDate: DateTime.tryParse(json['modifiedDate']?.toString() ?? ''),

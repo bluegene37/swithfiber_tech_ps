@@ -631,8 +631,9 @@ class JobOrderDetailScreen extends StatelessWidget {
         job.isRescheduled ? JobStatus.rescheduled : JobStatus.scheduled;
 */
     // Gene - Oct 12, 2026: Resolve current job status including In Progress.
-    final status =
-        job.isRescheduled ? JobStatus.rescheduled : (job.jobStatus ?? JobStatus.scheduled);
+    final status = job.isRescheduled
+        ? JobStatus.rescheduled
+        : (job.jobStatus ?? JobStatus.scheduled);
     final reason = job.isRescheduled ? job.statusRemarks?.trim() : null;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -1016,7 +1017,8 @@ class JobOrderDetailScreen extends StatelessWidget {
             ],
             */
             // Gene - Oct 13, 2026: Display Front House Image in Job Order details.
-            if (job.houseFront != null && job.houseFront!.trim().isNotEmpty) ...[
+            if (job.houseFront != null &&
+                job.houseFront!.trim().isNotEmpty) ...[
               const SizedBox(height: 10),
               _buildLandmarkPhotoPreview(
                 context,
@@ -1605,7 +1607,8 @@ class JobOrderDetailScreen extends StatelessWidget {
             ] else ...[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
                 decoration: BoxDecoration(
                   color: isDark ? AppTheme.darkInput : AppTheme.lightBg,
                   borderRadius: BorderRadius.circular(10),
@@ -1617,8 +1620,7 @@ class JobOrderDetailScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     Icon(CupertinoIcons.location_slash,
-                        size: 32,
-                        color: AppTheme.secondaryInkOf(context)),
+                        size: 32, color: AppTheme.secondaryInkOf(context)),
                     const SizedBox(height: 8),
                     Text(
                       'No GPS location recorded for this job order',
@@ -2260,7 +2262,12 @@ class JobOrderDetailScreen extends StatelessWidget {
   */
   // Gene - Oct 13, 2026: Guarded _handleOpenReport so rescheduled jobs cannot open report screen or modify records.
   void _handleOpenReport(BuildContext context, JobOrderDto job) {
-    if (job.isRescheduled || job.siteException == SiteException.reschedule) return;
+    // Gene - Nov 07, 2026: Wrapped single-line if statement in curly braces for linter compliance (curly_braces_in_flow_control_structures).
+    // if (job.isRescheduled || job.siteException == SiteException.reschedule)
+    //   return;
+    if (job.isRescheduled || job.siteException == SiteException.reschedule) {
+      return;
+    }
     if (onOpenReport != null) {
       onOpenReport!(job);
       return;
@@ -2790,8 +2797,8 @@ class _JobMapLocationPreviewState extends State<_JobMapLocationPreview> {
               initialCenter: widget.latLng,
               initialZoom: 16.5,
               interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.pinchZoom |
-                    InteractiveFlag.doubleTapZoom,
+                flags:
+                    InteractiveFlag.pinchZoom | InteractiveFlag.doubleTapZoom,
               ),
             ),
             children: [

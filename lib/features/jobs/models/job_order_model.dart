@@ -514,8 +514,6 @@ class JobOrderDto {
     return updatedAt ?? DateTime.now();
   }
 
-
-
   /// The decoded server record, or null when there is none or it is not an
   /// object. Fields the app does not model (subscriber email, second number)
   /// are read from here so the schema stays the API's.
@@ -601,13 +599,11 @@ class JobOrderDto {
     return null;
   }
 
-
   // Gene - Oct 13, 2026: Added username and radiusUsername getters to resolve subscriber PPPoE / RADIUS account identity.
   /// The explicit subscriber account username or PPPoE username if assigned.
-  String? get username =>
-      (_username != null && _username.trim().isNotEmpty)
-          ? _username.trim()
-          : _rawText('username');
+  String? get username => (_username != null && _username.trim().isNotEmpty)
+      ? _username.trim()
+      : _rawText('username');
 
   /*
   /// Resolves the unique RADIUS / PPPoE username for Wi-Fi authentication,
@@ -681,9 +677,8 @@ class JobOrderDto {
 
   // Gene - Oct 13, 2026: Helper method to parse coordinates from string format (lat, lng).
   static LatLng? _parseCoordinatesString(String raw) {
-    final parts = raw
-        .replaceAll(RegExp(r'[^\d.,\s-]'), '')
-        .split(RegExp(r'[,;\s]+'));
+    final parts =
+        raw.replaceAll(RegExp(r'[^\d.,\s-]'), '').split(RegExp(r'[,;\s]+'));
     if (parts.length >= 2) {
       final lat = double.tryParse(parts[0]);
       final lng = double.tryParse(parts[1]);
@@ -724,10 +719,8 @@ class JobOrderDto {
             final parsed = _parseCoordinatesString(raw);
             if (parsed != null) return parsed;
           } else if (raw is Map) {
-            final lat = raw['latitude'] ??
-                raw['Latitude'] ??
-                raw['lat'] ??
-                raw['Lat'];
+            final lat =
+                raw['latitude'] ?? raw['Latitude'] ?? raw['lat'] ?? raw['Lat'];
             final lng = raw['longitude'] ??
                 raw['Longitude'] ??
                 raw['lng'] ??
@@ -746,10 +739,8 @@ class JobOrderDto {
               }
             }
           }
-          final lat = map['latitude'] ??
-              map['Latitude'] ??
-              map['lat'] ??
-              map['Lat'];
+          final lat =
+              map['latitude'] ?? map['Latitude'] ?? map['lat'] ?? map['Lat'];
           final lng = map['longitude'] ??
               map['Longitude'] ??
               map['lng'] ??
@@ -1056,9 +1047,8 @@ class JobOrderDto {
         try {
           final decoded = jsonDecode(rawJson);
           if (decoded is Map<String, dynamic>) {
-            final val = decoded['visitBy'] ??
-                decoded['VisitBy'] ??
-                decoded['visit_by'];
+            final val =
+                decoded['visitBy'] ?? decoded['VisitBy'] ?? decoded['visit_by'];
             if (val != null && val.toString().trim().isNotEmpty) {
               return val.toString().trim();
             }
@@ -1109,7 +1099,8 @@ class JobOrderDto {
       visitBy: rowVisitBy,
       visitWith: rowVisitWith,
       // Gene - Oct 13, 2026: Passed addressCoordinates parsed from table row.
-      addressCoordinates: rowText(row['address_coordinates']) ?? rowText(row['coordinates']),
+      addressCoordinates:
+          rowText(row['address_coordinates']) ?? rowText(row['coordinates']),
       status: rowText(row['status']) ?? 'pending',
       onsiteStatus: rowText(row['onsite_status']),
       rawJson: rawJson,
@@ -1418,10 +1409,10 @@ class JobOrderDto {
       visitBy: (server._visitBy != null && server._visitBy.trim().isNotEmpty)
           ? server._visitBy
           : _visitBy,
-      visitWith: (server._visitWith != null &&
-              server._visitWith.trim().isNotEmpty)
-          ? server._visitWith
-          : _visitWith,
+      visitWith:
+          (server._visitWith != null && server._visitWith.trim().isNotEmpty)
+              ? server._visitWith
+              : _visitWith,
       status: server.status,
       onsiteStatus: (server.onsiteStatus != null &&
               server.onsiteStatus!.trim().isNotEmpty)
@@ -2084,8 +2075,7 @@ class JobOrderDto {
         final paramName = fileParamMap[key]!;
         final valStr = val.toString().trim();
         if (storage.isCapturedImage(valStr)) {
-          final bytes =
-              storage.resolveBytes(valStr) ?? DataUrl.decode(valStr);
+          final bytes = storage.resolveBytes(valStr) ?? DataUrl.decode(valStr);
           if (bytes != null && bytes.isNotEmpty) {
             formDataMap[paramName] = MultipartFile.fromBytes(
               bytes,

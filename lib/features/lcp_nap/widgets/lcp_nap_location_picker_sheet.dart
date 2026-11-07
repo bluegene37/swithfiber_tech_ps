@@ -96,7 +96,8 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
     if (raw.isEmpty) return null;
     final parts = raw
         .replaceAll(
-            RegExp(r'lat:|latitude:|lng:|longitude:|lon:', caseSensitive: false),
+            RegExp(r'lat:|latitude:|lng:|longitude:|lon:',
+                caseSensitive: false),
             '')
         .split(RegExp(r'[,;\s]+'))
         .map((p) => double.tryParse(p.trim()))
@@ -355,8 +356,9 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                     Expanded(
                       child: OutlinedButton.icon(
                         key: const ValueKey('btnCurrentLocation'),
-                        onPressed:
-                            _isLocating || _isSaving ? null : _useCurrentLocation,
+                        onPressed: _isLocating || _isSaving
+                            ? null
+                            : _useCurrentLocation,
                         icon: _isLocating
                             ? const SizedBox(
                                 width: 16,
@@ -385,8 +387,7 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                     Expanded(
                       child: ElevatedButton.icon(
                         key: const ValueKey('btnPinOnMap'),
-                        onPressed:
-                            _isSaving ? null : _openMapPinPicker,
+                        onPressed: _isSaving ? null : _openMapPinPicker,
                         icon: const Icon(Icons.pin_drop_rounded, size: 18),
                         label: const Text(
                           'Pin on Map',
@@ -481,8 +482,8 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                     suffixIcon: _coordinatesController.text.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear_rounded, size: 18),
-                            onPressed: () => setState(
-                                () => _coordinatesController.clear()),
+                            onPressed: () =>
+                                setState(() => _coordinatesController.clear()),
                           )
                         : null,
                     border: OutlineInputBorder(
@@ -643,9 +644,8 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
   @override
   void initState() {
     super.initState();
-    _pinLocation = widget.initialLatLng ??
-        widget.location.latLng ??
-        _fallbackCenter;
+    _pinLocation =
+        widget.initialLatLng ?? widget.location.latLng ?? _fallbackCenter;
     _tiles = widget.tileProvider;
     if (_tiles == null) _loadTiles();
   }
@@ -669,7 +669,8 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
         setState(() => _pinLocation = target);
         _mapController.move(target, 17);
       }
-    } catch (_) {} finally {
+    } catch (_) {
+    } finally {
       if (mounted) setState(() => _isLocating = false);
     }
   }
@@ -707,7 +708,8 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
               _satellite ? Icons.map_rounded : Icons.satellite_alt_rounded,
               color: AppTheme.primary,
             ),
-            tooltip: _satellite ? 'Switch to Street Map' : 'Switch to Satellite',
+            tooltip:
+                _satellite ? 'Switch to Street Map' : 'Switch to Satellite',
             onPressed: () => setState(() => _satellite = !_satellite),
           ),
         ],

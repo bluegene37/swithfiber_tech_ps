@@ -78,7 +78,6 @@ class JobOrdersScreen extends StatefulWidget {
   static String dateGroupLabel(DateTime? date, {int? count}) =>
       _JobOrdersScreenState.dateGroupLabel(date, count: count);
 
-
   @override
   State<JobOrdersScreen> createState() => _JobOrdersScreenState();
 }
@@ -146,7 +145,12 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
   */
   // Gene - Oct 13, 2026: Guarded _openReport so rescheduled jobs cannot open the report screen or modify records.
   void _openReport(JobOrderDto job) {
-    if (job.isRescheduled || job.siteException == SiteException.reschedule) return;
+    // Gene - Nov 07, 2026: Wrapped single-line if statement in curly braces for linter compliance (curly_braces_in_flow_control_structures).
+    // if (job.isRescheduled || job.siteException == SiteException.reschedule)
+    //   return;
+    if (job.isRescheduled || job.siteException == SiteException.reschedule) {
+      return;
+    }
     if (widget.onSelectJobForReport != null) {
       widget.onSelectJobForReport!(job);
       return;
@@ -242,7 +246,6 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
     }
     return dayPrefix;
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -583,10 +586,10 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
         if (_grouping == JobGrouping.barangay) {
           final bgyMap = <String, List<JobOrderDto>>{};
           for (final job in prioritized) {
-            final bgy = (job.barangay != null &&
-                    job.barangay!.trim().isNotEmpty)
-                ? job.barangay!.trim()
-                : 'Other Area';
+            final bgy =
+                (job.barangay != null && job.barangay!.trim().isNotEmpty)
+                    ? job.barangay!.trim()
+                    : 'Other Area';
             bgyMap.putIfAbsent(bgy, () => []).add(job);
           }
           final sortedBgys = bgyMap.keys.toList()
@@ -1130,12 +1133,11 @@ class _JobRowState extends State<_JobRow> {
       */
       // Gene - Oct 13, 2026: Disabled report shortcut button '>' for rescheduled jobs to prevent opening reports or modifying records.
       trailing: () {
-        final isRescheduled = job.isRescheduled ||
-            job.siteException == SiteException.reschedule;
+        final isRescheduled =
+            job.isRescheduled || job.siteException == SiteException.reschedule;
         return Tooltip(
-          message: isRescheduled
-              ? 'Rescheduled (report locked)'
-              : 'Open report',
+          message:
+              isRescheduled ? 'Rescheduled (report locked)' : 'Open report',
           child: InkWell(
             key: ValueKey('job_report_shortcut_${job.id}'),
             onTap: isRescheduled ? null : widget.onOpenReport,
