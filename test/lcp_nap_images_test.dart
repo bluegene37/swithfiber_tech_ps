@@ -432,6 +432,54 @@ void main() {
       // Verify sheet opens
       expect(find.text('Save & Upload Photos'), findsOneWidget);
     });
+
+    // Gene - Nov, 8, 2026: Regression test verifying LCP NAP full-screen photo viewer opens and closes cleanly.
+    testWidgets(
+        'tapping an LCP NAP photo opens full-screen viewer and close button dismisses it',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final samplePhoto = LcpNapImageFileDto(
+        fileContents: sampleBase64,
+        contentType: 'image/png',
+        fileDownloadName: 'sample.png',
+      );
+      final testImages = LcpNapImagesDto(
+        image: samplePhoto,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: LcpNapDetailScreen(
+            locationId: 1,
+            signals: signals,
+            initialImagesForTesting: testImages,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // Tap the photo card to open full-screen viewer
+      await tester.tap(find.text('Pinch / Zoom'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byType(InteractiveViewer), findsOneWidget);
+      final closeBtn = find.byKey(const ValueKey('photo_viewer_close_button'));
+      expect(closeBtn, findsOneWidget);
+
+      await tester.tap(closeBtn);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      expect(find.byType(InteractiveViewer), findsNothing);
+      expect(find.text('Site Enclosure & Reading Photos'), findsOneWidget);
+    });
   });
 
   // Gene - Oct 29, 2026: Unit tests for LCP NAP photo upload multipart request formatting.
@@ -558,6 +606,44 @@ void main() {
       final req = adapter.captured.single;
       expect(req.method, 'PUT');
       expect(req.path, '/LCPNapLocations/10');
+    });
+
+    // Gene - Nov, 8, 2026: Verify deleting one image preserves sibling photo and clears local SQLite column.
+    test(
+        'uploadLcpNapPhotos with clearImage clears local SQLite column and preserves sibling photos',
+        () async {
+      final dataUrl = 'data:image/png;base64,$sampleBase64';
+      final loc = LcpNapDto(
+        id: 77,
+        lcp: 'CAR LCP 077',
+        nap: 'NAP 007',
+        lcpNap: 'CAR LCP 077 NAP 007',
+        image: dataUrl,
+        image2: dataUrl,
+      );
+      await LcpNapLocationsDao(db).insertOrUpdateLocation(loc);
+
+      final success = await repository.uploadLcpNapPhotos(
+        locationId: 77,
+        location: loc,
+        clearImage: true,
+      );
+
+      expect(success, isTrue);
+      final req = adapter.captured.single;
+      final formData = req.data as FormData;
+      final files = Map.fromEntries(formData.files);
+      expect(files['Image']?.length, 0,
+          reason: 'Deleted slot must send 0-byte file');
+      expect(files['Image2']?.length, greaterThan(0),
+          reason: 'Sibling photo from SQLite must be preserved');
+
+      final updatedRow = await LcpNapLocationsDao(db).watchLocationById(77).first;
+      expect(updatedRow, isNotNull);
+      expect(updatedRow!.image, isNull,
+          reason: 'Deleted image must be cleared in local SQLite');
+      expect(updatedRow.image2, isNotNull,
+          reason: 'Sibling image2 must remain in local SQLite');
     });
   });
 }

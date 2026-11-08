@@ -234,6 +234,10 @@ class _TechnicianShellState extends State<TechnicianShell>
           technicianEmail: email,
         );
       }
+      // Gene - Nov, 8, 2026: Also auto-sync LCP NAP plant locations during background sync cycles.
+      if (!widget.lcpNapSignals.isLoading.value) {
+        await widget.lcpNapSignals.fetchRemote();
+      }
       _lastSyncCompletedAt = DateTime.now();
     } catch (_) {
       // Ignored: silent background refresh

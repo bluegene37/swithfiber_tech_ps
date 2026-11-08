@@ -4,6 +4,9 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import '../../../core/database/daos/lcp_nap_dao.dart';
 import '../../../core/network/api_client.dart';
+// Gene - Nov, 8, 2026: Imported PhotoStorageService and DataUrl to sync uploaded/deleted LCP NAP photos with local SQLite rows.
+import '../../../core/services/photo_storage_service.dart';
+import '../../../core/utils/data_url.dart';
 import '../models/lcp_nap_images_model.dart';
 import '../models/lcp_nap_model.dart';
 
@@ -137,6 +140,21 @@ class LcpNapRepository {
     _imagesCache.clear();
   }
 
+  // Gene - Nov, 8, 2026: Allow seeding in-memory photos cache so single-slot deletions preserve sibling photos.
+  void seedImagesCache(int locationId, LcpNapImagesDto images) {
+    _imagesCache[locationId] = images;
+  }
+
+  Uint8List? _resolvePhotoBytes(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final clean = raw.trim();
+    if (clean.startsWith('http://') || clean.startsWith('https://')) {
+      return null;
+    }
+    return PhotoStorageService.instance.resolveBytes(clean) ??
+        DataUrl.decode(clean);
+  }
+
   /// Fetches site enclosure photos and optical power reading image for an LCP NAP location.
   /// Calls GET /api/LCPNapLocations/{id}/GetLCPNAPLocationImages
   /// and fallback GET /api/LCPNapLocations/{id}/GetReadingImage.
@@ -144,7 +162,15 @@ class LcpNapRepository {
     int locationId, {
     bool forceRefresh = false,
   }) async {
+    /*
     if (!forceRefresh && _imagesCache.containsKey(locationId)) {
+      return _imagesCache[locationId];
+    }
+    */
+    // Gene - Nov, 8, 2026: Evict stale cached entry when forceRefresh is true so deleted photos never resurrect from cache.
+    if (forceRefresh) {
+      _imagesCache.remove(locationId);
+    } else if (_imagesCache.containsKey(locationId)) {
       return _imagesCache[locationId];
     }
 
@@ -197,10 +223,15 @@ class LcpNapRepository {
         final singleData = singleRes.data;
         if (singleData is Map<String, dynamic>) {
           final dto = LcpNapImagesDto.fromJson(singleData);
+          /*
           if (dto.hasAnyPhoto) {
             _imagesCache[locationId] = dto;
             return dto;
           }
+          */
+          // Gene - Nov, 8, 2026: Always cache and return the parsed DTO from single record endpoint even when all photos have been deleted (hasAnyPhoto == false).
+          _imagesCache[locationId] = dto;
+          return dto;
         }
       } catch (_) {}
     }
@@ -220,6 +251,7 @@ class LcpNapRepository {
     bool clearReadingImage = false,
   }) async {
     try {
+      final nowIso = DateTime.now().toUtc().toIso8601String();
       final map = <String, dynamic>{
         'LCP': location.lcp,
         'NAP': location.nap,
@@ -230,6 +262,11 @@ class LcpNapRepository {
         if (location.barangay != null) 'Barangay': location.barangay,
         if (location.city != null) 'City': location.city,
         if (location.region != null) 'Region': location.region,
+        // Gene - Nov, 8, 2026: Include audit metadata fields expected by PUT /api/LCPNapLocations/{id}.
+        'ModifiedBy': location.modifiedBy ?? '1',
+        'ModifiedDate': nowIso,
+        if (location.userEmail != null && location.userEmail!.trim().isNotEmpty)
+          'UserEmail': location.userEmail!.trim(),
       };
 
       // 1. Enclosure Exterior (image)
@@ -240,7 +277,12 @@ class LcpNapRepository {
         map['Image'] =
             MultipartFile.fromBytes(imageBytes, filename: 'image.jpg');
       } else {
+        /*
         final existingBytes = _imagesCache[locationId]?.image?.bytes;
+        */
+        // Gene - Nov, 8, 2026: Fallback to decoding location.image if _imagesCache is not populated yet so sibling photos are preserved.
+        final existingBytes = _imagesCache[locationId]?.image?.bytes ??
+            _resolvePhotoBytes(location.image);
         if (existingBytes != null && existingBytes.isNotEmpty) {
           map['Image'] =
               MultipartFile.fromBytes(existingBytes, filename: 'image.jpg');
@@ -254,7 +296,12 @@ class LcpNapRepository {
         map['Image2'] =
             MultipartFile.fromBytes(image2Bytes, filename: 'image2.jpg');
       } else {
+        /*
         final existingBytes = _imagesCache[locationId]?.image2?.bytes;
+        */
+        // Gene - Nov, 8, 2026: Fallback to decoding location.image2 if _imagesCache is not populated yet.
+        final existingBytes = _imagesCache[locationId]?.image2?.bytes ??
+            _resolvePhotoBytes(location.image2);
         if (existingBytes != null && existingBytes.isNotEmpty) {
           map['Image2'] =
               MultipartFile.fromBytes(existingBytes, filename: 'image2.jpg');
@@ -268,7 +315,12 @@ class LcpNapRepository {
         map['ReadingImage'] = MultipartFile.fromBytes(readingImageBytes,
             filename: 'readingImage.jpg');
       } else {
+        /*
         final existingBytes = _imagesCache[locationId]?.readingImage?.bytes;
+        */
+        // Gene - Nov, 8, 2026: Fallback to decoding location.readingImage if _imagesCache is not populated yet.
+        final existingBytes = _imagesCache[locationId]?.readingImage?.bytes ??
+            _resolvePhotoBytes(location.readingImage);
         if (existingBytes != null && existingBytes.isNotEmpty) {
           map['ReadingImage'] = MultipartFile.fromBytes(existingBytes,
               filename: 'readingImage.jpg');
@@ -290,9 +342,33 @@ class LcpNapRepository {
         await getLcpNapLocationImages(locationId, forceRefresh: true);
       }
       */
+      /*
       // Gene - Oct 29, 2026: Invalidate image cache upon successful upload; callers refresh on demand.
       if (isSuccess) {
         _imagesCache.remove(locationId);
+      }
+      */
+      // Gene - Nov, 8, 2026: Invalidate image cache and synchronize local SQLite row so deleted/uploaded photos persist locally and never resurrect from stale DB columns.
+      if (isSuccess) {
+        _imagesCache.remove(locationId);
+        final updatedDto = location.copyWith(
+          image: (imageBytes != null && imageBytes.isNotEmpty)
+              ? DataUrl.encode(imageBytes, mimeType: 'image/jpeg')
+              : null,
+          image2: (image2Bytes != null && image2Bytes.isNotEmpty)
+              ? DataUrl.encode(image2Bytes, mimeType: 'image/jpeg')
+              : null,
+          readingImage:
+              (readingImageBytes != null && readingImageBytes.isNotEmpty)
+                  ? DataUrl.encode(readingImageBytes, mimeType: 'image/jpeg')
+                  : null,
+          clearImage: clearImage,
+          clearImage2: clearImage2,
+          clearReadingImage: clearReadingImage,
+          isSynced: true,
+          updatedAt: DateTime.now(),
+        );
+        await _dao.insertOrUpdateLocation(updatedDto, synced: true);
       }
       return isSuccess;
     } catch (_) {

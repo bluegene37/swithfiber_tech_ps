@@ -2,12 +2,18 @@
 /*
 import 'dart:typed_data';
 */
+import 'dart:async';
+// Gene - Nov, 8, 2026: Imported dart:convert for base64Encode when constructing optimistic LcpNapImagesDto after upload/delete.
+import 'dart:convert';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:signals_flutter/signals_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
+// Gene - Nov, 8, 2026: Commented out unused url_launcher import since remote photos now open in the in-app full-screen viewer.
+// import 'package:url_launcher/url_launcher.dart';
+// Gene - Nov, 8, 2026: Imported ApiClient to guard background photo auto-sync timer during widget tests.
+import '../../../core/network/api_client.dart';
 import '../../../core/services/map_navigation_service.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/theme/app_text.dart';
@@ -80,7 +86,10 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
   LcpNapImagesDto? _sitePhotos;
   // Gene - Oct 31, 2026: Loading indicator for fetching site enclosure and reading photos.
   bool _isLoadingPhotos = false;
+  // Gene - Nov, 8, 2026: Periodic auto-sync timer so LCP NAP photos auto-update when changed on the backend.
+  Timer? _photoAutoSyncTimer;
 
+  /*
   @override
   void initState() {
     super.initState();
@@ -101,6 +110,54 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
     } catch (_) {
     } finally {
       if (mounted) setState(() => _isLoadingPhotos = false);
+    }
+  }
+  */
+  // Gene - Nov, 8, 2026: Support forceRefresh/silent photo loading and start periodic auto-sync timer while screen is mounted.
+  @override
+  void initState() {
+    super.initState();
+    _tiles = widget.tileProvider;
+    _sitePhotos = widget.initialImagesForTesting;
+    if (_sitePhotos != null) {
+      widget.signals.repository.seedImagesCache(widget.locationId, _sitePhotos!);
+    }
+    if (_tiles == null) _loadTileProvider();
+    if (_sitePhotos == null) _loadSitePhotos();
+    /*
+    if (!ApiClient.blockNetworkForTesting) {
+    */
+    // Gene - Nov, 8, 2026: Use ApiClient.isNetworkBlocked getter to avoid visibleForTesting analyzer warning.
+    if (!ApiClient.isNetworkBlocked) {
+      _photoAutoSyncTimer = Timer.periodic(
+        const Duration(seconds: 15),
+        (_) => _loadSitePhotos(forceRefresh: true, silent: true),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _photoAutoSyncTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadSitePhotos({
+    bool forceRefresh = false,
+    bool silent = false,
+  }) async {
+    if (!silent && mounted) setState(() => _isLoadingPhotos = true);
+    try {
+      final res = await widget.signals.repository.getLcpNapLocationImages(
+        widget.locationId,
+        forceRefresh: forceRefresh,
+      );
+      if (mounted && res != null) {
+        setState(() => _sitePhotos = res);
+      }
+    } catch (_) {
+    } finally {
+      if (!silent && mounted) setState(() => _isLoadingPhotos = false);
     }
   }
 
@@ -726,6 +783,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
     LcpNapDto location,
     bool isDark,
   ) {
+    /*
     // Resolve photos from live API DTO or base location DTO
     final enc1Bytes = _sitePhotos?.image?.bytes ??
         (location.image != null
@@ -756,6 +814,47 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                 DataUrl.decode(location.readingImage!))
             : null);
     final readingUrl = location.readingImage != null &&
+            (location.readingImage!.startsWith('http://') ||
+                location.readingImage!.startsWith('https://'))
+        ? location.readingImage!
+        : null;
+    */
+    // Gene - Nov, 8, 2026: When _sitePhotos has been loaded/updated, treat it as authoritative so deleted slots do not fall back to stale location columns.
+    final enc1Bytes = _sitePhotos != null
+        ? _sitePhotos!.image?.bytes
+        : (location.image != null
+            ? (PhotoStorageService.instance.resolveBytes(location.image!) ??
+                DataUrl.decode(location.image!))
+            : null);
+    final enc1Url = _sitePhotos == null &&
+            location.image != null &&
+            (location.image!.startsWith('http://') ||
+                location.image!.startsWith('https://'))
+        ? location.image!
+        : null;
+
+    final enc2Bytes = _sitePhotos != null
+        ? _sitePhotos!.image2?.bytes
+        : (location.image2 != null
+            ? (PhotoStorageService.instance.resolveBytes(location.image2!) ??
+                DataUrl.decode(location.image2!))
+            : null);
+    final enc2Url = _sitePhotos == null &&
+            location.image2 != null &&
+            (location.image2!.startsWith('http://') ||
+                location.image2!.startsWith('https://'))
+        ? location.image2!
+        : null;
+
+    final readingBytes = _sitePhotos != null
+        ? _sitePhotos!.readingImage?.bytes
+        : (location.readingImage != null
+            ? (PhotoStorageService.instance
+                    .resolveBytes(location.readingImage!) ??
+                DataUrl.decode(location.readingImage!))
+            : null);
+    final readingUrl = _sitePhotos == null &&
+            location.readingImage != null &&
             (location.readingImage!.startsWith('http://') ||
                 location.readingImage!.startsWith('https://'))
         ? location.readingImage!
@@ -1052,6 +1151,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
               ],
             ),
           ),
+          /*
           InkWell(
             onTap: () {
               if (bytes != null) {
@@ -1059,6 +1159,21 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
               } else if (remoteUrl != null) {
                 launchUrl(Uri.parse(remoteUrl),
                     mode: LaunchMode.externalApplication);
+              }
+            },
+          */
+          // Gene - Nov, 8, 2026: Open both inline bytes and remote URLs inside the in-app full-screen photo viewer.
+          InkWell(
+            onTap: () {
+              if (bytes != null) {
+                showPhotoViewer(context, bytes, title: title);
+              } else if (remoteUrl != null) {
+                showPhotoViewer(
+                  context,
+                  Uint8List(0),
+                  title: title,
+                  imageUrl: remoteUrl,
+                );
               }
             },
             child: SizedBox(
@@ -1156,6 +1271,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
 
     if (confirmed != true || !mounted) return;
 
+    /*
     final success = await widget.signals.uploadLocationPhotos(
       locationId: location.id,
       location: location,
@@ -1167,6 +1283,30 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
     if (!mounted) return;
     if (success) {
       await _loadSitePhotos();
+      if (!mounted) return;
+    */
+    // Gene - Nov, 8, 2026: Seed current _sitePhotos into repository cache before deleting so sibling photos are preserved, then optimistically remove the deleted slot and force-refresh from live API.
+    if (_sitePhotos != null) {
+      widget.signals.repository.seedImagesCache(location.id, _sitePhotos!);
+    }
+
+    final success = await widget.signals.uploadLocationPhotos(
+      locationId: location.id,
+      location: location,
+      clearImage: photoKey == 'enc1',
+      clearImage2: photoKey == 'enc2',
+      clearReadingImage: photoKey == 'reading',
+    );
+
+    if (!mounted) return;
+    if (success) {
+      final updatedPhotos = LcpNapImagesDto(
+        image: photoKey == 'enc1' ? null : _sitePhotos?.image,
+        image2: photoKey == 'enc2' ? null : _sitePhotos?.image2,
+        readingImage: photoKey == 'reading' ? null : _sitePhotos?.readingImage,
+      );
+      setState(() => _sitePhotos = updatedPhotos);
+      await _loadSitePhotos(forceRefresh: true, silent: true);
       if (!mounted) return;
       ScaffoldMessenger.of(this.context).showSnackBar(
         SnackBar(
@@ -1203,6 +1343,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
     BuildContext context,
     LcpNapDto location,
   ) async {
+    /*
     final updated = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -1217,6 +1358,26 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
 
     if (updated == true) {
       await _loadSitePhotos();
+      if (!mounted) return;
+    */
+    // Gene - Nov, 8, 2026: Receive updated LcpNapImagesDto from upload sheet, apply immediately, and force-refresh from live server.
+    final updated = await showModalBottomSheet<LcpNapImagesDto>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _LcpNapUploadPhotosSheet(
+        location: location,
+        signals: widget.signals,
+        initialImages: _sitePhotos,
+        pickImageForTesting: widget.pickImageForTesting,
+      ),
+    );
+
+    if (updated != null) {
+      if (mounted) {
+        setState(() => _sitePhotos = updated);
+      }
+      await _loadSitePhotos(forceRefresh: true, silent: true);
       if (!mounted) return;
       ScaffoldMessenger.of(this.context).showSnackBar(
         SnackBar(
@@ -1304,6 +1465,7 @@ class _LcpNapUploadPhotosSheetState extends State<_LcpNapUploadPhotosSheet> {
   bool _isUploading = false;
   String? _uploadError;
 
+  /*
   @override
   void initState() {
     super.initState();
@@ -1352,6 +1514,106 @@ class _LcpNapUploadPhotosSheetState extends State<_LcpNapUploadPhotosSheet> {
     if (!mounted) return;
     if (success) {
       Navigator.of(context).pop(true);
+    } else {
+      setState(() {
+        _isUploading = false;
+        _uploadError = widget.signals.errorMessage.value ??
+            'Failed to upload photos. Please check your connection.';
+      });
+    }
+  }
+  */
+  // Gene - Nov, 8, 2026: Fall back to location photo fields on initState, seed repository cache, and return updated LcpNapImagesDto on success.
+  @override
+  void initState() {
+    super.initState();
+    _enc1 = widget.initialImages?.image?.dataUrl ?? widget.location.image;
+    _enc2 = widget.initialImages?.image2?.dataUrl ?? widget.location.image2;
+    _reading = widget.initialImages?.readingImage?.dataUrl ??
+        widget.location.readingImage;
+  }
+
+  Future<void> _submit() async {
+    setState(() {
+      _isUploading = true;
+      _uploadError = null;
+    });
+
+    if (widget.initialImages != null) {
+      widget.signals.repository.seedImagesCache(
+        widget.location.id,
+        widget.initialImages!,
+      );
+    }
+
+    final enc1Bytes = _enc1 != null && _enc1!.trim().isNotEmpty
+        ? (PhotoStorageService.instance.resolveBytes(_enc1!) ??
+            DataUrl.decode(_enc1!))
+        : null;
+    final enc2Bytes = _enc2 != null && _enc2!.trim().isNotEmpty
+        ? (PhotoStorageService.instance.resolveBytes(_enc2!) ??
+            DataUrl.decode(_enc2!))
+        : null;
+    final readingBytes = _reading != null && _reading!.trim().isNotEmpty
+        ? (PhotoStorageService.instance.resolveBytes(_reading!) ??
+            DataUrl.decode(_reading!))
+        : null;
+
+    final hadEnc1 = (widget.initialImages?.image?.hasImage == true) ||
+        (widget.location.image?.trim().isNotEmpty == true);
+    final hadEnc2 = (widget.initialImages?.image2?.hasImage == true) ||
+        (widget.location.image2?.trim().isNotEmpty == true);
+    final hadReading = (widget.initialImages?.readingImage?.hasImage == true) ||
+        (widget.location.readingImage?.trim().isNotEmpty == true);
+
+    final clearEnc1 = hadEnc1 && (enc1Bytes == null || enc1Bytes.isEmpty);
+    final clearEnc2 = hadEnc2 && (enc2Bytes == null || enc2Bytes.isEmpty);
+    final clearReading =
+        hadReading && (readingBytes == null || readingBytes.isEmpty);
+
+    final success = await widget.signals.uploadLocationPhotos(
+      locationId: widget.location.id,
+      location: widget.location,
+      imageBytes: enc1Bytes,
+      image2Bytes: enc2Bytes,
+      readingImageBytes: readingBytes,
+      clearImage: clearEnc1,
+      clearImage2: clearEnc2,
+      clearReadingImage: clearReading,
+    );
+
+    if (!mounted) return;
+    if (success) {
+      final updatedDto = LcpNapImagesDto(
+        image: clearEnc1
+            ? null
+            : (enc1Bytes != null && enc1Bytes.isNotEmpty
+                ? LcpNapImageFileDto(
+                    fileContents: base64Encode(enc1Bytes),
+                    contentType: 'image/jpeg',
+                    fileDownloadName: 'image.jpg',
+                  )
+                : widget.initialImages?.image),
+        image2: clearEnc2
+            ? null
+            : (enc2Bytes != null && enc2Bytes.isNotEmpty
+                ? LcpNapImageFileDto(
+                    fileContents: base64Encode(enc2Bytes),
+                    contentType: 'image/jpeg',
+                    fileDownloadName: 'image2.jpg',
+                  )
+                : widget.initialImages?.image2),
+        readingImage: clearReading
+            ? null
+            : (readingBytes != null && readingBytes.isNotEmpty
+                ? LcpNapImageFileDto(
+                    fileContents: base64Encode(readingBytes),
+                    contentType: 'image/jpeg',
+                    fileDownloadName: 'readingImage.jpg',
+                  )
+                : widget.initialImages?.readingImage),
+      );
+      Navigator.of(context).pop(updatedDto);
     } else {
       setState(() {
         _isUploading = false;

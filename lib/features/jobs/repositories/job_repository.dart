@@ -39,7 +39,15 @@ class JobRepository {
     int jobId, {
     bool forceRefresh = false,
   }) async {
+    /*
     if (!forceRefresh && _imagesCache.containsKey(jobId)) {
+      return _imagesCache[jobId];
+    }
+    */
+    // Gene - Nov, 8, 2026: Evict stale cached entry when forceRefresh is true so deleted/updated job photos are always refreshed.
+    if (forceRefresh) {
+      _imagesCache.remove(jobId);
+    } else if (_imagesCache.containsKey(jobId)) {
       return _imagesCache[jobId];
     }
 

@@ -330,6 +330,7 @@ class PhotoCaptureTile extends StatelessWidget {
 
 enum _PhotoAction { camera, gallery, view, remove }
 
+/*
 /// Full-screen, pinch-to-zoom view of an inline image with EXIF inspector.
 Future<void> showPhotoViewer(
   BuildContext context,
@@ -353,6 +354,41 @@ class _PhotoViewerScreen extends StatefulWidget {
   @override
   State<_PhotoViewerScreen> createState() => _PhotoViewerScreenState();
 }
+*/
+// Gene - Nov, 8, 2026: Support optional remote imageUrl in showPhotoViewer and ensure full-screen viewer is always closeable in both light and dark modes.
+/// Full-screen, pinch-to-zoom view of an inline or remote image with EXIF inspector.
+Future<void> showPhotoViewer(
+  BuildContext context,
+  Uint8List bytes, {
+  required String title,
+  String? imageUrl,
+}) {
+  return Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (ctx) => _PhotoViewerScreen(
+        bytes: bytes,
+        title: title,
+        imageUrl: imageUrl,
+      ),
+    ),
+  );
+}
+
+class _PhotoViewerScreen extends StatefulWidget {
+  final Uint8List bytes;
+  final String title;
+  final String? imageUrl;
+
+  const _PhotoViewerScreen({
+    required this.bytes,
+    required this.title,
+    this.imageUrl,
+  });
+
+  @override
+  State<_PhotoViewerScreen> createState() => _PhotoViewerScreenState();
+}
 
 class _PhotoViewerScreenState extends State<_PhotoViewerScreen> {
   ExifMetadata? _metadata;
@@ -364,7 +400,23 @@ class _PhotoViewerScreenState extends State<_PhotoViewerScreen> {
     _loadExif();
   }
 
+  /*
   Future<void> _loadExif() async {
+    final meta = await ExifService.instance.extractExif(widget.bytes);
+    if (!mounted) return;
+    setState(() {
+      _metadata = meta;
+      _loading = false;
+    });
+  }
+  */
+  // Gene - Nov, 8, 2026: Safely skip EXIF extraction when bytes are empty (e.g. remote URL preview).
+  Future<void> _loadExif() async {
+    if (widget.bytes.isEmpty) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      return;
+    }
     final meta = await ExifService.instance.extractExif(widget.bytes);
     if (!mounted) return;
     setState(() {
@@ -594,6 +646,7 @@ class _PhotoViewerScreenState extends State<_PhotoViewerScreen> {
     );
   }
 
+  /*
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -627,6 +680,134 @@ class _PhotoViewerScreenState extends State<_PhotoViewerScreen> {
           child:
               Image.memory(widget.bytes, cacheWidth: 1200, fit: BoxFit.contain),
         ),
+      ),
+    );
+  }
+  */
+  // Gene - Nov, 8, 2026: Fixed invisible close/EXIF buttons in Light Mode (where AppTheme.lightTheme iconButtonTheme/appBarTheme forced dark #17150F ink on black background), added explicit high-contrast Close button, bottom Close pill, and vertical swipe-to-dismiss.
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white, size: 24),
+        actionsIconTheme: const IconThemeData(color: Colors.white, size: 24),
+        leading: IconButton(
+          key: const ValueKey('photo_viewer_close_button'),
+          tooltip: 'Close',
+          style: IconButton.styleFrom(
+            foregroundColor: Colors.white,
+            backgroundColor: Colors.white.withValues(alpha: 0.16),
+          ),
+          icon: const Icon(Icons.close_rounded, color: Colors.white, size: 24),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          widget.title,
+          style: context.text.titleMedium!.copyWith(color: Colors.white),
+        ),
+        actions: [
+          if (widget.bytes.isNotEmpty)
+            IconButton(
+              tooltip: 'View Photo EXIF Metadata',
+              style: IconButton.styleFrom(
+                foregroundColor: Colors.white,
+              ),
+              icon: _loading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(
+                      CupertinoIcons.info_circle,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+              onPressed: _loading ? null : _showExifDetails,
+            ),
+        ],
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onVerticalDragEnd: (details) {
+              if ((details.primaryVelocity ?? 0) > 300) {
+                Navigator.of(context).pop();
+              }
+            },
+            child: Center(
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 5,
+                child: widget.bytes.isNotEmpty
+                    ? Image.memory(
+                        widget.bytes,
+                        cacheWidth: 1200,
+                        fit: BoxFit.contain,
+                      )
+                    : (widget.imageUrl != null &&
+                            widget.imageUrl!.trim().isNotEmpty
+                        ? Image.network(
+                            widget.imageUrl!,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.broken_image_outlined,
+                              color: Colors.white54,
+                              size: 48,
+                            ),
+                          )
+                        : const SizedBox.shrink()),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 16,
+            child: SafeArea(
+              top: false,
+              child: Center(
+                child: TextButton.icon(
+                  key: const ValueKey('photo_viewer_bottom_close_button'),
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  label: Text(
+                    'Close',
+                    style: context.text.labelLarge!.copyWith(
+                      color: Colors.white,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: Colors.white.withValues(alpha: 0.18),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      side: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.35),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

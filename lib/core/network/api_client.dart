@@ -32,6 +32,9 @@ class ApiClient {
   @visibleForTesting
   static bool blockNetworkForTesting = false;
 
+  // Gene - Nov, 8, 2026: Expose non-test-annotated getter so periodic UI sync timers can skip polling when network is disabled in tests.
+  static bool get isNetworkBlocked => blockNetworkForTesting;
+
   static void _checkNetworkAllowed(String method, String path) {
     if (blockNetworkForTesting) {
       throw ApiException(

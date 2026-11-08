@@ -210,4 +210,57 @@ void main() {
     expect(find.text('GPS'), findsOneWidget);
     expect(find.byIcon(CupertinoIcons.location_fill), findsOneWidget);
   });
+
+  // Gene - Nov, 8, 2026: Regression tests verifying full-screen photo viewer close buttons work in Light Mode.
+  testWidgets(
+      'full-screen photo viewer renders visible close controls in light mode and closes on tap',
+      (tester) async {
+    await tester.pumpWidget(host(
+      value: _png,
+      pick: (_) async => null,
+      onChanged: (_) {},
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(Image).first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+
+    final topCloseBtn = find.byKey(const ValueKey('photo_viewer_close_button'));
+    final bottomCloseBtn =
+        find.byKey(const ValueKey('photo_viewer_bottom_close_button'));
+    expect(topCloseBtn, findsOneWidget);
+    expect(bottomCloseBtn, findsOneWidget);
+
+    await tester.tap(topCloseBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(InteractiveViewer), findsNothing,
+        reason: 'Tapping the top close button must dismiss the photo viewer');
+  });
+
+  testWidgets('full-screen photo viewer bottom Close pill dismisses viewer',
+      (tester) async {
+    await tester.pumpWidget(host(
+      value: _png,
+      pick: (_) async => null,
+      onChanged: (_) {},
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(Image).first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+
+    await tester
+        .tap(find.byKey(const ValueKey('photo_viewer_bottom_close_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(InteractiveViewer), findsNothing,
+        reason: 'Tapping the bottom Close pill must dismiss the photo viewer');
+  });
 }

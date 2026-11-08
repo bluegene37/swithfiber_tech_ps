@@ -273,8 +273,17 @@ class ServiceOrdersSignals {
     syncError.value = null;
 
     try {
+      /*
       if (syncWorker != null && syncWorker!.pendingCount.value > 0) {
         await syncWorker!.syncPendingOrders();
+      }
+      */
+      // Gene - Nov, 8, 2026: Refresh pendingCount from SQLite before checking so offline-queued service orders always flush on startup/sync.
+      if (syncWorker != null) {
+        await syncWorker!.refreshPendingCount();
+        if (syncWorker!.pendingCount.value > 0) {
+          await syncWorker!.syncPendingOrders();
+        }
       }
       final remoteList = await api.fetchServiceOrders();
       final scopedList = (effectiveEmail != null && effectiveEmail.isNotEmpty)
@@ -356,6 +365,8 @@ class ServiceOrdersSignals {
     if (dao != null) {
       // Optimistic local persist; the sync worker pushes it to the API.
       await dao!.insertOrUpdateOrder(prepared, synced: false);
+      // Gene - Nov, 8, 2026: Update pendingCount before triggering background sync worker.
+      await syncWorker?.refreshPendingCount();
       // Proactively trigger background sync
       unawaited(syncWorker?.syncPendingOrders());
       isSyncing.value = false;
