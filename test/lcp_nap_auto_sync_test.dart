@@ -943,5 +943,124 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
     });
+
+    test(
+        'TC12: Remote image upload auto-syncs even if backend does NOT advance modifiedDate',
+        () async {
+      // Cache empty photo set on first visit
+      final initial = await repo.getLcpNapLocationImages(101);
+      expect(initial?.hasAnyPhoto, isFalse);
+
+      // Remote user uploads ReadingImage, and backend leaves modifiedDate unchanged
+      backend.serverImages[101] = {
+        'image': null,
+        'image2': null,
+        'readingImage': {
+          'fileContents': _samplePngBase64,
+          'contentType': 'image/png',
+          'fileDownloadName': 'reading_unchanged_ts.png',
+        },
+      };
+
+      await signals.fetchRemote();
+
+      final updated = await repo.getLcpNapLocationImages(101);
+      expect(
+        updated?.readingImage?.hasImage,
+        isTrue,
+        reason:
+            'Even when backend modifiedDate is unchanged, fetchRemote must evict _imagesCache so new photos sync',
+      );
+    });
+
+    test(
+        'TC13: Remote GPS mapping on unmapped NAP site auto-syncs into mappableLocations without app restart',
+        () async {
+      // Add an unmapped site 102 on server
+      backend.serverLocations[102] = {
+        'id': 102,
+        'lcp': 'LCP 01',
+        'nap': 'NAP 02',
+        'lcpNap': 'LCP 01 - NAP 02',
+        'portTotal': 8,
+        'coordinates': null,
+        'street': 'Unmapped Rd',
+        'barangay': 'San Antonio',
+        'city': 'Pasig',
+        'region': 'NCR',
+        'modifiedBy': '1',
+        'modifiedDate': '2026-11-10T08:00:00.000Z',
+      };
+
+      await signals.fetchRemote();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(signals.unmappedCount.value, 1);
+      expect(signals.mappableLocations.value.map((s) => s.id), isNot(contains(102)));
+
+      // Another technician maps GPS coordinates for NAP 102 on the server
+      backend.serverLocations[102]!['coordinates'] = '14.620000, 121.080000';
+      backend.serverLocations[102]!['modifiedDate'] =
+          '2026-11-11T08:00:00.000Z';
+
+      await signals.fetchRemote();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(signals.unmappedCount.value, 0,
+          reason: 'Unmapped count must drop to 0 live after remote GPS sync');
+      expect(signals.mappableLocations.value.map((s) => s.id), contains(102),
+          reason:
+              'Newly mapped site must appear in mappableLocations without restarting app');
+    });
+
+    test(
+        'TC14: Hard HTTP 400 validation error on uploadLcpNapPhotos returns false instead of queuing invalid payload',
+        () async {
+      // Override adapter temporarily to return HTTP 400 Bad Request on PUT
+      final dio = ApiClient.instance.dio;
+      dio.httpClientAdapter = _Hard400PutAdapter(fallback: backend);
+
+      final loc = (await dao.getAllLocations()).single;
+      final ok = await signals.uploadLocationPhotos(
+        locationId: 101,
+        location: loc,
+        imageBytes: _samplePngBytes,
+      );
+
+      expect(ok, isFalse,
+          reason: 'Hard 400 validation failure must return false to surface error');
+      final row = (await dao.getAllLocations()).single;
+      expect(row.isSynced, isTrue,
+          reason: 'Rejected 400 request must not poison offline sync queue');
+    });
   });
+}
+
+class _Hard400PutAdapter implements HttpClientAdapter {
+  final HttpClientAdapter fallback;
+  _Hard400PutAdapter({required this.fallback});
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    if (options.method.toUpperCase() == 'PUT') {
+      if (requestStream != null) {
+        await requestStream.drain<void>();
+      }
+      return ResponseBody.fromString(
+        jsonEncode({'message': 'Invalid LCPNAP payload'}),
+        400,
+        headers: {
+          Headers.contentTypeHeader: [Headers.jsonContentType],
+        },
+      );
+    }
+    return fallback.fetch(options, requestStream, cancelFuture);
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
