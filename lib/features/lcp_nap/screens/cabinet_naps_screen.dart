@@ -47,7 +47,7 @@ class CabinetNapsScreen extends StatelessWidget {
                   child: Text('No NAPs on this cabinet.',
                       style: context.text.bodyMedium),
                 )
-          /*
+              /*
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   itemCount: naps.length + 1,

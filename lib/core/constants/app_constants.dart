@@ -5,7 +5,9 @@ class AppConstants {
   // Gene - Oct 09, 2026: Updated appName to 'SF Tech' to match app label
   // static const String appName = 'SwitchFiber Tech';
   static const String appName = 'SF Tech';
-  static const String appVersion = '1.0.0';
+  // Gene - Nov, 11, 2026: Updated appVersion from '1.0.0' to '1.0.3' to match pubspec.yaml store release version.
+  // static const String appVersion = '1.0.0';
+  static const String appVersion = '1.0.3';
   static const String companyName = 'Switch Fiber';
   static const String appTagline = 'Distributed Fiber Network Management';
 

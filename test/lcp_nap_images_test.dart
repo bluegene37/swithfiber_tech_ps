@@ -638,7 +638,8 @@ void main() {
       expect(files['Image2']?.length, greaterThan(0),
           reason: 'Sibling photo from SQLite must be preserved');
 
-      final updatedRow = await LcpNapLocationsDao(db).watchLocationById(77).first;
+      final updatedRow =
+          await LcpNapLocationsDao(db).watchLocationById(77).first;
       expect(updatedRow, isNotNull);
       expect(updatedRow!.image, isNull,
           reason: 'Deleted image must be cleared in local SQLite');

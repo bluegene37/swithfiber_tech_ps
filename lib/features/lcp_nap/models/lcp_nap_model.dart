@@ -289,7 +289,8 @@ class LcpNapDto {
       region: region ?? this.region,
       image: clearImage ? null : (image ?? this.image),
       image2: clearImage2 ? null : (image2 ?? this.image2),
-      readingImage: clearReadingImage ? null : (readingImage ?? this.readingImage),
+      readingImage:
+          clearReadingImage ? null : (readingImage ?? this.readingImage),
       modifiedBy: modifiedBy ?? this.modifiedBy,
       userEmail: userEmail ?? this.userEmail,
       modifiedDate: modifiedDate ?? this.modifiedDate,

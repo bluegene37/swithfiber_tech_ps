@@ -438,18 +438,18 @@ void main() {
       expect(backend.putCalls, 1,
           reason:
               'Offline GPS update must be pushed to PUT /LCPNapLocations/101 during auto-sync');
-      expect(
-          backend.serverLocations[101]!['coordinates'], '14.612345, 121.098765');
-      expect(
-          backend.serverLocations[101]!['street'], 'Updated Offline Street');
+      expect(backend.serverLocations[101]!['coordinates'],
+          '14.612345, 121.098765');
+      expect(backend.serverLocations[101]!['street'], 'Updated Offline Street');
 
-      final lastPut = backend.capturedRequests
-          .lastWhere((r) => r.method == 'PUT' && r.path == '/LCPNapLocations/101');
+      final lastPut = backend.capturedRequests.lastWhere(
+          (r) => r.method == 'PUT' && r.path == '/LCPNapLocations/101');
       final formFields = {
         for (final e in (lastPut.data as FormData).fields) e.key: e.value
       };
       expect(formFields['ModifiedDate'], isNotEmpty,
-          reason: 'GPS PUT must include ModifiedDate so other devices detect change');
+          reason:
+              'GPS PUT must include ModifiedDate so other devices detect change');
       expect(formFields['ModifiedBy'], isNotEmpty);
 
       final syncedRow = (await dao.getAllLocations()).single;
@@ -568,7 +568,8 @@ void main() {
         'readingImage': null,
       };
 
-      final loaded = await repo.getLcpNapLocationImages(101, forceRefresh: true);
+      final loaded =
+          await repo.getLcpNapLocationImages(101, forceRefresh: true);
       expect(loaded?.image?.hasImage, isTrue);
 
       // Phone drops offline and 15s background photo timer calls forceRefresh: true
@@ -855,8 +856,8 @@ void main() {
         reason:
             'NetworkConnectivityService online transition in TechnicianShell must auto-sync pending LCP NAP edits',
       );
-      expect(
-          backend.serverLocations[101]!['coordinates'], '14.555555, 121.444444');
+      expect(backend.serverLocations[101]!['coordinates'],
+          '14.555555, 121.444444');
       expect(backend.serverImages[101]!['image'], isNotNull);
 
       // Switch to Plant tab, then re-tap Plant tab -> must trigger forced background sync
@@ -996,7 +997,8 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       expect(signals.unmappedCount.value, 1);
-      expect(signals.mappableLocations.value.map((s) => s.id), isNot(contains(102)));
+      expect(signals.mappableLocations.value.map((s) => s.id),
+          isNot(contains(102)));
 
       // Another technician maps GPS coordinates for NAP 102 on the server
       backend.serverLocations[102]!['coordinates'] = '14.620000, 121.080000';
@@ -1028,7 +1030,8 @@ void main() {
       );
 
       expect(ok, isFalse,
-          reason: 'Hard 400 validation failure must return false to surface error');
+          reason:
+              'Hard 400 validation failure must return false to surface error');
       final row = (await dao.getAllLocations()).single;
       expect(row.isSynced, isTrue,
           reason: 'Rejected 400 request must not poison offline sync queue');

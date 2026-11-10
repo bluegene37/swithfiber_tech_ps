@@ -101,7 +101,8 @@ class LcpNapRepository {
                   ? remote.copyWith(
                       image: remote.image ?? existing.image,
                       image2: remote.image2 ?? existing.image2,
-                      readingImage: remote.readingImage ?? existing.readingImage,
+                      readingImage:
+                          remote.readingImage ?? existing.readingImage,
                       isSynced: true,
                     )
                   : remote.copyWith(isSynced: true),
@@ -321,9 +322,13 @@ class LcpNapRepository {
       if (hasPendingPhotoMutation) {
         final dto = _buildImagesDtoFromBytes(
           enc1Bytes: _resolvePhotoBytes(localRow.image) ??
-              ((localRow.image == '') ? null : _imagesCache[locationId]?.image?.bytes),
+              ((localRow.image == '')
+                  ? null
+                  : _imagesCache[locationId]?.image?.bytes),
           enc2Bytes: _resolvePhotoBytes(localRow.image2) ??
-              ((localRow.image2 == '') ? null : _imagesCache[locationId]?.image2?.bytes),
+              ((localRow.image2 == '')
+                  ? null
+                  : _imagesCache[locationId]?.image2?.bytes),
           readingBytes: _resolvePhotoBytes(localRow.readingImage) ??
               ((localRow.readingImage == '')
                   ? null
@@ -701,12 +706,14 @@ class LcpNapRepository {
 
       // Offline / transient network fallback: queue photo upload/delete locally for auto-sync!
       // Store '' sentinel when explicitly cleared offline so syncPendingLocations sends 0-byte delete file.
-      final offlineImg1 = (clearImage || mergedBase.image == '') && savedImg1 == null
-          ? ''
-          : savedImg1;
-      final offlineImg2 = (clearImage2 || mergedBase.image2 == '') && savedImg2 == null
-          ? ''
-          : savedImg2;
+      final offlineImg1 =
+          (clearImage || mergedBase.image == '') && savedImg1 == null
+              ? ''
+              : savedImg1;
+      final offlineImg2 =
+          (clearImage2 || mergedBase.image2 == '') && savedImg2 == null
+              ? ''
+              : savedImg2;
       final offlineReading =
           (clearReadingImage || mergedBase.readingImage == '') &&
                   savedReading == null
@@ -1017,7 +1024,7 @@ class LcpNapRepository {
           clearReading ? null : _imagesCache[loc.id]?.readingImage?.bytes;
 
       final nowUtc = DateTime.now().toUtc();
-    final nowIso = nowUtc.toIso8601String();
+      final nowIso = nowUtc.toIso8601String();
       final map = <String, dynamic>{
         'LCP': loc.lcp,
         'NAP': loc.nap,
@@ -1037,7 +1044,8 @@ class LcpNapRepository {
       if (clearImg1) {
         map['Image'] = MultipartFile.fromBytes(<int>[], filename: '');
       } else if (enc1Bytes != null && enc1Bytes.isNotEmpty) {
-        map['Image'] = MultipartFile.fromBytes(enc1Bytes, filename: 'image.jpg');
+        map['Image'] =
+            MultipartFile.fromBytes(enc1Bytes, filename: 'image.jpg');
       }
 
       if (clearImg2) {
@@ -1050,8 +1058,8 @@ class LcpNapRepository {
       if (clearReading) {
         map['ReadingImage'] = MultipartFile.fromBytes(<int>[], filename: '');
       } else if (readingBytes != null && readingBytes.isNotEmpty) {
-        map['ReadingImage'] = MultipartFile.fromBytes(readingBytes,
-            filename: 'readingImage.jpg');
+        map['ReadingImage'] =
+            MultipartFile.fromBytes(readingBytes, filename: 'readingImage.jpg');
       }
 
       try {
