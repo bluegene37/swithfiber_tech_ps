@@ -38,6 +38,31 @@ class LcpNapLocationsDao {
   Future<List<LcpNapDto>> getAllLocations() async =>
       _map(await _db.getAll('SELECT * FROM $table $_byIdAsc'));
 
+  // Gene - Nov, 11, 2026: Added single-row lookup and unsynced queue queries so offline NAP image uploads, deletions, and GPS edits auto-sync on reconnect.
+  /// Get a single location by ID
+  Future<LcpNapDto?> getLocationById(int id) async {
+    final row = await _db.getOptional(
+      'SELECT * FROM $table WHERE id = ?',
+      [idText(id)],
+    );
+    return row == null ? null : LcpNapDto.fromRow(row);
+  }
+
+  /// Get all locations with pending local photo or GPS edits (`is_synced = 0`)
+  Future<List<LcpNapDto>> getUnsyncedLocations() async => _map(
+        await _db.getAll(
+          'SELECT * FROM $table WHERE is_synced = 0 $_byIdAsc',
+        ),
+      );
+
+  /// Count locations waiting to sync
+  Future<int> countUnsynced() async {
+    final row = await _db.get(
+      'SELECT count(*) AS c FROM $table WHERE is_synced = 0',
+    );
+    return rowInt(row['c']);
+  }
+
   /// Insert or update single location
   Future<void> insertOrUpdateLocation(LcpNapDto location,
           {bool synced = true}) =>

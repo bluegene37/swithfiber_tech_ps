@@ -119,7 +119,14 @@ class _TechnicianShellState extends State<TechnicianShell>
 
     // Reconnection listener: automatically triggers pending mutations sync
     // and remote cache refresh whenever connectivity is restored.
+    /*
     NetworkConnectivityService.instance.initialize();
+    */
+    // Gene - Nov, 11, 2026: Avoid cancelling an already-initialized connectivity stream subscription when mounting TechnicianShell.
+    if (!NetworkConnectivityService.instance.isInitialized) {
+      NetworkConnectivityService.instance.initialize();
+    }
+    /*
     _removeOnlineListener =
         NetworkConnectivityService.instance.addOnlineListener(() async {
       await widget.jobsSignals.repository.syncWorker.syncPendingJobs();
@@ -128,6 +135,19 @@ class _TechnicianShellState extends State<TechnicianShell>
       await _serviceOrdersSignals.fetchRemote(
         technicianEmail: widget.authSignals.currentUser.value?.email,
       );
+    });
+    */
+    // Gene - Nov, 11, 2026: Flush pending offline LCP NAP photo/GPS edits and refresh remote plant records automatically whenever network connectivity returns.
+    _removeOnlineListener =
+        NetworkConnectivityService.instance.addOnlineListener(() async {
+      await widget.jobsSignals.repository.syncWorker.syncPendingJobs();
+      await _serviceOrdersSignals.syncWorker?.syncPendingOrders();
+      await widget.lcpNapSignals.syncPending();
+      await widget.jobsSignals.fetchRemote();
+      await _serviceOrdersSignals.fetchRemote(
+        technicianEmail: widget.authSignals.currentUser.value?.email,
+      );
+      await widget.lcpNapSignals.fetchRemote();
     });
 
     /*
@@ -811,6 +831,7 @@ class _TechnicianShellState extends State<TechnicianShell>
             }
           },
           */
+          /*
           // Gene - Oct 3, 2026: Pass force: true on user tap to bypass throttling cooldown while respecting the single-flight lock.
           onTap: () {
             if (_currentIndex != index) {
@@ -818,6 +839,19 @@ class _TechnicianShellState extends State<TechnicianShell>
               setState(() => _currentIndex = index);
               _triggerBackgroundSync(force: true);
             } else if (index == _tabScheduled || index == _tabRepairs) {
+              _triggerBackgroundSync(force: true);
+            }
+          },
+          */
+          // Gene - Nov, 11, 2026: Include _tabLcpNap (Plant) when re-tapping active tab so technicians can trigger immediate plant & photo sync.
+          onTap: () {
+            if (_currentIndex != index) {
+              HapticFeedback.selectionClick();
+              setState(() => _currentIndex = index);
+              _triggerBackgroundSync(force: true);
+            } else if (index == _tabScheduled ||
+                index == _tabRepairs ||
+                index == _tabLcpNap) {
               _triggerBackgroundSync(force: true);
             }
           },

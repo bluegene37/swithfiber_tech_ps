@@ -121,9 +121,26 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
     } else if (entryHandler != null) {
       for (var op in transaction.crud) {
         // Table recognition for core business tables
+/*
         switch (op.table) {
           case 'job_orders':
           case 'service_orders':
+            switch (op.op) {
+              case UpdateType.put:
+              case UpdateType.patch:
+              case UpdateType.delete:
+                break;
+            }
+            break;
+          default:
+            break;
+        }
+*/
+        // Gene - Nov, 11, 2026: Added lcp_nap_locations recognition alongside job_orders and service_orders for PowerSync outbound CRUD routing.
+        switch (op.table) {
+          case 'job_orders':
+          case 'service_orders':
+          case 'lcp_nap_locations':
             switch (op.op) {
               case UpdateType.put:
               case UpdateType.patch:

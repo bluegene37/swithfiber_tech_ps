@@ -80,7 +80,12 @@ class LcpNapDetailScreen extends StatefulWidget {
   State<LcpNapDetailScreen> createState() => _LcpNapDetailScreenState();
 }
 
+/*
 class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
+*/
+// Gene - Nov, 11, 2026: Mix in WidgetsBindingObserver and subscribe to photoSyncRevision so LCP NAP site photos & GPS auto-sync on resume, reconnect, background sync, screen re-entry, and pull-to-refresh without restarting the app.
+class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
+    with WidgetsBindingObserver {
   TileProvider? _tiles;
   // Gene - Oct 24, 2026: State variables for LCP NAP site enclosure and reading photos.
   LcpNapImagesDto? _sitePhotos;
@@ -88,6 +93,8 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
   bool _isLoadingPhotos = false;
   // Gene - Nov, 8, 2026: Periodic auto-sync timer so LCP NAP photos auto-update when changed on the backend.
   Timer? _photoAutoSyncTimer;
+  // Gene - Nov, 11, 2026: Reactive effect cleanup for signals.photoSyncRevision listener.
+  EffectCleanup? _disposePhotoSyncEffect;
 
   /*
   @override
@@ -113,6 +120,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
     }
   }
   */
+  /*
   // Gene - Nov, 8, 2026: Support forceRefresh/silent photo loading and start periodic auto-sync timer while screen is mounted.
   @override
   void initState() {
@@ -124,9 +132,6 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
     }
     if (_tiles == null) _loadTileProvider();
     if (_sitePhotos == null) _loadSitePhotos();
-    /*
-    if (!ApiClient.blockNetworkForTesting) {
-    */
     // Gene - Nov, 8, 2026: Use ApiClient.isNetworkBlocked getter to avoid visibleForTesting analyzer warning.
     if (!ApiClient.isNetworkBlocked) {
       _photoAutoSyncTimer = Timer.periodic(
@@ -138,6 +143,60 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
 
   @override
   void dispose() {
+    _photoAutoSyncTimer?.cancel();
+    super.dispose();
+  }
+  */
+  // Gene - Nov, 11, 2026: Force-refresh server photos on screen entry (seeding any cached preview immediately), react to background photoSyncRevision updates, and refresh on app lifecycle resume.
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _tiles = widget.tileProvider;
+    if (widget.initialImagesForTesting != null) {
+      _sitePhotos = widget.initialImagesForTesting;
+      widget.signals.repository
+          .seedImagesCache(widget.locationId, _sitePhotos!);
+    } else {
+      _sitePhotos =
+          widget.signals.repository.peekCachedImages(widget.locationId);
+      _loadSitePhotos(
+        forceRefresh: true,
+        silent: _sitePhotos != null,
+      );
+    }
+    if (_tiles == null) _loadTileProvider();
+
+    var isInitialEffectRun = true;
+    _disposePhotoSyncEffect = effect(() {
+      widget.signals.photoSyncRevision.value;
+      if (isInitialEffectRun) {
+        isInitialEffectRun = false;
+        return;
+      }
+      _loadSitePhotos(forceRefresh: true, silent: true);
+    });
+
+    if (!ApiClient.isNetworkBlocked) {
+      _photoAutoSyncTimer = Timer.periodic(
+        const Duration(seconds: 15),
+        (_) => _loadSitePhotos(forceRefresh: true, silent: true),
+      );
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !ApiClient.isNetworkBlocked) {
+      widget.signals.fetchRemote();
+      _loadSitePhotos(forceRefresh: true, silent: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _disposePhotoSyncEffect?.call();
     _photoAutoSyncTimer?.cancel();
     super.dispose();
   }
@@ -239,12 +298,22 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
                 16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom),
             children: [
           */
+          /*
           // Gene - Oct 31, 2026: Wrapped ListView in RefreshIndicator to allow technicians to pull-to-refresh photos and latest site data.
           body: RefreshIndicator(
             onRefresh: () async {
               await Future.wait([
                 widget.signals.fetchRemote(),
                 _loadSitePhotos(),
+              ]);
+            },
+          */
+          // Gene - Nov, 11, 2026: Pass forceRefresh: true on pull-to-refresh so remote uploaded/deleted NAP images always sync live.
+          body: RefreshIndicator(
+            onRefresh: () async {
+              await Future.wait([
+                widget.signals.fetchRemote(),
+                _loadSitePhotos(forceRefresh: true),
               ]);
             },
             child: ListView(
@@ -697,7 +766,14 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen> {
             child: tiles == null
                 ? const Center(
                     child: CircularProgressIndicator(color: AppTheme.primary))
+                /*
                 : FlutterMap(
+                    options: MapOptions(
+                */
+                // Gene - Nov, 11, 2026: Key FlutterMap by location ID & coordinates so live GPS auto-sync updates re-center the mini-map immediately.
+                : FlutterMap(
+                    key: ValueKey(
+                        'minimap_${location.id}_${location.coordinates}'),
                     options: MapOptions(
                       initialCenter: latLng,
                       initialZoom: 16,
@@ -1523,6 +1599,7 @@ class _LcpNapUploadPhotosSheetState extends State<_LcpNapUploadPhotosSheet> {
     }
   }
   */
+  /*
   // Gene - Nov, 8, 2026: Fall back to location photo fields on initState, seed repository cache, and return updated LcpNapImagesDto on success.
   @override
   void initState() {
@@ -1531,6 +1608,21 @@ class _LcpNapUploadPhotosSheetState extends State<_LcpNapUploadPhotosSheet> {
     _enc2 = widget.initialImages?.image2?.dataUrl ?? widget.location.image2;
     _reading = widget.initialImages?.readingImage?.dataUrl ??
         widget.location.readingImage;
+  }
+  */
+  // Gene - Nov, 11, 2026: Normalize empty-string offline deletion sentinels ('') to null so PhotoCaptureTile treats cleared slots as empty.
+  static String? _nonEmptyOrNull(String? raw) =>
+      (raw != null && raw.trim().isNotEmpty) ? raw : null;
+
+  @override
+  void initState() {
+    super.initState();
+    _enc1 = widget.initialImages?.image?.dataUrl ??
+        _nonEmptyOrNull(widget.location.image);
+    _enc2 = widget.initialImages?.image2?.dataUrl ??
+        _nonEmptyOrNull(widget.location.image2);
+    _reading = widget.initialImages?.readingImage?.dataUrl ??
+        _nonEmptyOrNull(widget.location.readingImage);
   }
 
   Future<void> _submit() async {

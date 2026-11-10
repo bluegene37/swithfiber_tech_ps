@@ -144,8 +144,15 @@ const Table lcpNapLocationsTable = Table.localOnly('lcp_nap_locations', [
   Column.integer('is_synced'),
   Column.text('updated_at'),
 ], indexes: [
+/*
   Index('lcp_idx', [IndexedColumn('lcp')]),
   Index('nap_idx', [IndexedColumn('nap')]),
+]);
+*/
+  // Gene - Nov, 11, 2026: Added lcp_nap_is_synced_idx index to accelerate pending offline photo & GPS auto-sync queries.
+  Index('lcp_idx', [IndexedColumn('lcp')]),
+  Index('nap_idx', [IndexedColumn('nap')]),
+  Index('lcp_nap_is_synced_idx', [IndexedColumn('is_synced')]),
 ]);
 
 /// Every push the server refused, kept on the phone that hit it. Never

@@ -38,6 +38,8 @@ class LcpNapSignals {
   // pull-to-refresh and manual syncs so existing data is never hidden.
   final Signal<DataLoadPhase> loadPhase =
       signal<DataLoadPhase>(DataLoadPhase.ready);
+  // Gene - Nov, 11, 2026: Monotonic revision counter incremented whenever remote/pending sync or photo mutations complete so mounted detail screens auto-refresh photos without app restart.
+  final Signal<int> photoSyncRevision = signal<int>(0);
 
   // --- Computed Signals (Reactive Derived State) ---
 
@@ -140,6 +142,11 @@ class LcpNapSignals {
   late final Computed<int> unmappedCount =
       computed(() => unmappedLocations.value.length);
 
+  // Gene - Nov, 11, 2026: Reactive count of LCP NAP sites with pending offline photo or GPS edits (`isSynced == false`).
+  late final Computed<int> unsyncedCount = computed(
+    () => allLocations.value.where((l) => !l.isSynced).length,
+  );
+
   // --- Initialization & Methods ---
 
   void _init() {
@@ -162,6 +169,7 @@ class LcpNapSignals {
   /// With [initial] set, and only when the local database holds nothing yet, the screen is
   /// walked through the download indicator and a brief skeleton pass before
   /// the hydrated local rows are revealed.
+  /*
   Future<void> fetchRemote({bool initial = false}) async {
     final showPhases = initial && allLocations.value.isEmpty;
     if (showPhases) loadPhase.value = DataLoadPhase.downloading;
@@ -179,6 +187,36 @@ class LcpNapSignals {
         loadPhase.value = DataLoadPhase.ready;
       }
     }
+  }
+  */
+  // Gene - Nov, 11, 2026: Bump photoSyncRevision after remote sync and expose syncPending() so reconnect/background cycles flush queued NAP photo & GPS edits and notify open screens.
+  Future<void> fetchRemote({bool initial = false}) async {
+    final showPhases = initial && allLocations.value.isEmpty;
+    if (showPhases) loadPhase.value = DataLoadPhase.downloading;
+    try {
+      isLoading.value = true;
+      errorMessage.value = null;
+      await repository.fetchRemoteLocations();
+      photoSyncRevision.value++;
+    } catch (e) {
+      errorMessage.value = e.toString();
+    } finally {
+      isLoading.value = false;
+      if (showPhases) {
+        loadPhase.value = DataLoadPhase.skeleton;
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+        loadPhase.value = DataLoadPhase.ready;
+      }
+    }
+  }
+
+  /// Flush any queued offline LCP NAP photo uploads, deletions, or GPS updates.
+  Future<int> syncPending() async {
+    final count = await repository.syncPendingLocations();
+    if (count > 0) {
+      photoSyncRevision.value++;
+    }
+    return count;
   }
 
   /// Update LCP Cabinet filter
@@ -231,6 +269,10 @@ class LcpNapSignals {
         clearImage2: clearImage2,
         clearReadingImage: clearReadingImage,
       );
+      // Gene - Nov, 11, 2026: Notify active photo observers immediately on upload/delete completion.
+      if (success) {
+        photoSyncRevision.value++;
+      }
       return success;
     } catch (e) {
       errorMessage.value = e.toString();
@@ -262,6 +304,10 @@ class LcpNapSignals {
         city: city,
         region: region,
       );
+      // Gene - Nov, 11, 2026: Notify active observers after GPS coordinate sync.
+      if (success) {
+        photoSyncRevision.value++;
+      }
       return success;
     } catch (e) {
       errorMessage.value = e.toString();
