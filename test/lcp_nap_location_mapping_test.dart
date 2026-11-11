@@ -516,6 +516,75 @@ void main() {
           findsOneWidget);
       expect(
           find.byKey(const ValueKey('btnHeaderMapLocation')), findsOneWidget);
+      // Gene - Nov, 11, 2026: Verify Edit Site Details button is rendered in AppBar.
+      expect(find.byKey(const ValueKey('btnEditSiteDetails')), findsOneWidget);
+    });
+
+    // Gene - Nov, 11, 2026: Verify creating a new LCP NAP location via LcpNapLocationPickerSheet.create and editing details.
+    testWidgets(
+        'LcpNapLocationPickerSheet.create creates a new LCP NAP location and updates capacity/details',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      LcpNapDto? createdCallbackDto;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: Scaffold(
+            body: LcpNapLocationPickerSheet.create(
+              signals: signals,
+              initialLcp: 'LCP 009 - ANG',
+              initialNap: 'NAP 004',
+              initialPortTotal: 16,
+              initialCity: 'Angono',
+              initialRegion: 'Rizal',
+              tileProvider: _OfflineTileProvider(),
+              onCreated: (dto) => createdCallbackDto = dto,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Create LCP NAP Location'), findsWidgets);
+      expect(find.byKey(const ValueKey('inputLcp')), findsOneWidget);
+      expect(find.byKey(const ValueKey('inputNap')), findsOneWidget);
+      expect(find.byKey(const ValueKey('inputLcpNap')), findsOneWidget);
+      expect(find.byKey(const ValueKey('inputPortTotal')), findsOneWidget);
+
+      // Select 24 Ports chip
+      await tester.tap(find.byKey(const ValueKey('chipPort_24')));
+      await tester.pumpAndSettle();
+
+      final portField = tester
+          .widget<TextField>(find.byKey(const ValueKey('inputPortTotal')));
+      expect(portField.controller?.text, '24');
+
+      // Enter street and coordinates
+      await tester.enterText(
+          find.byKey(const ValueKey('inputStreet')), 'M.L. Quezon Ave');
+      await tester.enterText(find.byKey(const ValueKey('inputCoordinates')),
+          '14.526200, 121.153800');
+      await tester.pumpAndSettle();
+
+      // Save / Create
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('btnSaveLocation')));
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      });
+      await tester.pumpAndSettle();
+
+      expect(createdCallbackDto, isNotNull);
+      expect(createdCallbackDto!.lcp, 'LCP 009 - ANG');
+      expect(createdCallbackDto!.nap, 'NAP 004');
+      expect(createdCallbackDto!.lcpNap, 'LCP 009 - ANG NAP 004');
+      expect(createdCallbackDto!.portTotal, 24);
+      expect(createdCallbackDto!.coordinates, '14.526200, 121.153800');
+      expect(createdCallbackDto!.street, 'M.L. Quezon Ave');
+      expect(createdCallbackDto!.city, 'Angono');
     });
   });
 }

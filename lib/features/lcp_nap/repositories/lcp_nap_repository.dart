@@ -822,6 +822,7 @@ class LcpNapRepository {
     }
   }
   */
+  /*
   // Gene - Nov, 11, 2026: Include audit metadata (ModifiedDate/ModifiedBy/UserEmail), preserve server & local sibling photos even when _imagesCache is cold, and protect pending offline photos on fallback.
   Future<bool> updateLocationCoordinates({
     required int locationId,
@@ -832,9 +833,68 @@ class LcpNapRepository {
     String? city,
     String? region,
   }) async {
+  */
+  // Gene - Nov, 11, 2026: Support editing LCP, NAP, LCPNAP site label, PortTotal capacity, address metadata, and GPS coordinates via PUT /LCPNapLocations/{id}, plus createLocation via POST /LCPNapLocations.
+  Future<bool> updateLocationCoordinates({
+    required int locationId,
+    required LcpNapDto location,
+    required String coordinates,
+    String? lcp,
+    String? nap,
+    String? lcpNap,
+    int? portTotal,
+    String? street,
+    String? barangay,
+    String? city,
+    String? region,
+    String? modifiedBy,
+    String? userEmail,
+  }) async {
     final baseLoc = (await _dao.getLocationById(locationId)) ?? location;
     final nowUtc = DateTime.now().toUtc();
     final nowIso = nowUtc.toIso8601String();
+
+    final resolvedLcp =
+        (lcp != null && lcp.trim().isNotEmpty) ? lcp.trim() : location.lcp;
+    final resolvedNap =
+        (nap != null && nap.trim().isNotEmpty) ? nap.trim() : location.nap;
+    final resolvedLcpNap = (lcpNap != null && lcpNap.trim().isNotEmpty)
+        ? lcpNap.trim()
+        : ((lcp != null || nap != null)
+            ? '$resolvedLcp $resolvedNap'.trim()
+            : location.lcpNap);
+    final resolvedPortTotal = portTotal ?? location.portTotal;
+    final resolvedCoordinates = coordinates.trim().isNotEmpty
+        ? coordinates.trim()
+        : (location.coordinates ?? baseLoc.coordinates ?? '');
+    final resolvedModifiedBy =
+        modifiedBy ?? location.modifiedBy ?? baseLoc.modifiedBy ?? '1';
+    final resolvedUserEmail =
+        userEmail ?? location.userEmail ?? baseLoc.userEmail;
+
+    // If this row was created offline (negative temporary ID), update locally and let syncPendingLocations POST it
+    if (locationId < 0) {
+      final updatedOffline = baseLoc.copyWith(
+        lcp: resolvedLcp,
+        nap: resolvedNap,
+        lcpNap: resolvedLcpNap,
+        portTotal: resolvedPortTotal,
+        coordinates:
+            resolvedCoordinates.isNotEmpty ? resolvedCoordinates : null,
+        street: street ?? location.street ?? baseLoc.street,
+        barangay: barangay ?? location.barangay ?? baseLoc.barangay,
+        city: city ?? location.city ?? baseLoc.city,
+        region: region ?? location.region ?? baseLoc.region,
+        modifiedBy: resolvedModifiedBy,
+        userEmail: resolvedUserEmail,
+        modifiedDate: nowUtc,
+        isSynced: false,
+        updatedAt: DateTime.now(),
+      );
+      await _dao.insertOrUpdateLocation(updatedOffline, synced: false);
+      unawaited(syncPendingLocations());
+      return true;
+    }
 
     final hasLocalAny = _resolvePhotoBytes(baseLoc.image) != null ||
         _resolvePhotoBytes(baseLoc.image2) != null ||
@@ -853,27 +913,41 @@ class LcpNapRepository {
     }
 
     try {
+      final resolvedStreet = street ?? location.street ?? baseLoc.street;
+      final resolvedBarangay =
+          barangay ?? location.barangay ?? baseLoc.barangay;
+      final resolvedCity = city ?? location.city ?? baseLoc.city;
+      final resolvedRegion = region ?? location.region ?? baseLoc.region;
+
+      final queryParams = <String, dynamic>{
+        'LCP': resolvedLcp,
+        'NAP': resolvedNap,
+        'LCPNAP': resolvedLcpNap,
+        'PortTotal': resolvedPortTotal,
+        if (resolvedCoordinates.isNotEmpty) 'Coordinates': resolvedCoordinates,
+        if (resolvedStreet != null) 'Street': resolvedStreet,
+        if (resolvedBarangay != null) 'Barangay': resolvedBarangay,
+        if (resolvedCity != null) 'City': resolvedCity,
+        if (resolvedRegion != null) 'Region': resolvedRegion,
+        'ModifiedBy': resolvedModifiedBy,
+        if (resolvedUserEmail != null && resolvedUserEmail.trim().isNotEmpty)
+          'UserEmail': resolvedUserEmail.trim(),
+      };
+
       final map = <String, dynamic>{
-        'LCP': location.lcp,
-        'NAP': location.nap,
-        'LCPNAP': location.lcpNap,
-        'PortTotal': location.portTotal.toString(),
-        'Coordinates': coordinates,
-        if (street != null || baseLoc.street != null || location.street != null)
-          'Street': street ?? location.street ?? baseLoc.street,
-        if (barangay != null ||
-            baseLoc.barangay != null ||
-            location.barangay != null)
-          'Barangay': barangay ?? location.barangay ?? baseLoc.barangay,
-        if (city != null || baseLoc.city != null || location.city != null)
-          'City': city ?? location.city ?? baseLoc.city,
-        if (region != null || baseLoc.region != null || location.region != null)
-          'Region': region ?? location.region ?? baseLoc.region,
-        'ModifiedBy': location.modifiedBy ?? baseLoc.modifiedBy ?? '1',
+        'LCP': resolvedLcp,
+        'NAP': resolvedNap,
+        'LCPNAP': resolvedLcpNap,
+        'PortTotal': resolvedPortTotal.toString(),
+        'Coordinates': resolvedCoordinates,
+        if (resolvedStreet != null) 'Street': resolvedStreet,
+        if (resolvedBarangay != null) 'Barangay': resolvedBarangay,
+        if (resolvedCity != null) 'City': resolvedCity,
+        if (resolvedRegion != null) 'Region': resolvedRegion,
+        'ModifiedBy': resolvedModifiedBy,
         'ModifiedDate': nowIso,
-        if ((location.userEmail ?? baseLoc.userEmail)?.trim().isNotEmpty ==
-            true)
-          'UserEmail': (location.userEmail ?? baseLoc.userEmail)!.trim(),
+        if (resolvedUserEmail != null && resolvedUserEmail.trim().isNotEmpty)
+          'UserEmail': resolvedUserEmail.trim(),
       };
 
       final clear1 = !baseLoc.isSynced && baseLoc.image == '';
@@ -918,6 +992,7 @@ class LcpNapRepository {
       final response = await _api.put(
         '/LCPNapLocations/$locationId',
         data: formData,
+        queryParameters: queryParams,
         options: Options(contentType: 'multipart/form-data'),
       );
 
@@ -925,15 +1000,18 @@ class LcpNapRepository {
           response.statusCode == 200 || response.statusCode == 204;
       if (isSuccess) {
         final updatedDto = baseLoc.copyWith(
-          lcp: location.lcp,
-          nap: location.nap,
-          lcpNap: location.lcpNap,
-          portTotal: location.portTotal,
-          coordinates: coordinates,
-          street: street ?? location.street ?? baseLoc.street,
-          barangay: barangay ?? location.barangay ?? baseLoc.barangay,
-          city: city ?? location.city ?? baseLoc.city,
-          region: region ?? location.region ?? baseLoc.region,
+          lcp: resolvedLcp,
+          nap: resolvedNap,
+          lcpNap: resolvedLcpNap,
+          portTotal: resolvedPortTotal,
+          coordinates:
+              resolvedCoordinates.isNotEmpty ? resolvedCoordinates : null,
+          street: resolvedStreet,
+          barangay: resolvedBarangay,
+          city: resolvedCity,
+          region: resolvedRegion,
+          modifiedBy: resolvedModifiedBy,
+          userEmail: resolvedUserEmail,
           clearImage: clear1,
           clearImage2: clear2,
           clearReadingImage: clearReading,
@@ -950,21 +1028,254 @@ class LcpNapRepository {
       }
       // Local optimistic fallback when offline (preserving any queued offline photos)
       final updatedDto = baseLoc.copyWith(
-        lcp: location.lcp,
-        nap: location.nap,
-        lcpNap: location.lcpNap,
-        portTotal: location.portTotal,
-        coordinates: coordinates,
+        lcp: resolvedLcp,
+        nap: resolvedNap,
+        lcpNap: resolvedLcpNap,
+        portTotal: resolvedPortTotal,
+        coordinates:
+            resolvedCoordinates.isNotEmpty ? resolvedCoordinates : null,
         street: street ?? location.street ?? baseLoc.street,
         barangay: barangay ?? location.barangay ?? baseLoc.barangay,
         city: city ?? location.city ?? baseLoc.city,
         region: region ?? location.region ?? baseLoc.region,
+        modifiedBy: resolvedModifiedBy,
+        userEmail: resolvedUserEmail,
         modifiedDate: nowUtc,
         isSynced: false,
         updatedAt: DateTime.now(),
       );
       await _dao.insertOrUpdateLocation(updatedDto, synced: false);
       return true;
+    }
+  }
+
+  // Gene - Nov, 11, 2026: Create a new LCP NAP location record via multipart/form-data POST /api/LCPNapLocations with query & form binding and offline fallback.
+  Future<LcpNapDto?> createLocation({
+    required String lcp,
+    required String nap,
+    String? lcpNap,
+    int portTotal = 16,
+    String? coordinates,
+    String? street,
+    String? barangay,
+    String? city,
+    String? region,
+    String? modifiedBy,
+    String? userEmail,
+    Uint8List? imageBytes,
+    Uint8List? image2Bytes,
+    Uint8List? readingImageBytes,
+  }) async {
+    final cleanLcp = lcp.trim();
+    final cleanNap = nap.trim();
+    final cleanLcpNap = (lcpNap != null && lcpNap.trim().isNotEmpty)
+        ? lcpNap.trim()
+        : '$cleanLcp $cleanNap'.trim();
+    final cleanCoords =
+        (coordinates != null && coordinates.trim().isNotEmpty)
+            ? coordinates.trim()
+            : null;
+    final cleanStreet =
+        (street != null && street.trim().isNotEmpty) ? street.trim() : null;
+    final cleanBarangay = (barangay != null && barangay.trim().isNotEmpty)
+        ? barangay.trim()
+        : null;
+    final cleanCity =
+        (city != null && city.trim().isNotEmpty) ? city.trim() : null;
+    final cleanRegion =
+        (region != null && region.trim().isNotEmpty) ? region.trim() : null;
+    final resolvedModifiedBy =
+        (modifiedBy != null && modifiedBy.trim().isNotEmpty)
+            ? modifiedBy.trim()
+            : '1';
+    final resolvedUserEmail =
+        (userEmail != null && userEmail.trim().isNotEmpty)
+            ? userEmail.trim()
+            : null;
+
+    final nowUtc = DateTime.now().toUtc();
+    final nowIso = nowUtc.toIso8601String();
+
+    final queryParams = <String, dynamic>{
+      'LCP': cleanLcp,
+      'NAP': cleanNap,
+      'LCPNAP': cleanLcpNap,
+      'PortTotal': portTotal,
+      if (cleanCoords != null) 'Coordinates': cleanCoords,
+      if (cleanStreet != null) 'Street': cleanStreet,
+      if (cleanBarangay != null) 'Barangay': cleanBarangay,
+      if (cleanCity != null) 'City': cleanCity,
+      if (cleanRegion != null) 'Region': cleanRegion,
+      'ModifiedBy': resolvedModifiedBy,
+      if (resolvedUserEmail != null) 'UserEmail': resolvedUserEmail,
+    };
+
+    final map = <String, dynamic>{
+      'LCP': cleanLcp,
+      'NAP': cleanNap,
+      'LCPNAP': cleanLcpNap,
+      'PortTotal': portTotal.toString(),
+      if (cleanCoords != null) 'Coordinates': cleanCoords,
+      if (cleanStreet != null) 'Street': cleanStreet,
+      if (cleanBarangay != null) 'Barangay': cleanBarangay,
+      if (cleanCity != null) 'City': cleanCity,
+      if (cleanRegion != null) 'Region': cleanRegion,
+      'ModifiedBy': resolvedModifiedBy,
+      'ModifiedDate': nowIso,
+      if (resolvedUserEmail != null) 'UserEmail': resolvedUserEmail,
+      if (imageBytes != null && imageBytes.isNotEmpty)
+        'Image': MultipartFile.fromBytes(imageBytes, filename: 'image.jpg'),
+      if (image2Bytes != null && image2Bytes.isNotEmpty)
+        'Image2': MultipartFile.fromBytes(image2Bytes, filename: 'image2.jpg'),
+      if (readingImageBytes != null && readingImageBytes.isNotEmpty)
+        'ReadingImage': MultipartFile.fromBytes(
+          readingImageBytes,
+          filename: 'readingImage.jpg',
+        ),
+    };
+
+    try {
+      final response = await _api.post(
+        '/LCPNapLocations',
+        data: FormData.fromMap(map),
+        queryParameters: queryParams,
+        options: Options(contentType: 'multipart/form-data'),
+      );
+
+      final isSuccess = response.statusCode == 200 ||
+          response.statusCode == 201 ||
+          response.statusCode == 204;
+      if (!isSuccess) return null;
+
+      int? assignedId;
+      LcpNapDto? parsedDto;
+      final data = response.data;
+      if (data is Map<String, dynamic> && data.isNotEmpty) {
+        final candidate = LcpNapDto.fromJson(data);
+        if (candidate.id > 0) {
+          assignedId = candidate.id;
+          parsedDto = candidate;
+        }
+      } else if (data is int && data > 0) {
+        assignedId = data;
+      }
+
+      // If response did not echo the full record with ID, check latest server list
+      if (assignedId == null && !ApiClient.isNetworkBlocked) {
+        try {
+          final listRes = await _api.get('/LCPNapLocations');
+          if (listRes.data is List) {
+            final matches = <LcpNapDto>[
+              for (final item in listRes.data as List)
+                if (item is Map<String, dynamic>) LcpNapDto.fromJson(item),
+            ].where((s) =>
+                s.lcpNap.toLowerCase() == cleanLcpNap.toLowerCase() ||
+                (s.lcp.toLowerCase() == cleanLcp.toLowerCase() &&
+                    s.nap.toLowerCase() == cleanNap.toLowerCase()));
+            if (matches.isNotEmpty) {
+              final newest = matches.reduce((a, b) => a.id > b.id ? a : b);
+              assignedId = newest.id;
+              parsedDto = newest;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (assignedId == null) {
+        final existing = await _dao.getAllLocations();
+        final maxId = existing.fold<int>(
+          1000,
+          (max, e) => e.id > max ? e.id : max,
+        );
+        assignedId = maxId + 1;
+      }
+
+      final savedImg1 = (imageBytes != null && imageBytes.isNotEmpty)
+          ? await _persistPhotoSlotLocally(assignedId, 'enc1', imageBytes)
+          : parsedDto?.image;
+      final savedImg2 = (image2Bytes != null && image2Bytes.isNotEmpty)
+          ? await _persistPhotoSlotLocally(assignedId, 'enc2', image2Bytes)
+          : parsedDto?.image2;
+      final savedReading =
+          (readingImageBytes != null && readingImageBytes.isNotEmpty)
+              ? await _persistPhotoSlotLocally(
+                  assignedId, 'reading', readingImageBytes)
+              : parsedDto?.readingImage;
+
+      if ((imageBytes != null && imageBytes.isNotEmpty) ||
+          (image2Bytes != null && image2Bytes.isNotEmpty) ||
+          (readingImageBytes != null && readingImageBytes.isNotEmpty)) {
+        _imagesCache[assignedId] = _buildImagesDtoFromBytes(
+          enc1Bytes: imageBytes,
+          enc2Bytes: image2Bytes,
+          readingBytes: readingImageBytes,
+        );
+      }
+
+      final createdDto = LcpNapDto(
+        id: assignedId,
+        lcp: cleanLcp,
+        nap: cleanNap,
+        lcpNap: cleanLcpNap,
+        portTotal: portTotal,
+        coordinates: cleanCoords ?? parsedDto?.coordinates,
+        street: cleanStreet ?? parsedDto?.street,
+        barangay: cleanBarangay ?? parsedDto?.barangay,
+        city: cleanCity ?? parsedDto?.city,
+        region: cleanRegion ?? parsedDto?.region,
+        image: savedImg1,
+        image2: savedImg2,
+        readingImage: savedReading,
+        modifiedBy: resolvedModifiedBy,
+        userEmail: resolvedUserEmail,
+        modifiedDate: nowUtc,
+        isSynced: true,
+        updatedAt: DateTime.now(),
+      );
+
+      await _dao.insertOrUpdateLocation(createdDto, synced: true);
+      return createdDto;
+    } catch (e) {
+      if (_isHardClientError(e)) {
+        return null;
+      }
+
+      // Offline fallback: allocate a negative temporary ID so syncPendingLocations knows to POST it on reconnect
+      final tempId = -(DateTime.now().millisecondsSinceEpoch % 1000000000);
+      final savedImg1 = (imageBytes != null && imageBytes.isNotEmpty)
+          ? await _persistPhotoSlotLocally(tempId, 'enc1', imageBytes)
+          : null;
+      final savedImg2 = (image2Bytes != null && image2Bytes.isNotEmpty)
+          ? await _persistPhotoSlotLocally(tempId, 'enc2', image2Bytes)
+          : null;
+      final savedReading =
+          (readingImageBytes != null && readingImageBytes.isNotEmpty)
+              ? await _persistPhotoSlotLocally(
+                  tempId, 'reading', readingImageBytes)
+              : null;
+
+      final offlineDto = LcpNapDto(
+        id: tempId,
+        lcp: cleanLcp,
+        nap: cleanNap,
+        lcpNap: cleanLcpNap,
+        portTotal: portTotal,
+        coordinates: cleanCoords,
+        street: cleanStreet,
+        barangay: cleanBarangay,
+        city: cleanCity,
+        region: cleanRegion,
+        image: savedImg1,
+        image2: savedImg2,
+        readingImage: savedReading,
+        modifiedBy: resolvedModifiedBy,
+        userEmail: resolvedUserEmail,
+        modifiedDate: nowUtc,
+        isSynced: false,
+        updatedAt: DateTime.now(),
+      );
+      await _dao.insertOrUpdateLocation(offlineDto, synced: false);
+      return offlineDto;
     }
   }
 
@@ -1000,6 +1311,33 @@ class LcpNapRepository {
       var enc2Bytes = clearImg2 ? null : _resolvePhotoBytes(loc.image2);
       var readingBytes =
           clearReading ? null : _resolvePhotoBytes(loc.readingImage);
+
+      // Gene - Nov, 11, 2026: If loc.id < 0, this record was created offline and needs POST /LCPNapLocations.
+      if (loc.id < 0) {
+        final created = await createLocation(
+          lcp: loc.lcp,
+          nap: loc.nap,
+          lcpNap: loc.lcpNap,
+          portTotal: loc.portTotal,
+          coordinates: loc.coordinates,
+          street: loc.street,
+          barangay: loc.barangay,
+          city: loc.city,
+          region: loc.region,
+          modifiedBy: loc.modifiedBy,
+          userEmail: loc.userEmail,
+          imageBytes: enc1Bytes,
+          image2Bytes: enc2Bytes,
+          readingImageBytes: readingBytes,
+        );
+        if (created != null && created.isSynced && created.id > 0) {
+          await _dao.deleteLocation(loc.id);
+          syncedCount++;
+          continue;
+        } else {
+          break;
+        }
+      }
 
       // If this was an offline GPS-only edit with cold photo cache, fetch existing server photos first so PUT preserves them
       if (!clearImg1 &&

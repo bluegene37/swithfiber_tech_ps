@@ -282,6 +282,7 @@ class LcpNapSignals {
     }
   }
 
+  /*
   // Gene - Oct 31, 2026: Coordinate LCP NAP location coordinates and address update.
   Future<bool> updateLocationCoordinates({
     required int locationId,
@@ -312,6 +313,101 @@ class LcpNapSignals {
     } catch (e) {
       errorMessage.value = e.toString();
       return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+  */
+  // Gene - Nov, 11, 2026: Support editing LCP, NAP, LCPNAP, PortTotal, address, and GPS coordinates, plus creating new LCP NAP locations.
+  Future<bool> updateLocationCoordinates({
+    required int locationId,
+    required LcpNapDto location,
+    required String coordinates,
+    String? lcp,
+    String? nap,
+    String? lcpNap,
+    int? portTotal,
+    String? street,
+    String? barangay,
+    String? city,
+    String? region,
+    String? modifiedBy,
+    String? userEmail,
+  }) async {
+    isLoading.value = true;
+    errorMessage.value = null;
+    try {
+      final success = await repository.updateLocationCoordinates(
+        locationId: locationId,
+        location: location,
+        coordinates: coordinates,
+        lcp: lcp,
+        nap: nap,
+        lcpNap: lcpNap,
+        portTotal: portTotal,
+        street: street,
+        barangay: barangay,
+        city: city,
+        region: region,
+        modifiedBy: modifiedBy,
+        userEmail: userEmail,
+      );
+      if (success) {
+        photoSyncRevision.value++;
+      }
+      return success;
+    } catch (e) {
+      errorMessage.value = e.toString();
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Create a new LCP NAP location record in the plant database and API.
+  Future<LcpNapDto?> createLocation({
+    required String lcp,
+    required String nap,
+    String? lcpNap,
+    int portTotal = 16,
+    String? coordinates,
+    String? street,
+    String? barangay,
+    String? city,
+    String? region,
+    String? modifiedBy,
+    String? userEmail,
+    Uint8List? imageBytes,
+    Uint8List? image2Bytes,
+    Uint8List? readingImageBytes,
+  }) async {
+    isLoading.value = true;
+    errorMessage.value = null;
+    try {
+      final created = await repository.createLocation(
+        lcp: lcp,
+        nap: nap,
+        lcpNap: lcpNap,
+        portTotal: portTotal,
+        coordinates: coordinates,
+        street: street,
+        barangay: barangay,
+        city: city,
+        region: region,
+        modifiedBy: modifiedBy,
+        userEmail: userEmail,
+        imageBytes: imageBytes,
+        image2Bytes: image2Bytes,
+        readingImageBytes: readingImageBytes,
+      );
+      if (created != null) {
+        selectedLocation.value = created;
+        photoSyncRevision.value++;
+      }
+      return created;
+    } catch (e) {
+      errorMessage.value = e.toString();
+      return null;
     } finally {
       isLoading.value = false;
     }

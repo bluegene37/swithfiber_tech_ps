@@ -285,6 +285,13 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
                   ),
                 ),
               ),
+              // Gene - Nov, 11, 2026: Added Edit Site Details action in the AppBar to edit LCP, NAP, PortTotal, address, and GPS.
+              IconButton(
+                key: const ValueKey('btnEditSiteDetails'),
+                icon: const Icon(Icons.edit_outlined, size: 22),
+                tooltip: 'Edit Site Details',
+                onPressed: () => _showEditSiteDetailsSheet(context, location),
+              ),
               IconButton(
                 icon: const Icon(Icons.share_outlined, size: 24),
                 tooltip: 'Copy Dispatch Summary',
@@ -1514,6 +1521,46 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
               const Expanded(
                 child:
                     Text('LCP NAP location coordinates updated successfully!'),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  // Gene - Nov, 11, 2026: Opens modal bottom sheet to edit LCP NAP site details (LCP, NAP, PortTotal, address, and optional GPS coordinates).
+  Future<void> _showEditSiteDetailsSheet(
+    BuildContext context,
+    LcpNapDto location,
+  ) async {
+    final updated = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => LcpNapLocationPickerSheet(
+        location: location,
+        signals: widget.signals,
+        tileProvider: _tiles,
+        locationService: widget.locationServiceForTesting,
+        placeLookup: widget.placeLookupForTesting,
+        reverseGeocodeForTesting: widget.reverseGeocodeForTesting,
+        allowEmptyCoordinates: true,
+        sheetTitle: 'Edit LCP NAP Details',
+      ),
+    );
+
+    if (updated == true && mounted) {
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: const [
+              Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('LCP NAP site details updated successfully!'),
               ),
             ],
           ),

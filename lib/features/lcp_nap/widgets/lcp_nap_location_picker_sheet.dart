@@ -9,14 +9,16 @@ import 'package:latlong2/latlong.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
+// Gene - Nov, 11, 2026: Imported AuthSignals to attach signed-in technician identity (ModifiedBy / UserEmail) when creating or editing LCP NAP locations.
+import '../../auth/signals/auth_signals.dart';
 import '../models/lcp_nap_model.dart';
 import '../services/map_clustering.dart';
 import '../services/map_tiles.dart';
 import '../signals/lcp_nap_signals.dart';
 import 'map_search_bar.dart';
 
-/// Modal bottom sheet allowing technicians to map an LCP NAP location by
-/// clicking current GPS location or pinning onto the interactive map.
+/// Modal bottom sheet allowing technicians to map an LCP NAP location,
+/// edit site details (LCP, NAP, PortTotal, address, GPS), or create a new LCP NAP site.
 class LcpNapLocationPickerSheet extends StatefulWidget {
   final LcpNapDto location;
   final LcpNapSignals signals;
@@ -25,7 +27,13 @@ class LcpNapLocationPickerSheet extends StatefulWidget {
   final PlaceLookup? placeLookup;
   final Future<List<geo.Placemark>> Function(double lat, double lng)?
       reverseGeocodeForTesting;
+  // Gene - Nov, 11, 2026: Added isCreateMode, allowEmptyCoordinates, custom sheetTitle, and onCreated callback to support creating new LCP NAP locations and editing site details.
+  final bool isCreateMode;
+  final bool allowEmptyCoordinates;
+  final String? sheetTitle;
+  final void Function(LcpNapDto created)? onCreated;
 
+  /*
   const LcpNapLocationPickerSheet({
     super.key,
     required this.location,
@@ -35,6 +43,63 @@ class LcpNapLocationPickerSheet extends StatefulWidget {
     this.placeLookup,
     this.reverseGeocodeForTesting,
   });
+  */
+  const LcpNapLocationPickerSheet({
+    super.key,
+    required this.location,
+    required this.signals,
+    this.tileProvider,
+    this.locationService,
+    this.placeLookup,
+    this.reverseGeocodeForTesting,
+    this.isCreateMode = false,
+    this.allowEmptyCoordinates = false,
+    this.sheetTitle,
+    this.onCreated,
+  });
+
+  /// Convenience constructor for creating a new LCP NAP location.
+  factory LcpNapLocationPickerSheet.create({
+    Key? key,
+    required LcpNapSignals signals,
+    String initialLcp = '',
+    String initialNap = 'NAP 001',
+    int initialPortTotal = 16,
+    String? initialCity,
+    String? initialRegion = 'Rizal',
+    TileProvider? tileProvider,
+    LocationService? locationService,
+    PlaceLookup? placeLookup,
+    Future<List<geo.Placemark>> Function(double lat, double lng)?
+        reverseGeocodeForTesting,
+    void Function(LcpNapDto created)? onCreated,
+  }) {
+    final cleanLcp = initialLcp.trim();
+    final cleanNap = initialNap.trim();
+    final combined =
+        cleanLcp.isNotEmpty ? '$cleanLcp $cleanNap'.trim() : cleanNap;
+    return LcpNapLocationPickerSheet(
+      key: key,
+      location: LcpNapDto(
+        id: 0,
+        lcp: cleanLcp,
+        nap: cleanNap,
+        lcpNap: combined,
+        portTotal: initialPortTotal,
+        city: initialCity,
+        region: initialRegion,
+      ),
+      signals: signals,
+      tileProvider: tileProvider,
+      locationService: locationService,
+      placeLookup: placeLookup,
+      reverseGeocodeForTesting: reverseGeocodeForTesting,
+      isCreateMode: true,
+      allowEmptyCoordinates: true,
+      sheetTitle: 'Create LCP NAP Location',
+      onCreated: onCreated,
+    );
+  }
 
   @override
   State<LcpNapLocationPickerSheet> createState() =>
@@ -42,20 +107,51 @@ class LcpNapLocationPickerSheet extends StatefulWidget {
 }
 
 class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
+  // Gene - Nov, 11, 2026: Added controllers for LCP, NAP, LCPNAP label, and PortTotal capacity.
+  late final TextEditingController _lcpController;
+  late final TextEditingController _napController;
+  late final TextEditingController _lcpNapController;
+  late final TextEditingController _portTotalController;
   late final TextEditingController _coordinatesController;
   late final TextEditingController _streetController;
   late final TextEditingController _barangayController;
   late final TextEditingController _cityController;
   late final TextEditingController _regionController;
 
+  bool _lcpNapManuallyEdited = false;
   bool _isLocating = false;
   bool _isSaving = false;
   String? _errorMessage;
   TileProvider? _tiles;
 
+  static const List<int> _standardPortCounts = [8, 16, 24, 32];
+  static const List<String> _standardNaps = [
+    'NAP 001',
+    'NAP 002',
+    'NAP 003',
+    'NAP 004',
+    'NAP 005',
+    'NAP 006',
+    'NAP 007',
+    'NAP 008',
+    'NAP 009',
+    'NAP 010',
+    'NAP 011',
+    'NAP 012',
+    'NAP 013',
+    'NAP 014',
+    'NAP 015',
+    'NAP 016',
+  ];
+
   @override
   void initState() {
     super.initState();
+    _lcpController = TextEditingController(text: widget.location.lcp);
+    _napController = TextEditingController(text: widget.location.nap);
+    _lcpNapController = TextEditingController(text: widget.location.lcpNap);
+    _portTotalController =
+        TextEditingController(text: widget.location.portTotal.toString());
     _coordinatesController =
         TextEditingController(text: widget.location.coordinates ?? '');
     _streetController =
@@ -79,12 +175,29 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
 
   @override
   void dispose() {
+    _lcpController.dispose();
+    _napController.dispose();
+    _lcpNapController.dispose();
+    _portTotalController.dispose();
     _coordinatesController.dispose();
     _streetController.dispose();
     _barangayController.dispose();
     _cityController.dispose();
     _regionController.dispose();
     super.dispose();
+  }
+
+  void _syncLcpNapLabel() {
+    if (_lcpNapManuallyEdited) return;
+    final lcp = _lcpController.text.trim();
+    final nap = _napController.text.trim();
+    if (lcp.isNotEmpty && nap.isNotEmpty) {
+      _lcpNapController.text = '$lcp $nap';
+    } else if (lcp.isNotEmpty) {
+      _lcpNapController.text = lcp;
+    } else {
+      _lcpNapController.text = nap;
+    }
   }
 
   LocationService get _locationService =>
@@ -184,11 +297,26 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
   /// Click 2: Pin on map picker
   Future<void> _openMapPinPicker() async {
     final current = _parsedLatLng ?? widget.location.latLng;
+    // Gene - Nov, 11, 2026: Pass current edited LCP/NAP values into the Map Pin Picker preview.
+    final previewLocation = widget.location.copyWith(
+      lcp: _lcpController.text.trim().isNotEmpty
+          ? _lcpController.text.trim()
+          : widget.location.lcp,
+      nap: _napController.text.trim().isNotEmpty
+          ? _napController.text.trim()
+          : widget.location.nap,
+      lcpNap: _lcpNapController.text.trim().isNotEmpty
+          ? _lcpNapController.text.trim()
+          : widget.location.lcpNap,
+    );
 
     final picked = await Navigator.of(context).push<LatLng>(
       MaterialPageRoute(
         builder: (_) => LcpNapMapPickerScreen(
+          /*
           location: widget.location,
+          */
+          location: previewLocation,
           initialLatLng: current,
           tileProvider: _tiles,
           placeLookup: widget.placeLookup,
@@ -207,7 +335,27 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
     }
   }
 
-  /// Save and update location
+  // Gene - Nov, 11, 2026: Suggest next sequential NAP number for a given LCP cabinet.
+  String _suggestNextNapForLcp(String lcpName) {
+    final normalized = lcpName.trim().toLowerCase();
+    if (normalized.isEmpty) return 'NAP 001';
+    final existing = widget.signals.allLocations.value
+        .where((loc) => loc.lcp.trim().toLowerCase() == normalized)
+        .toList();
+    int maxNum = 0;
+    for (final loc in existing) {
+      final match = RegExp(r'(\d+)').firstMatch(loc.nap);
+      if (match != null) {
+        final val = int.tryParse(match.group(1)!) ?? 0;
+        if (val > maxNum) maxNum = val;
+      }
+    }
+    final nextNum = maxNum + 1;
+    return 'NAP ${nextNum.toString().padLeft(3, '0')}';
+  }
+
+  /// Save and update or create location
+  /*
   Future<void> _saveLocation() async {
     final parsed = _parsedLatLng;
     if (parsed == null) {
@@ -256,6 +404,512 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
       });
     }
   }
+  */
+  // Gene - Nov, 11, 2026: Enhanced _saveLocation to support both creating new LCP NAP locations and editing site details (LCP, NAP, LCPNAP, PortTotal, address, and coordinates).
+  Future<void> _saveLocation() async {
+    final parsed = _parsedLatLng;
+    final rawCoords = _coordinatesController.text.trim();
+
+    if ((!widget.isCreateMode && !widget.allowEmptyCoordinates && parsed == null) ||
+        (rawCoords.isNotEmpty && parsed == null)) {
+      setState(() {
+        _errorMessage =
+            'Please enter or pick valid GPS coordinates (e.g. 14.586200, 121.061800).';
+      });
+      return;
+    }
+
+    final lcp = _lcpController.text.trim();
+    final nap = _napController.text.trim();
+    if (lcp.isEmpty || nap.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter both LCP Cabinet and NAP Box names.';
+      });
+      return;
+    }
+
+    final portTotal = int.tryParse(_portTotalController.text.trim());
+    if (portTotal == null || portTotal <= 0 || portTotal > 128) {
+      setState(() {
+        _errorMessage =
+            'Please enter a valid port capacity (e.g. 8, 16, 24, or 32).';
+      });
+      return;
+    }
+
+    final lcpNap = _lcpNapController.text.trim().isNotEmpty
+        ? _lcpNapController.text.trim()
+        : '$lcp $nap';
+
+    setState(() {
+      _isSaving = true;
+      _errorMessage = null;
+    });
+
+    final coordinates = parsed != null
+        ? '${parsed.latitude.toStringAsFixed(6)}, ${parsed.longitude.toStringAsFixed(6)}'
+        : '';
+
+    final user = AuthSignals.instance.currentUser.value;
+    final modifiedBy = user != null
+        ? (user.fullName.isNotEmpty ? user.fullName : user.username)
+        : widget.location.modifiedBy;
+    final userEmail = user != null && user.email.isNotEmpty
+        ? user.email
+        : widget.location.userEmail;
+
+    final street = _streetController.text.trim().isNotEmpty
+        ? _streetController.text.trim()
+        : null;
+    final barangay = _barangayController.text.trim().isNotEmpty
+        ? _barangayController.text.trim()
+        : null;
+    final city = _cityController.text.trim().isNotEmpty
+        ? _cityController.text.trim()
+        : null;
+    final region = _regionController.text.trim().isNotEmpty
+        ? _regionController.text.trim()
+        : null;
+
+    if (widget.isCreateMode) {
+      final created = await widget.signals.createLocation(
+        lcp: lcp,
+        nap: nap,
+        lcpNap: lcpNap,
+        portTotal: portTotal,
+        coordinates: coordinates.isNotEmpty ? coordinates : null,
+        street: street,
+        barangay: barangay,
+        city: city,
+        region: region,
+        modifiedBy: modifiedBy,
+        userEmail: userEmail,
+      );
+
+      if (!mounted) return;
+
+      if (created != null) {
+        widget.onCreated?.call(created);
+        Navigator.of(context).pop(true);
+      } else {
+        setState(() {
+          _isSaving = false;
+          _errorMessage = widget.signals.errorMessage.value ??
+              'Failed to create LCP NAP location. Please try again.';
+        });
+      }
+      return;
+    }
+
+    final success = await widget.signals.updateLocationCoordinates(
+      locationId: widget.location.id,
+      location: widget.location,
+      coordinates: coordinates,
+      lcp: lcp,
+      nap: nap,
+      lcpNap: lcpNap,
+      portTotal: portTotal,
+      street: street,
+      barangay: barangay,
+      city: city,
+      region: region,
+      modifiedBy: modifiedBy,
+      userEmail: userEmail,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() {
+        _isSaving = false;
+        _errorMessage = widget.signals.errorMessage.value ??
+            'Failed to update location details. Please try again.';
+      });
+    }
+  }
+
+  // Gene - Nov, 11, 2026: Built Site Identification & Capacity form section (LCP, NAP, LCPNAP, PortTotal + quick pickers).
+  Widget _buildSiteIdentitySection(BuildContext context, bool isDark) {
+    final existingLcps = widget.signals.lcpCabinetList.value
+        .where((e) => e != 'All' && e.trim().isNotEmpty)
+        .toList();
+    final selectedPorts = int.tryParse(_portTotalController.text.trim());
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'SITE IDENTIFICATION & CAPACITY',
+          style: context.text.labelSmall!.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+            color: AppTheme.secondaryInkOf(context),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 6,
+              child: TextField(
+                key: const ValueKey('inputLcp'),
+                controller: _lcpController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  labelText: 'LCP Cabinet *',
+                  hintText: 'e.g. LCP 001 - ANG',
+                  prefixIcon: const Icon(Icons.dns_outlined, size: 19),
+                  suffixIcon: existingLcps.isNotEmpty
+                      ? PopupMenuButton<String>(
+                          key: const ValueKey('btnPickExistingLcp'),
+                          tooltip: 'Pick existing LCP Cabinet',
+                          icon: const Icon(Icons.arrow_drop_down_rounded),
+                          onSelected: (selectedLcp) {
+                            setState(() {
+                              _lcpController.text = selectedLcp;
+                              if (widget.isCreateMode) {
+                                _napController.text =
+                                    _suggestNextNapForLcp(selectedLcp);
+                              }
+                              _syncLcpNapLabel();
+                              // Pre-fill city/region from existing cabinet member if blank
+                              final sample = widget.signals.allLocations.value
+                                  .where((loc) => loc.lcp == selectedLcp)
+                                  .firstOrNull;
+                              if (sample != null) {
+                                if (_cityController.text.trim().isEmpty &&
+                                    (sample.city ?? '').isNotEmpty) {
+                                  _cityController.text = sample.city!;
+                                }
+                                if (_regionController.text.trim().isEmpty &&
+                                    (sample.region ?? '').isNotEmpty) {
+                                  _regionController.text = sample.region!;
+                                }
+                              }
+                            });
+                          },
+                          itemBuilder: (ctx) => existingLcps
+                              .map(
+                                (lcp) => PopupMenuItem<String>(
+                                  value: lcp,
+                                  child: Text(lcp),
+                                ),
+                              )
+                              .toList(),
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onChanged: (_) {
+                  setState(() {
+                    _syncLcpNapLabel();
+                  });
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 5,
+              child: TextField(
+                key: const ValueKey('inputNap'),
+                controller: _napController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  labelText: 'NAP Box *',
+                  hintText: 'e.g. NAP 001',
+                  prefixIcon:
+                      const Icon(Icons.settings_input_hdmi_outlined, size: 19),
+                  suffixIcon: PopupMenuButton<String>(
+                    key: const ValueKey('btnPickStandardNap'),
+                    tooltip: 'Pick NAP number',
+                    icon: const Icon(Icons.arrow_drop_down_rounded),
+                    onSelected: (selectedNap) {
+                      setState(() {
+                        _napController.text = selectedNap;
+                        _syncLcpNapLabel();
+                      });
+                    },
+                    itemBuilder: (ctx) => _standardNaps
+                        .map(
+                          (nap) => PopupMenuItem<String>(
+                            value: nap,
+                            child: Text(nap),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onChanged: (_) {
+                  setState(() {
+                    _syncLcpNapLabel();
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 6,
+              child: TextField(
+                key: const ValueKey('inputLcpNap'),
+                controller: _lcpNapController,
+                decoration: InputDecoration(
+                  labelText: 'Site Code (LCPNAP)',
+                  hintText: 'Auto-generated from LCP + NAP',
+                  prefixIcon: const Icon(Icons.label_outline_rounded, size: 19),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onChanged: (val) {
+                  _lcpNapManuallyEdited = val.trim().isNotEmpty;
+                  setState(() {});
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 4,
+              child: TextField(
+                key: const ValueKey('inputPortTotal'),
+                controller: _portTotalController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Total Ports *',
+                  hintText: '16',
+                  prefixIcon: const Icon(Icons.hub_outlined, size: 19),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              'Quick Port Capacity:',
+              style: context.text.labelSmall!.copyWith(
+                color: AppTheme.secondaryInkOf(context),
+              ),
+            ),
+            for (final count in _standardPortCounts)
+              ChoiceChip(
+                key: ValueKey('chipPort_$count'),
+                label: Text('$count Ports'),
+                selected: selectedPorts == count,
+                onSelected: (_) {
+                  setState(() {
+                    _portTotalController.text = count.toString();
+                  });
+                },
+                visualDensity: VisualDensity.compact,
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  // Gene - Nov, 11, 2026: Extracted GPS & Map Coordinate acquisition section so it can be ordered contextually for Create/Edit vs Map modes.
+  Widget _buildCoordinatesSection(
+    BuildContext context,
+    LatLng? currentLatLng,
+  ) {
+    final activeLcp = _lcpController.text.trim().isNotEmpty
+        ? _lcpController.text.trim()
+        : widget.location.lcp;
+    final activeNap = _napController.text.trim().isNotEmpty
+        ? _napController.text.trim()
+        : widget.location.nap;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Action Row: Current Location GPS and Pin on Map
+        Text(
+          'ACQUIRE LOCATION COORDINATES',
+          style: context.text.labelSmall!.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+            color: AppTheme.secondaryInkOf(context),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            // Button 1: Use Current Location (GPS)
+            Expanded(
+              child: OutlinedButton.icon(
+                key: const ValueKey('btnCurrentLocation'),
+                onPressed:
+                    _isLocating || _isSaving ? null : _useCurrentLocation,
+                icon: _isLocating
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppTheme.primary,
+                        ),
+                      )
+                    : const Icon(Icons.my_location_rounded, size: 18),
+                label: Text(
+                  _isLocating ? 'Locating...' : 'Current GPS',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  side: const BorderSide(color: AppTheme.primary),
+                  foregroundColor: AppTheme.primary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            // Button 2: Pin to Map
+            Expanded(
+              child: ElevatedButton.icon(
+                key: const ValueKey('btnPinOnMap'),
+                onPressed: _isSaving ? null : _openMapPinPicker,
+                icon: const Icon(Icons.pin_drop_rounded, size: 18),
+                label: const Text(
+                  'Pin on Map',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                style: ElevatedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Mini preview map if coordinates are valid
+        if (currentLatLng != null && _tiles != null) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              height: 120,
+              child: FlutterMap(
+                options: MapOptions(
+                  initialCenter: currentLatLng,
+                  initialZoom: 16,
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.none,
+                  ),
+                ),
+                children: [
+                  /*
+                  TileLayer(
+                    urlTemplate: MapTiles.streetUrl,
+                    maxZoom: MapTiles.streetMaxZoom,
+                    userAgentPackageName: MapTiles.userAgentPackageName,
+                    tileProvider: _tiles,
+                  ),
+                  */
+                  // Gene - Nov, 11, 2026: Configure maxNativeZoom alongside maxZoom on mini-map TileLayer for high-detail street tiles.
+                  TileLayer(
+                    urlTemplate: MapTiles.streetUrl,
+                    maxNativeZoom: MapTiles.streetMaxNativeZoom,
+                    maxZoom: MapTiles.streetMaxZoom,
+                    userAgentPackageName: MapTiles.userAgentPackageName,
+                    tileProvider: _tiles,
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: currentLatLng,
+                        width: 32,
+                        height: 32,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: HSLColor.fromAHSL(
+                              1,
+                              lcpColorSeed(activeLcp),
+                              0.62,
+                              0.44,
+                            ).toColor(),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 4,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              activeNap.replaceAll(RegExp(r'\D'), ''),
+                              style: context.text.labelSmall!.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+
+        // Coordinates Input Field
+        TextField(
+          key: const ValueKey('inputCoordinates'),
+          controller: _coordinatesController,
+          decoration: InputDecoration(
+            labelText: widget.isCreateMode || widget.allowEmptyCoordinates
+                ? 'WGS84 Coordinates (Lat, Long — optional)'
+                : 'WGS84 Coordinates (Lat, Long)',
+            hintText: 'e.g. 14.586200, 121.061800',
+            prefixIcon: const Icon(Icons.gps_fixed_rounded, size: 20),
+            suffixIcon: _coordinatesController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear_rounded, size: 18),
+                    onPressed: () =>
+                        setState(() => _coordinatesController.clear()),
+                  )
+                : null,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 14),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -264,6 +918,15 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
         ? MediaQuery.of(context).viewInsets.bottom
         : MediaQuery.of(context).padding.bottom;
     final currentLatLng = _parsedLatLng;
+    final headerTitle = widget.sheetTitle ??
+        (widget.isCreateMode
+            ? 'Create LCP NAP Location'
+            : 'Map LCP NAP Location');
+    final headerSubtitle = _lcpNapController.text.trim().isNotEmpty
+        ? _lcpNapController.text.trim()
+        : (widget.isCreateMode
+            ? 'Enter LCP Cabinet, NAP Box, and site details'
+            : widget.location.lcpNap);
 
     return Container(
       constraints: BoxConstraints(
@@ -294,6 +957,7 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      /*
                       Text(
                         'Map LCP NAP Location',
                         style: context.text.titleLarge,
@@ -301,6 +965,19 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                       const SizedBox(height: 2),
                       Text(
                         widget.location.lcpNap,
+                        style: context.text.bodySmall!.copyWith(
+                          color: AppTheme.secondaryInkOf(context),
+                        ),
+                      ),
+                      */
+                      // Gene - Nov, 11, 2026: Dynamic sheet title and subtitle for Create, Edit Details, and Map Location modes.
+                      Text(
+                        headerTitle,
+                        style: context.text.titleLarge,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        headerSubtitle,
                         style: context.text.bodySmall!.copyWith(
                           color: AppTheme.secondaryInkOf(context),
                         ),
@@ -340,169 +1017,14 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                   ),
                 ],
 
-                // Action Row: Current Location GPS and Pin on Map
-                Text(
-                  'ACQUIRE LOCATION COORDINATES',
-                  style: context.text.labelSmall!.copyWith(
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                    color: AppTheme.secondaryInkOf(context),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    // Button 1: Use Current Location (GPS)
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        key: const ValueKey('btnCurrentLocation'),
-                        onPressed: _isLocating || _isSaving
-                            ? null
-                            : _useCurrentLocation,
-                        icon: _isLocating
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppTheme.primary,
-                                ),
-                              )
-                            : const Icon(Icons.my_location_rounded, size: 18),
-                        label: Text(
-                          _isLocating ? 'Locating...' : 'Current GPS',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 12),
-                          side: const BorderSide(color: AppTheme.primary),
-                          foregroundColor: AppTheme.primary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    // Button 2: Pin to Map
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        key: const ValueKey('btnPinOnMap'),
-                        onPressed: _isSaving ? null : _openMapPinPicker,
-                        icon: const Icon(Icons.pin_drop_rounded, size: 18),
-                        label: const Text(
-                          'Pin on Map',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 12),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Mini preview map if coordinates are valid
-                if (currentLatLng != null && _tiles != null) ...[
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: SizedBox(
-                      height: 120,
-                      child: FlutterMap(
-                        options: MapOptions(
-                          initialCenter: currentLatLng,
-                          initialZoom: 16,
-                          interactionOptions: const InteractionOptions(
-                            flags: InteractiveFlag.none,
-                          ),
-                        ),
-                        children: [
-                          /*
-                          TileLayer(
-                            urlTemplate: MapTiles.streetUrl,
-                            maxZoom: MapTiles.streetMaxZoom,
-                            userAgentPackageName: MapTiles.userAgentPackageName,
-                            tileProvider: _tiles,
-                          ),
-                          */
-                          // Gene - Nov, 11, 2026: Configure maxNativeZoom alongside maxZoom on mini-map TileLayer for high-detail street tiles.
-                          TileLayer(
-                            urlTemplate: MapTiles.streetUrl,
-                            maxNativeZoom: MapTiles.streetMaxNativeZoom,
-                            maxZoom: MapTiles.streetMaxZoom,
-                            userAgentPackageName: MapTiles.userAgentPackageName,
-                            tileProvider: _tiles,
-                          ),
-                          MarkerLayer(
-                            markers: [
-                              Marker(
-                                point: currentLatLng,
-                                width: 32,
-                                height: 32,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: HSLColor.fromAHSL(
-                                      1,
-                                      lcpColorSeed(widget.location.lcp),
-                                      0.62,
-                                      0.44,
-                                    ).toColor(),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                        color: Colors.white, width: 2),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Colors.black26,
-                                        blurRadius: 4,
-                                        offset: Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      widget.location.nap
-                                          .replaceAll(RegExp(r'\D'), ''),
-                                      style: context.text.labelSmall!.copyWith(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
+                // Gene - Nov, 11, 2026: Render Site Identification & Capacity and GPS Coordinates sections in contextual order.
+                if (widget.isCreateMode || widget.allowEmptyCoordinates) ...[
+                  _buildSiteIdentitySection(context, isDark),
+                  _buildCoordinatesSection(context, currentLatLng),
+                ] else ...[
+                  _buildCoordinatesSection(context, currentLatLng),
+                  _buildSiteIdentitySection(context, isDark),
                 ],
-
-                // Coordinates Input Field
-                TextField(
-                  key: const ValueKey('inputCoordinates'),
-                  controller: _coordinatesController,
-                  decoration: InputDecoration(
-                    labelText: 'WGS84 Coordinates (Lat, Long)',
-                    hintText: 'e.g. 14.586200, 121.061800',
-                    prefixIcon: const Icon(Icons.gps_fixed_rounded, size: 20),
-                    suffixIcon: _coordinatesController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear_rounded, size: 18),
-                            onPressed: () =>
-                                setState(() => _coordinatesController.clear()),
-                          )
-                        : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 14),
 
                 // Address Metadata Header
                 Text(
@@ -600,10 +1122,19 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white),
                       )
-                    : const Icon(Icons.save_rounded, size: 20),
+                    : Icon(
+                        widget.isCreateMode
+                            ? Icons.add_location_alt_rounded
+                            : Icons.save_rounded,
+                        size: 20,
+                      ),
                 label: Text(_isSaving
-                    ? 'Saving Location...'
-                    : 'Save & Update Location'),
+                    ? (widget.isCreateMode
+                        ? 'Creating Location...'
+                        : 'Saving Location...')
+                    : (widget.isCreateMode
+                        ? 'Create LCP NAP Location'
+                        : 'Save & Update Location')),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primary,
                   foregroundColor: Colors.white,

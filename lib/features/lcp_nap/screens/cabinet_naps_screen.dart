@@ -6,6 +6,8 @@ import '../../../core/theme/app_theme.dart';
 import '../models/lcp_nap_model.dart';
 import '../signals/lcp_nap_signals.dart';
 import '../widgets/lcp_nap_card.dart';
+// Gene - Nov, 11, 2026: Imported LcpNapLocationPickerSheet to allow adding a new NAP directly inside a cabinet view.
+import '../widgets/lcp_nap_location_picker_sheet.dart';
 import 'lcp_nap_detail_screen.dart';
 
 /// The NAPs of one cabinet, opened from a flat cabinet row on the Plant
@@ -32,6 +34,54 @@ class CabinetNapsScreen extends StatelessWidget {
     );
   }
 
+  // Gene - Nov, 11, 2026: Open create modal pre-filled with the current cabinet name and next sequential NAP number.
+  Future<void> _openAddNapSheet(
+    BuildContext context,
+    List<LcpNapDto> naps,
+  ) async {
+    int maxNum = 0;
+    for (final loc in naps) {
+      final match = RegExp(r'(\d+)').firstMatch(loc.nap);
+      if (match != null) {
+        final val = int.tryParse(match.group(1)!) ?? 0;
+        if (val > maxNum) maxNum = val;
+      }
+    }
+    final nextNap = 'NAP ${(maxNum + 1).toString().padLeft(3, '0')}';
+    final initialCity = naps.isNotEmpty ? naps.first.city : null;
+    final initialRegion =
+        naps.isNotEmpty ? (naps.first.region ?? 'Rizal') : 'Rizal';
+
+    LcpNapDto? createdSite;
+    final created = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => LcpNapLocationPickerSheet.create(
+        signals: signals,
+        initialLcp: cabinet,
+        initialNap: nextNap,
+        initialCity: initialCity,
+        initialRegion: initialRegion,
+        onCreated: (site) => createdSite = site,
+      ),
+    );
+
+    if (created == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Added ${createdSite?.lcpNap ?? nextNap} to $cabinet.',
+          ),
+          backgroundColor: AppTheme.success,
+        ),
+      );
+      if (createdSite != null) {
+        _openDetails(context, createdSite!);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SignalBuilder(
@@ -41,6 +91,15 @@ class CabinetNapsScreen extends StatelessWidget {
         return Scaffold(
           appBar: AppBar(
             title: Text(cabinet, maxLines: 1, overflow: TextOverflow.ellipsis),
+            // Gene - Nov, 11, 2026: Added button to create a new NAP inside this cabinet.
+            actions: [
+              IconButton(
+                key: const ValueKey('btnAddCabinetNap'),
+                icon: const Icon(Icons.add_rounded),
+                tooltip: 'Add NAP to Cabinet',
+                onPressed: () => _openAddNapSheet(context, naps),
+              ),
+            ],
           ),
           body: naps.isEmpty
               ? Center(

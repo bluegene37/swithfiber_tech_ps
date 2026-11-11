@@ -8,6 +8,8 @@ import '../../../core/widgets/loading_states.dart';
 import '../models/lcp_nap_model.dart';
 import '../signals/lcp_nap_signals.dart';
 import '../widgets/lcp_nap_card.dart';
+// Gene - Nov, 11, 2026: Imported LcpNapLocationPickerSheet to allow creating new LCP NAP locations directly from the Plant screen.
+import '../widgets/lcp_nap_location_picker_sheet.dart';
 import '../widgets/lcp_nap_map_view.dart';
 import 'cabinet_naps_screen.dart';
 import 'lcp_nap_detail_screen.dart';
@@ -62,6 +64,63 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
     );
   }
 
+  // Gene - Nov, 11, 2026: Open modal sheet to create a new LCP NAP location and navigate to its detail screen once created.
+  Future<void> _openCreateSheet() async {
+    final activeLcp = widget.signals.selectedLcpFilter.value;
+    final initialLcp = activeLcp != 'All' ? activeLcp : '';
+    String initialNap = 'NAP 001';
+    String? initialCity;
+    String? initialRegion = 'Rizal';
+
+    if (initialLcp.isNotEmpty) {
+      final existing = widget.signals.allLocations.value
+          .where((e) => e.lcp == initialLcp)
+          .toList();
+      int maxNum = 0;
+      for (final loc in existing) {
+        final match = RegExp(r'(\d+)').firstMatch(loc.nap);
+        if (match != null) {
+          final val = int.tryParse(match.group(1)!) ?? 0;
+          if (val > maxNum) maxNum = val;
+        }
+      }
+      initialNap = 'NAP ${(maxNum + 1).toString().padLeft(3, '0')}';
+      if (existing.isNotEmpty) {
+        initialCity = existing.first.city;
+        initialRegion = existing.first.region ?? initialRegion;
+      }
+    }
+
+    LcpNapDto? createdSite;
+    final created = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => LcpNapLocationPickerSheet.create(
+        signals: widget.signals,
+        initialLcp: initialLcp,
+        initialNap: initialNap,
+        initialCity: initialCity,
+        initialRegion: initialRegion,
+        onCreated: (site) => createdSite = site,
+      ),
+    );
+
+    if (created == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Created ${createdSite?.lcpNap ?? "LCP NAP location"} successfully.',
+          ),
+          backgroundColor: AppTheme.success,
+        ),
+      );
+      if (createdSite != null) {
+        _openDetails(createdSite!);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final signals = widget.signals;
@@ -71,6 +130,13 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
       appBar: AppBar(
         title: const Text('Plant'),
         actions: [
+          // Gene - Nov, 11, 2026: Added Create LCP NAP Location action button in the Plant AppBar.
+          IconButton(
+            key: const ValueKey('btnCreateLcpNap'),
+            icon: const Icon(CupertinoIcons.add_circled),
+            tooltip: 'Create LCP NAP Location',
+            onPressed: _openCreateSheet,
+          ),
           IconButton(
             icon: const Icon(CupertinoIcons.arrow_2_circlepath),
             tooltip: 'Sync Plant Records',
