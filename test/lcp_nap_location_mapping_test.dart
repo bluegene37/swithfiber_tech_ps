@@ -19,6 +19,8 @@ import 'package:swithfiber_tech_ps/features/lcp_nap/models/lcp_nap_model.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/models/lcp_nap_images_model.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/repositories/lcp_nap_repository.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/screens/lcp_nap_detail_screen.dart';
+// Gene - Nov, 11, 2026: Imported MapTiles to test high-zoom tile configuration on the map pin picker.
+import 'package:swithfiber_tech_ps/features/lcp_nap/services/map_tiles.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/signals/lcp_nap_signals.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/widgets/lcp_nap_location_picker_sheet.dart';
 
@@ -383,6 +385,21 @@ void main() {
       expect(find.text('LCP 03 - NAP 05'), findsOneWidget);
       expect(
           find.byKey(const ValueKey('btnConfirmPinLocation')), findsOneWidget);
+      // Gene - Nov, 11, 2026: Verify zoom in/out controls and high-resolution maxZoom/maxNativeZoom settings on LcpNapMapPickerScreen.
+      expect(find.byKey(const ValueKey('btnPickerZoomIn')), findsOneWidget);
+      expect(find.byKey(const ValueKey('btnPickerZoomOut')), findsOneWidget);
+
+      final tileLayer = tester.widget<TileLayer>(find.byType(TileLayer));
+      expect(tileLayer.maxZoom, MapTiles.streetMaxZoom);
+      expect(tileLayer.maxNativeZoom, MapTiles.streetMaxNativeZoom);
+      expect(MapTiles.streetMaxZoom, 22);
+      expect(MapTiles.streetMaxNativeZoom, 21);
+
+      // Tap zoom in button several times up to maxZoom
+      await tester.tap(find.byKey(const ValueKey('btnPickerZoomIn')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('btnPickerZoomOut')));
+      await tester.pump();
 
       // Tap confirm button
       await tester.tap(find.byKey(const ValueKey('btnConfirmPinLocation')));

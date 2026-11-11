@@ -419,8 +419,18 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                           ),
                         ),
                         children: [
+                          /*
                           TileLayer(
                             urlTemplate: MapTiles.streetUrl,
+                            maxZoom: MapTiles.streetMaxZoom,
+                            userAgentPackageName: MapTiles.userAgentPackageName,
+                            tileProvider: _tiles,
+                          ),
+                          */
+                          // Gene - Nov, 11, 2026: Configure maxNativeZoom alongside maxZoom on mini-map TileLayer for high-detail street tiles.
+                          TileLayer(
+                            urlTemplate: MapTiles.streetUrl,
+                            maxNativeZoom: MapTiles.streetMaxNativeZoom,
                             maxZoom: MapTiles.streetMaxZoom,
                             userAgentPackageName: MapTiles.userAgentPackageName,
                             tileProvider: _tiles,
@@ -667,7 +677,11 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
       if (pos != null && mounted) {
         final target = LatLng(pos.latitude, pos.longitude);
         setState(() => _pinLocation = target);
+        /*
         _mapController.move(target, 17);
+        */
+        // Gene - Nov, 11, 2026: Zoom closer (19.5) when centering on GPS so technicians can pin the exact pole or wall.
+        _mapController.move(target, 19.5);
       }
     } catch (_) {
     } finally {
@@ -679,7 +693,26 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
     setState(() {
       _pinLocation = target;
     });
+    /*
     _mapController.move(target, 17);
+    */
+    // Gene - Nov, 11, 2026: Zoom closer (19.0) after place search for street/pole-level pinning.
+    _mapController.move(target, 19.0);
+  }
+
+  // Gene - Nov, 11, 2026: Added explicit zoom-in / zoom-out helpers up to maxZoom (22) for precise pole pinning.
+  void _zoomIn() {
+    _mapController.move(
+      _mapController.camera.center,
+      (_mapController.camera.zoom + 1).clamp(4.0, MapTiles.streetMaxZoom),
+    );
+  }
+
+  void _zoomOut() {
+    _mapController.move(
+      _mapController.camera.center,
+      (_mapController.camera.zoom - 1).clamp(4.0, MapTiles.streetMaxZoom),
+    );
   }
 
   @override
@@ -721,16 +754,37 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
             mapController: _mapController,
             options: MapOptions(
               initialCenter: _pinLocation,
+              /*
               initialZoom: 16.5,
+              */
+              // Gene - Nov, 11, 2026: Open map pin picker at zoom 18.0 and allow deep zoom up to 22 for exact pole placement.
+              initialZoom: 18.0,
+              minZoom: 4,
+              maxZoom: MapTiles.streetMaxZoom,
               onTap: (_, point) {
                 setState(() => _pinLocation = point);
               },
             ),
             children: [
               if (_tiles != null)
+                /*
                 TileLayer(
                   urlTemplate:
                       _satellite ? MapTiles.satelliteUrl : MapTiles.streetUrl,
+                  maxZoom: _satellite
+                      ? MapTiles.satelliteMaxZoom
+                      : MapTiles.streetMaxZoom,
+                  userAgentPackageName: MapTiles.userAgentPackageName,
+                  tileProvider: _tiles,
+                ),
+                */
+                // Gene - Nov, 11, 2026: Pass maxNativeZoom so flutter_map scales native high-res tiles smoothly up to zoom 22 without "no data" tiles.
+                TileLayer(
+                  urlTemplate:
+                      _satellite ? MapTiles.satelliteUrl : MapTiles.streetUrl,
+                  maxNativeZoom: _satellite
+                      ? MapTiles.satelliteMaxNativeZoom
+                      : MapTiles.streetMaxNativeZoom,
                   maxZoom: _satellite
                       ? MapTiles.satelliteMaxZoom
                       : MapTiles.streetMaxZoom,
@@ -792,6 +846,7 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
             ),
           ),
 
+          /*
           // GPS Centering Floating Button
           Positioned(
             right: 16,
@@ -813,6 +868,80 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
                       ),
                     )
                   : const Icon(Icons.my_location_rounded, size: 20),
+            ),
+          ),
+          */
+          // Gene - Nov, 11, 2026: Added + / - zoom buttons above the GPS button on the Pin Picker screen so technicians can zoom to level 22 and pin accurately.
+          Positioned(
+            right: 16,
+            bottom: 125,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Material(
+                  elevation: 3,
+                  borderRadius: BorderRadius.circular(10),
+                  color: isDark ? AppTheme.darkCard : Colors.white,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      InkWell(
+                        key: const ValueKey('btnPickerZoomIn'),
+                        onTap: _zoomIn,
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(10)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Icon(
+                            Icons.add_rounded,
+                            size: 20,
+                            color: isDark ? Colors.white : AppTheme.darkSlate,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        height: 1,
+                        width: 28,
+                        color:
+                            isDark ? AppTheme.borderDark : AppTheme.borderLight,
+                      ),
+                      InkWell(
+                        key: const ValueKey('btnPickerZoomOut'),
+                        onTap: _zoomOut,
+                        borderRadius: const BorderRadius.vertical(
+                            bottom: Radius.circular(10)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Icon(
+                            Icons.remove_rounded,
+                            size: 20,
+                            color: isDark ? Colors.white : AppTheme.darkSlate,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                FloatingActionButton.small(
+                  key: const ValueKey('fabCenterGps'),
+                  heroTag: 'fabMapPickerGps',
+                  backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
+                  foregroundColor: AppTheme.primary,
+                  tooltip: 'Center on My GPS Location',
+                  onPressed: _isLocating ? null : _centerOnGps,
+                  child: _isLocating
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppTheme.primary,
+                          ),
+                        )
+                      : const Icon(Icons.my_location_rounded, size: 20),
+                ),
+              ],
             ),
           ),
 

@@ -787,8 +787,18 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
                       ),
                     ),
                     children: [
+                      /*
                       TileLayer(
                         urlTemplate: MapTiles.streetUrl,
+                        maxZoom: MapTiles.streetMaxZoom,
+                        userAgentPackageName: MapTiles.userAgentPackageName,
+                        tileProvider: tiles,
+                      ),
+                      */
+                      // Gene - Nov, 11, 2026: Pass maxNativeZoom alongside maxZoom on detail screen mini-map TileLayer.
+                      TileLayer(
+                        urlTemplate: MapTiles.streetUrl,
+                        maxNativeZoom: MapTiles.streetMaxNativeZoom,
                         maxZoom: MapTiles.streetMaxZoom,
                         userAgentPackageName: MapTiles.userAgentPackageName,
                         tileProvider: tiles,

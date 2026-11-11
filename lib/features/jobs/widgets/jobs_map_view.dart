@@ -237,7 +237,11 @@ class _JobsMapViewState extends State<JobsMapView> {
             initialCenter: _defaultCenter,
             initialZoom: 14.5,
             minZoom: 4,
+            /*
             maxZoom: 19,
+            */
+            // Gene - Nov, 11, 2026: Raise JobsMapView maxZoom to MapTiles.streetMaxZoom (22) for close-up inspection.
+            maxZoom: MapTiles.streetMaxZoom,
             onPositionChanged: (camera, _) {
               // Re-cluster the NAP boxes as the technician zooms.
               if ((camera.zoom - _zoom).abs() >= 0.5) {
@@ -269,10 +273,25 @@ class _JobsMapViewState extends State<JobsMapView> {
             // fall back to its own network provider and open a cache directory of its
             // own, which no test host (and no stripped-down device) can provide.
             if (_tiles != null)
+              /*
               TileLayer(
                 urlTemplate:
                     _satellite ? MapTiles.satelliteUrl : MapTiles.streetUrl,
                 tileProvider: _tiles,
+                maxZoom: _satellite
+                    ? MapTiles.satelliteMaxZoom
+                    : MapTiles.streetMaxZoom,
+                userAgentPackageName: MapTiles.userAgentPackageName,
+              ),
+              */
+              // Gene - Nov, 11, 2026: Pass maxNativeZoom on JobsMapView TileLayer so tiles scale cleanly up to zoom 22.
+              TileLayer(
+                urlTemplate:
+                    _satellite ? MapTiles.satelliteUrl : MapTiles.streetUrl,
+                tileProvider: _tiles,
+                maxNativeZoom: _satellite
+                    ? MapTiles.satelliteMaxNativeZoom
+                    : MapTiles.streetMaxNativeZoom,
                 maxZoom: _satellite
                     ? MapTiles.satelliteMaxZoom
                     : MapTiles.streetMaxZoom,

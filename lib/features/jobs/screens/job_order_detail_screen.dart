@@ -2812,8 +2812,18 @@ class _JobMapLocationPreviewState extends State<_JobMapLocationPreview> {
               */
               // Gene - Oct 13, 2026: Render TileLayer only when cached provider is ready, preventing unmocked path_provider fallback crashes.
               if (_tiles != null)
+                /*
                 TileLayer(
                   urlTemplate: MapTiles.streetUrl,
+                  maxZoom: MapTiles.streetMaxZoom,
+                  userAgentPackageName: MapTiles.userAgentPackageName,
+                  tileProvider: _tiles,
+                ),
+                */
+                // Gene - Nov, 11, 2026: Pass maxNativeZoom alongside maxZoom on job detail mini-map TileLayer.
+                TileLayer(
+                  urlTemplate: MapTiles.streetUrl,
+                  maxNativeZoom: MapTiles.streetMaxNativeZoom,
                   maxZoom: MapTiles.streetMaxZoom,
                   userAgentPackageName: MapTiles.userAgentPackageName,
                   tileProvider: _tiles,

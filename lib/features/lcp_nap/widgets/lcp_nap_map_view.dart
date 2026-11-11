@@ -270,16 +270,30 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
   }
 
   void _zoomIn() {
+    /*
     _mapController.move(
       _mapController.camera.center,
       (_mapController.camera.zoom + 1).clamp(3.0, 19.0),
     );
+    */
+    // Gene - Nov, 11, 2026: Allow zooming in up to MapTiles.streetMaxZoom (22) for pole-level detail.
+    _mapController.move(
+      _mapController.camera.center,
+      (_mapController.camera.zoom + 1).clamp(3.0, MapTiles.streetMaxZoom),
+    );
   }
 
   void _zoomOut() {
+    /*
     _mapController.move(
       _mapController.camera.center,
       (_mapController.camera.zoom - 1).clamp(3.0, 19.0),
+    );
+    */
+    // Gene - Nov, 11, 2026: Clamp zoom out against MapTiles.streetMaxZoom (22).
+    _mapController.move(
+      _mapController.camera.center,
+      (_mapController.camera.zoom - 1).clamp(3.0, MapTiles.streetMaxZoom),
     );
   }
 
@@ -352,6 +366,9 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                 initialCenter:
                     sites.isNotEmpty ? sites.first.latLng! : _fallbackCentre,
                 initialZoom: sites.isEmpty ? 11 : 14,
+                // Gene - Nov, 11, 2026: Explicitly allow zooming up to MapTiles.streetMaxZoom (22).
+                minZoom: 3,
+                maxZoom: MapTiles.streetMaxZoom,
                 onMapReady: _onMapReady,
                 onTap: (_, __) => setState(() {
                   _selected = null;
@@ -366,9 +383,27 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                 },
               ),
               children: [
+                /*
                 TileLayer(
                   urlTemplate:
                       _satellite ? MapTiles.satelliteUrl : MapTiles.streetUrl,
+                  maxZoom: _satellite
+                      ? MapTiles.satelliteMaxZoom
+                      : MapTiles.streetMaxZoom,
+                  userAgentPackageName: MapTiles.userAgentPackageName,
+                  tileProvider: tiles,
+                  errorTileCallback: (tile, error, stackTrace) =>
+                      debugPrint('Map tile failed: '
+                          '${tile.coordinates} $error'),
+                ),
+                */
+                // Gene - Nov, 11, 2026: Configure maxNativeZoom alongside maxZoom (22) so high-res Google tiles never drop out at close zoom.
+                TileLayer(
+                  urlTemplate:
+                      _satellite ? MapTiles.satelliteUrl : MapTiles.streetUrl,
+                  maxNativeZoom: _satellite
+                      ? MapTiles.satelliteMaxNativeZoom
+                      : MapTiles.streetMaxNativeZoom,
                   maxZoom: _satellite
                       ? MapTiles.satelliteMaxZoom
                       : MapTiles.streetMaxZoom,

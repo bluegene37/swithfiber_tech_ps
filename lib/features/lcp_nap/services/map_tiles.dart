@@ -29,6 +29,7 @@ class MapTiles {
   ///
   /// Esri World Imagery backs the satellite view, which technicians use to
   /// spot an actual pole or wall.
+  /*
   static const String streetUrl =
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/'
       'MapServer/tile/{z}/{y}/{x}';
@@ -44,6 +45,23 @@ class MapTiles {
   /// Neither Esri service serves tiles past zoom 19.
   static const double satelliteMaxZoom = 19;
   static const double streetMaxZoom = 19;
+  */
+  // Gene - Nov, 11, 2026: Switched from Esri (which returns "Map data not yet available" past zoom 17 in the Philippines) to Google Street & Hybrid Satellite tiles with native zoom up to 21 and smooth over-zoom to 22 for exact pole-level pinning.
+  static const String streetUrl =
+      'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+  static const String satelliteUrl =
+      'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+
+  static const String streetAttribution = 'Map data © Google';
+  static const String satelliteAttribution = 'Imagery © Google';
+
+  /// Highest native tile zoom served before flutter_map scales tiles smoothly.
+  static const int streetMaxNativeZoom = 21;
+  static const int satelliteMaxNativeZoom = 20;
+
+  /// Maximum interactive zoom level for pole-level precision pinning.
+  static const double satelliteMaxZoom = 22;
+  static const double streetMaxZoom = 22;
 
   /// Identifies this client to the tile provider.
   static const String userAgentPackageName = 'dev.genexis.swithfibertech';
@@ -66,7 +84,11 @@ class MapTiles {
     // Tiles are plain files on disk; the app's database is PowerSync's and
     // is not shared with the tile cache.
     final dir = await getApplicationCacheDirectory();
+    /*
     final store = FileCacheStore(p.join(dir.path, 'map_tiles'));
+    */
+    // Gene - Nov, 11, 2026: Bumped tile cache directory to map_tiles_v2 so any previously cached Esri "Map data not yet available" placeholder tiles are bypassed.
+    final store = FileCacheStore(p.join(dir.path, 'map_tiles_v2'));
 
     final created = CachedTileProvider(
       store: store,
