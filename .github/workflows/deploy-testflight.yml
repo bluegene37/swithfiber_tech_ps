@@ -111,8 +111,15 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event.inputs.auto_increment_build }}" != "false" ]; then
             VERSION_NAME=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
-            # Use offset + run_number so build number is always safely incremental
-            BUILD_NUMBER=$(( 10 + ${{ github.run_number }} ))
+            # Gene - Nov, 11, 2026: Derive BASE_BUILD from pubspec.yaml (minimum 25) + github.run_number to match release.yml and prevent duplicate CFBundleVersion errors on TestFlight.
+            # # Use offset + run_number so build number is always safely incremental
+            # BUILD_NUMBER=$(( 10 + ${{ github.run_number }} ))
+            PUBSPEC_BUILD=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -s -f2)
+            BASE_BUILD="${PUBSPEC_BUILD:-0}"
+            if [ "$BASE_BUILD" -lt 25 ]; then
+              BASE_BUILD=25
+            fi
+            BUILD_NUMBER=$(( BASE_BUILD + ${{ github.run_number }} ))
             echo "Building $VERSION_NAME+$BUILD_NUMBER"
             flutter build ipa --release --no-codesign \
               --build-name="$VERSION_NAME" \
