@@ -17,7 +17,9 @@ publish_to: 'none'
 # Gene - Nov, 12, 2026: Bumped build number to 29 with dependency updates.
 # version: 1.0.3+29
 # Gene - Nov, 12, 2026: Bumped build number to 39 (above published store build 38 from Release run #10) for Apple TestFlight and Google Play Closed Testing release.
-version: 1.0.3+39
+# version: 1.0.3+39
+# Gene - Nov, 13, 2026: Bumped build number to 54 (above Release run #14 build 53) for the next Android Closed Testing and Apple TestFlight release.
+version: 1.0.3+54
 
 environment:
   sdk: ^3.5.0
