@@ -20,13 +20,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      # Gene - Nov, 12, 2026: Upgraded CI Java runtime from 17 to 21 LTS because AGP 9.3.1 Android Lint (JavaDocParser) invokes java.util.List.removeLast() (added in JDK 21), which throws NoSuchMethodError on JDK 17.
+      # - name: Set up Java 17
+      - name: Set up Java 21
         # Gene - Nov, 12, 2026: Upgraded setup-java to v5 and Flutter to 3.50.x to match Gradle 9.5.0 / AGP 9.3.1 / Kotlin 2.4.20 / Dart 3.14.0 release toolchain.
         # uses: actions/setup-java@v4
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          # java-version: '17'
+          java-version: '21'
           cache: gradle
 
       - name: Set up Flutter

@@ -58,7 +58,9 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          # Gene - Nov, 12, 2026: Upgraded CI Java runtime from 17 to 21 LTS because AGP 9.3.1 Android Lint (JavaDocParser) invokes java.util.List.removeLast() (added in JDK 21), which throws NoSuchMethodError on JDK 17.
+          # java-version: '17'
+          java-version: '21'
 
       - uses: subosito/flutter-action@v2
         with:
