@@ -86,6 +86,30 @@ class LcpNapLocationsDao {
     });
   }
 
+  // Gene - Nov, 13, 2026: Delete cached synced LCP NAP locations removed on the live server while preserving unsynced local edits (`is_synced = 0`).
+  /// Drop cached synced rows that no longer exist on the server, preserving
+  /// any row with a pending local edit (`is_synced = 0`).
+  Future<int> deleteSyncedLocationsNotIn(Set<int> keepIds) async {
+    final synced =
+        await _db.getAll('SELECT id FROM $table WHERE is_synced = 1');
+    final toDelete = [
+      for (final r in synced)
+        if (!keepIds.contains(rowInt(r['id']))) r['id'],
+    ];
+    if (toDelete.isEmpty) return 0;
+    await _db.writeTransaction((tx) async {
+      for (var i = 0; i < toDelete.length; i += 200) {
+        final chunk = toDelete.sublist(
+            i, (i + 200 > toDelete.length) ? toDelete.length : i + 200);
+        await tx.execute(
+          'DELETE FROM $table WHERE id IN (${placeholders(chunk.length)})',
+          chunk,
+        );
+      }
+    });
+    return toDelete.length;
+  }
+
   /// Delete a location
   Future<void> deleteLocation(int id) =>
       _db.execute('DELETE FROM $table WHERE id = ?', [idText(id)]);

@@ -189,10 +189,17 @@ class JobRepository {
         await _dao.deleteSyncedJobsNotIn(keep);
       }
       */
+      /*
       // Gene - Oct 3, 2026: Guard deleteSyncedJobsNotIn with keep.isNotEmpty to prevent accidental cache wipe when remote responses are empty.
       if (keep.isNotEmpty) {
         await _dao.deleteSyncedJobsNotIn(keep);
       }
+      */
+      // Gene - Nov, 13, 2026: Always prune synced jobs absent from verified 200 status-assigned responses (even when keep is empty) and evict stale photo cache for refreshed/deleted jobs.
+      await _dao.deleteSyncedJobsNotIn(keep);
+      _imagesCache.removeWhere(
+        (id, _) => !pending.contains(id),
+      );
     } catch (_) {
       // Offline fallback: do not re-seed test data
     }

@@ -101,9 +101,32 @@ class ServiceOrdersDao {
     return toDelete.length;
   }
   */
+  /*
   // Gene - Oct 3, 2026: Guard deleteSyncedOrdersNotIn against empty keepIds to prevent accidental full cache wipes when remote calls return empty.
   Future<int> deleteSyncedOrdersNotIn(Set<int> keepIds) async {
     if (keepIds.isEmpty) return 0;
+    final synced =
+        await _db.getAll('SELECT id FROM $table WHERE is_synced = 1');
+    final toDelete = [
+      for (final r in synced)
+        if (!keepIds.contains(rowInt(r['id']))) r['id'],
+    ];
+    if (toDelete.isEmpty) return 0;
+    await _db.writeTransaction((tx) async {
+      for (var i = 0; i < toDelete.length; i += 200) {
+        final chunk = toDelete.sublist(
+            i, (i + 200 > toDelete.length) ? toDelete.length : i + 200);
+        await tx.execute(
+          'DELETE FROM $table WHERE id IN (${placeholders(chunk.length)})',
+          chunk,
+        );
+      }
+    });
+    return toDelete.length;
+  }
+  */
+  // Gene - Nov, 13, 2026: Allow pruning all synced service orders when the live API genuinely returns an empty list (e.g. last order deleted/unassigned), while still preserving unsynced local rows (`is_synced = 0`).
+  Future<int> deleteSyncedOrdersNotIn(Set<int> keepIds) async {
     final synced =
         await _db.getAll('SELECT id FROM $table WHERE is_synced = 1');
     final toDelete = [

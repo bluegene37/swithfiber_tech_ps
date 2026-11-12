@@ -316,4 +316,32 @@ void main() {
     expect(signals.filteredOrders.value.length, 2);
     expect(signals.totalCount.value, 2);
   });
+
+  // Gene - Nov, 13, 2026: Regression test verifying synced service orders are pruned when the live API returns an empty list while preserving unsynced local rows.
+  test(
+      'ServiceOrdersSignals fetchRemote prunes last synced order when server returns empty list',
+      () async {
+    final dao = db.serviceOrdersDao;
+    mockApi.remoteOrders = [dummyOrder];
+
+    final signals = ServiceOrdersSignals(api: mockApi, dao: dao);
+    addTearDown(signals.dispose);
+
+    await signals.fetchRemote();
+    await waitForCondition(() => signals.allOrders.value.length == 1);
+
+    // Add an unsynced local order 502, then delete 501 on live (server returns [])
+    await dao.insertOrUpdateOrder(
+      dummyOrder.copyWith(id: 502, accountNumber: 'SO-502'),
+      synced: false,
+    );
+    mockApi.remoteOrders = [];
+    mockApi.shouldFailUpdate = true;
+
+    await signals.fetchRemote();
+    await waitForCondition(() => signals.allOrders.value.length == 1);
+
+    expect(await dao.getOrderById(501), isNull);
+    expect(await dao.getOrderById(502), isNotNull);
+  });
 }

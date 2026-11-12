@@ -464,5 +464,40 @@ void main() {
 
       expect(find.text('Subscriber Signature'), findsOneWidget);
     });
+
+    // Gene - Nov, 13, 2026: Regression test ensuring JobSitePhotosCard does not fall back to stale local job columns once GetJobOrderImage confirms a photo was deleted on live.
+    testWidgets(
+        'JobSitePhotosCard clears deleted server photo instead of falling back to stale local column on synced job',
+        (tester) async {
+      api.mockImagesResponse = {
+        'setupImageFile': null,
+        'houseFrontFile': null,
+      };
+
+      final job = _createJob(
+        id: 4120,
+        ticketNumber: 'JO-4120',
+        status: 'Completed',
+        setupImage: 'data:image/png;base64,$sampleBase64',
+        isSynced: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: JobSitePhotosCard(
+                job: job,
+                jobsSignals: signals,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('0 / 6'), findsOneWidget);
+    });
   });
 }

@@ -421,4 +421,35 @@ void main() {
         reason: 'fields the app does not model still round-trip');
     expect(signals.allJobs.value.firstWhere((j) => j.id == 2).isSynced, isTrue);
   });
+
+  // Gene - Nov, 13, 2026: Regression test ensuring the last synced job is pruned when the live API returns an empty list, while preserving unsynced local edits.
+  test(
+      'drops the last synced job when server returns empty lists, keeping unsynced edits',
+      () async {
+    api.filterByAssignedEmail = true;
+    signals.setTechnicianEmail('me@switchfiber.ph');
+    await signals.fetchRemote();
+    await settle();
+    expect(signals.allJobs.value.map((j) => j.id).toSet(), {1, 10, 20});
+
+    // Make job 20 unsynced locally, and delete all jobs on the live server
+    await db.jobOrdersDao.insertOrUpdateJob(
+      signals.allJobs.value.firstWhere((j) => j.id == 20),
+      synced: false,
+    );
+    api.byStatus['Scheduled'] = [];
+    api.byStatus['Activated'] = [];
+    api.byStatus['Completed'] = [];
+    api.failUpdateWith = Exception('still offline for PUT');
+
+    await signals.fetchRemote();
+    await settle();
+
+    expect(
+      signals.allJobs.value.map((j) => j.id).toSet(),
+      {20},
+      reason:
+          'Synced jobs 1 and 10 must be deleted even when server returns empty, while unsynced job 20 stays',
+    );
+  });
 }

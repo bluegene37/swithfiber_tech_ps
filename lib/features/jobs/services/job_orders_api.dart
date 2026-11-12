@@ -52,16 +52,31 @@ class DioJobOrdersApi implements JobOrdersApi {
 
   DioJobOrdersApi([ApiClient? api]) : _api = api ?? ApiClient.instance;
 
+  // Gene - Nov, 13, 2026: Shared list-response validator so non-list error payloads throw instead of returning [] and pruning cached jobs.
+  List<Map<String, dynamic>> _extractMapList(dynamic data, String endpoint) {
+    if (data == null) return const [];
+    if (data is! List) {
+      throw FormatException('Unexpected non-list response from $endpoint');
+    }
+    return [
+      for (final item in data)
+        if (item is Map<String, dynamic>) item,
+    ];
+  }
+
   @override
   Future<List<Map<String, dynamic>>> fetchByStatus(String status) async {
     final cleanStatus = Uri.encodeComponent(status.trim());
     final response = await _api.get('/JobOrders/status/$cleanStatus');
+    /*
     final data = response.data;
     if (data is! List) return const [];
     return [
       for (final item in data)
         if (item is Map<String, dynamic>) item,
     ];
+    */
+    return _extractMapList(response.data, '/JobOrders/status/$cleanStatus');
   }
 
   @override
@@ -78,12 +93,15 @@ class DioJobOrdersApi implements JobOrdersApi {
       '/JobOrders/status-assigned',
       queryParameters: queryParams,
     );
+    /*
     final data = response.data;
     if (data is! List) return const [];
     return [
       for (final item in data)
         if (item is Map<String, dynamic>) item,
     ];
+    */
+    return _extractMapList(response.data, '/JobOrders/status-assigned');
   }
 
   @override
@@ -109,12 +127,15 @@ class DioJobOrdersApi implements JobOrdersApi {
       '/JobOrders/status-date',
       queryParameters: queryParams.isEmpty ? null : queryParams,
     );
+    /*
     final data = response.data;
     if (data is! List) return const [];
     return [
       for (final item in data)
         if (item is Map<String, dynamic>) item,
     ];
+    */
+    return _extractMapList(response.data, '/JobOrders/status-date');
   }
 
   @override

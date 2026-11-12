@@ -153,6 +153,7 @@ class LcpNapSignals {
     _driftSubscription = repository.watchLocations().listen((locations) {
       allLocations.value = locations;
 
+      /*
       final currentSelected = selectedLocation.value;
       if (currentSelected != null) {
         final match =
@@ -160,6 +161,14 @@ class LcpNapSignals {
         if (match != null) {
           selectedLocation.value = match;
         }
+      }
+      */
+      // Gene - Nov, 13, 2026: Clear selectedLocation if the previously selected LCP NAP site was deleted from live/local storage.
+      final currentSelected = selectedLocation.value;
+      if (currentSelected != null) {
+        final match =
+            locations.where((l) => l.id == currentSelected.id).firstOrNull;
+        selectedLocation.value = match;
       }
     });
   }

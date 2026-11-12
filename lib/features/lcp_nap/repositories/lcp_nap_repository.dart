@@ -56,6 +56,7 @@ class LcpNapRepository {
     }
   }
   */
+  /*
   // Gene - Nov, 11, 2026: Flush queued offline photo/GPS edits before pulling, protect still-unsynced local rows from overwrite, and invalidate stale _imagesCache entries so remote uploads sync without restarting the app.
   Future<void> fetchRemoteLocations() async {
     // Purge test/sample demo locations permanently
@@ -113,6 +114,75 @@ class LcpNapRepository {
             await _dao.insertAllLocations(mergedSites, synced: true);
           }
         }
+      }
+    } catch (_) {
+      // Offline fallback: retain cached & pending local SQLite rows
+    }
+  }
+  */
+  // Gene - Nov, 13, 2026: Reconcile deleted live LCP NAP records via deleteSyncedLocationsNotIn and evict stale _imagesCache entries even when the server returns an empty list.
+  Future<void> fetchRemoteLocations() async {
+    // Purge test/sample demo locations permanently
+    await _dao.deleteSampleLocations();
+
+    // Push any pending offline photo uploads, deletions, or GPS updates first
+    await syncPendingLocations();
+
+    try {
+      final response = await _api.get('/LCPNapLocations');
+      final data = response.data;
+
+      if (data is List) {
+        final sites = <LcpNapDto>[
+          for (final item in data)
+            if (item is Map<String, dynamic>) LcpNapDto.fromJson(item),
+        ];
+        final existingRows = await _dao.getAllLocations();
+        final existingById = <int, LcpNapDto>{
+          for (final row in existingRows) row.id: row,
+        };
+        final keepIds = <int>{};
+        final mergedSites = <LcpNapDto>[];
+
+        for (final remote in sites) {
+          keepIds.add(remote.id);
+          final existing = existingById[remote.id];
+
+          // Never clobber local unsynced GPS or photo edits that have not pushed yet
+          if (existing != null && !existing.isSynced) {
+            continue;
+          }
+
+          // Evict in-memory photo cache on remote refresh so images uploaded or deleted
+          // on another device sync immediately without closing & reopening the app.
+          _imagesCache.remove(remote.id);
+
+          final unchangedTimestamp = existing != null &&
+              existing.modifiedDate != null &&
+              existing.modifiedDate == remote.modifiedDate;
+
+          mergedSites.add(
+            unchangedTimestamp
+                ? remote.copyWith(
+                    image: remote.image ?? existing.image,
+                    image2: remote.image2 ?? existing.image2,
+                    readingImage: remote.readingImage ?? existing.readingImage,
+                    isSynced: true,
+                  )
+                : remote.copyWith(isSynced: true),
+          );
+        }
+
+        if (mergedSites.isNotEmpty) {
+          await _dao.insertAllLocations(mergedSites, synced: true);
+        }
+
+        // Drop synced locations that were deleted on the live server
+        await _dao.deleteSyncedLocationsNotIn(keepIds);
+        _imagesCache.removeWhere(
+          (id, _) =>
+              !keepIds.contains(id) && (existingById[id]?.isSynced ?? true),
+        );
       }
     } catch (_) {
       // Offline fallback: retain cached & pending local SQLite rows
@@ -383,6 +453,14 @@ class LcpNapRepository {
         // Gene - Oct 31, 2026: Cache photo result whenever a valid response is returned.
         _imagesCache[locationId] = dto;
         return dto;
+      }
+      // Gene - Nov, 13, 2026: Treat HTTP 204 or empty string response from GetLCPNAPLocationImages as an authoritative empty photo set so deleted server photos do not resurrect from cache.
+      if (response.statusCode == 204 ||
+          data == null ||
+          (data is String && data.trim().isEmpty)) {
+        const emptyDto = LcpNapImagesDto();
+        _imagesCache[locationId] = emptyDto;
+        return emptyDto;
       }
     } catch (_) {
       // Offline fallback or test mock

@@ -13,6 +13,7 @@ class ServiceOrdersApi {
   /// Fetch all active service orders from the backend
   Future<List<ServiceOrderDto>> fetchServiceOrders() async {
     final response = await _api.get('/ServiceOrders');
+    /*
     final data = response.data;
     if (data is List) {
       return [
@@ -21,6 +22,19 @@ class ServiceOrdersApi {
       ];
     }
     return [];
+    */
+    // Gene - Nov, 13, 2026: Reject unexpected non-list payloads instead of silently returning [] so verified empty lists can safely prune deleted live service orders.
+    final data = response.data;
+    if (data == null) return [];
+    if (data is List) {
+      return [
+        for (final item in data)
+          if (item is Map<String, dynamic>) ServiceOrderDto.fromJson(item),
+      ];
+    }
+    throw const FormatException(
+      'Unexpected non-list response from /ServiceOrders',
+    );
   }
 
   /// Fetch a single service order by its unique ID

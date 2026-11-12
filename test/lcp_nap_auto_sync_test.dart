@@ -1095,6 +1095,71 @@ void main() {
       expect(row.isSynced, isTrue,
           reason: 'Rejected 400 request must not poison offline sync queue');
     });
+
+    // Gene - Nov, 13, 2026: Regression tests for pruning live-deleted LCP NAP locations (partial, empty-list, and 204 photo responses) without logout.
+    test(
+        'TC15: Live-deleted LCP NAP location is pruned on fetchRemote while preserving unsynced local rows and clearing selectedLocation',
+        () async {
+      backend.serverLocations[102] = {
+        'id': 102,
+        'lcp': 'LCP 01',
+        'nap': 'NAP 02',
+        'lcpNap': 'LCP 01 - NAP 02',
+        'portTotal': 8,
+        'coordinates': '14.620000, 121.080000',
+        'modifiedBy': '1',
+        'modifiedDate': '2026-11-10T08:00:00.000Z',
+      };
+      await signals.fetchRemote();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(signals.allLocations.value.map((s) => s.id).toSet(), {101, 102});
+      signals.selectLocation(
+        signals.allLocations.value.firstWhere((s) => s.id == 101),
+      );
+
+      // Queue an unsynced local offline create (-999)
+      backend.isOnline = false;
+      await signals.createLocation(
+        lcp: 'LCP 99',
+        nap: 'NAP 99',
+        portTotal: 8,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // Delete site 101 on live while offline, then come back online
+      backend.serverLocations.remove(101);
+      backend.isOnline = true;
+      await signals.fetchRemote();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(
+        signals.allLocations.value.any((s) => s.id == 101),
+        isFalse,
+        reason: 'Deleted live LCP NAP site must be removed from local cache',
+      );
+      expect(
+        signals.allLocations.value.any((s) => s.id == 102),
+        isTrue,
+      );
+      expect(
+        signals.selectedLocation.value,
+        isNull,
+        reason: 'selectedLocation must clear when the selected site is deleted',
+      );
+
+      // Now delete the last remaining server location 102 on live
+      backend.serverLocations.remove(102);
+      await signals.fetchRemote();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(
+        signals.allLocations.value.any((s) => s.id == 102),
+        isFalse,
+        reason:
+            'When server returns an empty list, all synced locations must be pruned',
+      );
+    });
   });
 }
 

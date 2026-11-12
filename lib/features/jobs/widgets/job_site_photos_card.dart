@@ -320,10 +320,28 @@ class _JobSitePhotosCardState extends State<JobSitePhotosCard> {
       JobOrderImageFileDto? serverFile,
       String? localValue,
     }) {
+      /*
       Uint8List? bytes = serverFile?.bytes;
       String? httpUrl;
 
       if (bytes == null && localValue != null && localValue.trim().isNotEmpty) {
+        final clean = localValue.trim();
+        if (clean.startsWith('http://') || clean.startsWith('https://')) {
+          httpUrl = clean;
+        } else {
+          bytes = storage.resolveBytes(clean) ?? DataUrl.decode(clean);
+        }
+      }
+      */
+      // Gene - Nov, 13, 2026: Treat _sitePhotos from GetJobOrderImage as authoritative once loaded for synced jobs so photos deleted on live do not fall back to stale local job_orders columns.
+      Uint8List? bytes = serverFile?.bytes;
+      String? httpUrl;
+
+      final canFallbackToLocal = _sitePhotos == null || !widget.job.isSynced;
+      if (bytes == null &&
+          canFallbackToLocal &&
+          localValue != null &&
+          localValue.trim().isNotEmpty) {
         final clean = localValue.trim();
         if (clean.startsWith('http://') || clean.startsWith('https://')) {
           httpUrl = clean;

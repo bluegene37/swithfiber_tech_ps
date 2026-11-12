@@ -305,10 +305,14 @@ class ServiceOrdersSignals {
         /*
         await dao!.deleteSyncedOrdersNotIn(keep);
         */
+        /*
         // Gene - Oct 3, 2026: Guard deleteSyncedOrdersNotIn with keep.isNotEmpty to prevent wiping all service orders on empty responses.
         if (keep.isNotEmpty) {
           await dao!.deleteSyncedOrdersNotIn(keep);
         }
+        */
+        // Gene - Nov, 13, 2026: Always prune synced service orders absent from verified remote list responses (even when keep is empty).
+        await dao!.deleteSyncedOrdersNotIn(keep);
       } else {
         allOrders.value = scopedList;
       }
