@@ -43,6 +43,8 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Gene - Nov, 12, 2026: Pin Flutter 3.50.x to match release.yml and pubspec.lock (Dart 3.14.0).
+          flutter-version: 3.50.x
           cache: true
 
       - name: Install dependencies
@@ -116,8 +118,12 @@ jobs:
             # BUILD_NUMBER=$(( 10 + ${{ github.run_number }} ))
             PUBSPEC_BUILD=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -s -f2)
             BASE_BUILD="${PUBSPEC_BUILD:-0}"
-            if [ "$BASE_BUILD" -lt 25 ]; then
-              BASE_BUILD=25
+            # Gene - Nov, 12, 2026: Raised minimum base build floor to 39 (above store build 38 from Release run #10) to match release.yml.
+            # if [ "$BASE_BUILD" -lt 25 ]; then
+            #   BASE_BUILD=25
+            # fi
+            if [ "$BASE_BUILD" -lt 39 ]; then
+              BASE_BUILD=39
             fi
             BUILD_NUMBER=$(( BASE_BUILD + ${{ github.run_number }} ))
             echo "Building $VERSION_NAME+$BUILD_NUMBER"

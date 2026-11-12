@@ -13,7 +13,11 @@ publish_to: 'none'
 # Gene - Nov, 08, 2026: Incremented build number after + to 27 for Apple TestFlight and Google Play Closed Testing release.
 # version: 1.0.3+27
 # Gene - Nov, 11, 2026: Incremented build number after + to 28 for Apple TestFlight and Google Play Closed Testing release (LCP NAP image upload & GPS auto-sync).
-version: 1.0.3+29
+# version: 1.0.3+28
+# Gene - Nov, 12, 2026: Bumped build number to 29 with dependency updates.
+# version: 1.0.3+29
+# Gene - Nov, 12, 2026: Bumped build number to 39 (above published store build 38 from Release run #10) for Apple TestFlight and Google Play Closed Testing release.
+version: 1.0.3+39
 
 environment:
   sdk: ^3.5.0

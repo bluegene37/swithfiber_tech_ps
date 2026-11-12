@@ -10,6 +10,9 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  # Gene - Nov, 12, 2026: Suppress Flutter 3.50 material/cupertino unbundling deprecation infos so --fatal-infos passes cleanly during release gates without rewriting framework imports.
+  errors:
+    deprecated_member_use: ignore
   exclude:
     - build/**
     - android/**

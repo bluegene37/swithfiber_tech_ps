@@ -9,6 +9,8 @@ All notable changes to Switch Fiber Tech are recorded here. The format follows
 ## [1.0.3] - 2026-11-07
 
 ### Added
+- **LCP NAP Create, Edit & Calm Utility UX Polish.** Bottom floating *+ Add* pill on Plant lists, searchable LCP cabinet picker sheet, create new LCP NAP site / edit site details support, and three standalone Calm Utility photo proof cards on NAP detail screens.
+- **High-Resolution Google Street & Hybrid Map Tiles (Zoom 22).** Upgraded Plant and Job map layers to crisp Google street and satellite hybrid tiles supporting zoom up to level 22 for exact pole-level GPS pinning.
 - **LCP NAP Image & GPS Auto-Sync (Online & Offline Queue).** Offline NAP site photo uploads, single-photo `0`-byte deletions, and GPS coordinate updates now queue locally (`is_synced = 0`) and automatically push to `PUT /api/LCPNapLocations/{id}` on network reconnect, app resume, or background sync; remote photo and GPS updates by other technicians automatically invalidate in-memory cache and refresh live without restarting the app.
 - **Job Order Photo Proofs & Multipart Upload.** View remote site photos and upload installation photo proofs (NAP reading, ONT reading, installation setup, speed test, house front, signed contract, port label) via multipart API.
 - **LCP NAP Location Mapping.** Current GPS lock, interactive map pin picker sheet, and coordinate update API integration.

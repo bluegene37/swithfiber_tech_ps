@@ -23,7 +23,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: 3.47.x
+          # Gene - Nov, 12, 2026: Upgraded CI Flutter SDK to 3.50.x to match Gradle 9.5.0 / AGP 9.3.1 / Kotlin 2.4.20 / Dart 3.14.0 release toolchain.
+          # flutter-version: 3.47.x
+          flutter-version: 3.50.x
           cache: true
 
       - name: Install dependencies
@@ -51,7 +53,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      # Gene - Nov, 12, 2026: Upgraded setup-java to v5 to clear GitHub Actions deprecation notice.
+      # - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -59,7 +63,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: 3.47.x
+          # Gene - Nov, 12, 2026: Upgraded CI Flutter SDK to 3.50.x to match Gradle 9.5.0 / AGP 9.3.1 / Kotlin 2.4.20 / Dart 3.14.0 release toolchain.
+          # flutter-version: 3.47.x
+          flutter-version: 3.50.x
           cache: true
 
       - run: flutter pub get
