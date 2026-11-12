@@ -19,10 +19,14 @@ import 'package:swithfiber_tech_ps/features/lcp_nap/models/lcp_nap_model.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/models/lcp_nap_images_model.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/repositories/lcp_nap_repository.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/screens/lcp_nap_detail_screen.dart';
+// Gene - Nov, 12, 2026: Imported CabinetNapsScreen, LcpNapListScreen, and LcpNapMapView to test bottom floating add buttons and searchable cabinet picker.
+import 'package:swithfiber_tech_ps/features/lcp_nap/screens/cabinet_naps_screen.dart';
+import 'package:swithfiber_tech_ps/features/lcp_nap/screens/lcp_nap_list_screen.dart';
 // Gene - Nov, 11, 2026: Imported MapTiles to test high-zoom tile configuration on the map pin picker.
 import 'package:swithfiber_tech_ps/features/lcp_nap/services/map_tiles.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/signals/lcp_nap_signals.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/widgets/lcp_nap_location_picker_sheet.dart';
+import 'package:swithfiber_tech_ps/features/lcp_nap/widgets/lcp_nap_map_view.dart';
 
 final _blankTile = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk'
@@ -514,8 +518,14 @@ void main() {
       expect(find.text('14.586200, 121.061800'), findsWidgets);
       expect(find.byKey(const ValueKey('btnUpdateSiteCoordinates')),
           findsOneWidget);
+      /*
       expect(
           find.byKey(const ValueKey('btnHeaderMapLocation')), findsOneWidget);
+      */
+      // Gene - Nov, 12, 2026: Verify unified Location & GPS card with MAPPED stamp and Navigate CTA (duplicate header button removed).
+      expect(find.text('Location & GPS'), findsOneWidget);
+      expect(find.text('MAPPED'), findsOneWidget);
+      expect(find.byKey(const ValueKey('btnNavigateSite')), findsOneWidget);
       // Gene - Nov, 11, 2026: Verify Edit Site Details button is rendered in AppBar.
       expect(find.byKey(const ValueKey('btnEditSiteDetails')), findsOneWidget);
     });
@@ -585,6 +595,151 @@ void main() {
       expect(createdCallbackDto!.coordinates, '14.526200, 121.153800');
       expect(createdCallbackDto!.street, 'M.L. Quezon Ave');
       expect(createdCallbackDto!.city, 'Angono');
+    });
+
+    // Gene - Nov, 12, 2026: Verify searchable LcpCabinetPickerSheet filters cabinets and updates inputLcp.
+    testWidgets(
+        'btnPickExistingLcp opens searchable cabinet sheet and populates LCP field',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await tester.runAsync(() async {
+        await dao.insertOrUpdateLocation(LcpNapDto(
+          id: 1,
+          lcp: 'CAR LCP 001',
+          nap: 'NAP 001',
+          lcpNap: 'CAR LCP 001 NAP 001',
+        ));
+        await dao.insertOrUpdateLocation(LcpNapDto(
+          id: 2,
+          lcp: 'BIN LCP 042',
+          nap: 'NAP 001',
+          lcpNap: 'BIN LCP 042 NAP 001',
+        ));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: Scaffold(
+            body: LcpNapLocationPickerSheet.create(
+              signals: signals,
+              tileProvider: _OfflineTileProvider(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('btnPickExistingLcp')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Select LCP Cabinet'), findsOneWidget);
+      expect(find.text('CAR LCP 001'), findsOneWidget);
+      expect(find.text('BIN LCP 042'), findsOneWidget);
+
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const ValueKey('inputSearchCabinetPicker')),
+          matching: find.byType(TextField),
+        ),
+        'BIN',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('CAR LCP 001'), findsNothing);
+      expect(find.text('BIN LCP 042'), findsOneWidget);
+
+      await tester.tap(find.text('BIN LCP 042'));
+      await tester.pumpAndSettle();
+
+      final lcpField =
+          tester.widget<TextField>(find.byKey(const ValueKey('inputLcp')));
+      expect(lcpField.controller?.text, 'BIN LCP 042');
+    });
+
+    // Gene - Nov, 12, 2026: Verify bottom floating Add pills on LcpNapListScreen, CabinetNapsScreen, and LcpNapMapView (including pin popup auto-hide).
+    testWidgets(
+        'renders floating bottom Add pills on List, Cabinet NAPs, and Map view (hiding when pin popup opens)',
+        (tester) async {
+      tester.view.physicalSize = const Size(412, 915);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final loc = LcpNapDto(
+        id: 501,
+        lcp: 'TAY LCP 005',
+        nap: 'NAP 001',
+        lcpNap: 'TAY LCP 005 NAP 001',
+        coordinates: '14.558200, 121.132800',
+        city: 'Taytay',
+      );
+      await tester.runAsync(() async {
+        await dao.insertOrUpdateLocation(loc);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+
+      // 1. LcpNapListScreen floating bottom-right pill
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: LcpNapListScreen(signals: signals),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final listAddBtn = find.byKey(const ValueKey('btnCreateLcpNap'));
+      expect(listAddBtn, findsOneWidget);
+      expect(find.text('Add LCP NAP'), findsOneWidget);
+      expect(tester.getCenter(listAddBtn).dy, greaterThan(700));
+
+      // 2. CabinetNapsScreen floating bottom-right pill
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: CabinetNapsScreen(
+            cabinet: 'TAY LCP 005',
+            signals: signals,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final cabAddBtn = find.byKey(const ValueKey('btnAddCabinetNap'));
+      expect(cabAddBtn, findsOneWidget);
+      expect(find.text('Add NAP'), findsOneWidget);
+      expect(tester.getCenter(cabAddBtn).dy, greaterThan(700));
+
+      // 3. LcpNapMapView bottom-left pill visible when selected == null, hidden when pin popup opens
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: Scaffold(
+            body: LcpNapMapView(
+              signals: signals,
+              onOpenDetails: (_) {},
+              onCreateSite: () {},
+              tileProvider: _OfflineTileProvider(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final mapAddBtn = find.byKey(const ValueKey('btnCreateLcpNapMap'));
+      expect(mapAddBtn, findsOneWidget);
+
+      // Tap pin -> pin popup opens and floating add button auto-hides
+      await tester.tap(find.byKey(const ValueKey('lcpNapPin_501')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.byKey(const ValueKey('btnCreateLcpNapMap')), findsNothing);
     });
   });
 }

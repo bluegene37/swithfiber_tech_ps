@@ -154,6 +154,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 
+      /*
       // Verify Detail Screen rendered
       expect(find.text('Port Matrix & Capacity'), findsOneWidget);
 
@@ -166,6 +167,17 @@ void main() {
       );
       expect(find.text('GPS Geolocation Coordinates'), findsOneWidget);
       expect(find.text('WGS84 Coordinates'), findsOneWidget);
+      */
+      // Gene - Nov, 12, 2026: Updated detail screen assertions for reordered layout (Overview -> Unified Location & GPS -> 3 Photo Cards -> Port Matrix & Capacity).
+      expect(find.text('Location & GPS'), findsOneWidget);
+      expect(find.text('WGS84 Coordinates'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('Port Matrix & Capacity'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Port Matrix & Capacity'), findsOneWidget);
     });
   });
 }

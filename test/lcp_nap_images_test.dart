@@ -1,5 +1,6 @@
 // Gene - Oct 24, 2026: Comprehensive unit and widget tests for LCP NAP Site Enclosure and Optical Power Reading photos.
 // Gene - Oct 29, 2026: Added unit and widget tests for LCP NAP photo upload and update flows.
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +16,8 @@ import 'package:swithfiber_tech_ps/features/lcp_nap/models/lcp_nap_model.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/repositories/lcp_nap_repository.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/screens/lcp_nap_detail_screen.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/signals/lcp_nap_signals.dart';
+// Gene - Nov, 12, 2026: Imported LcpNapPhotoSlotCard to verify standalone per-slot upload cards.
+import 'package:swithfiber_tech_ps/features/lcp_nap/widgets/lcp_nap_photo_slot_card.dart';
 
 // Gene - Oct 29, 2026: Recording adapter to intercept and verify multipart photo upload payloads.
 class _RecordingAdapter implements HttpClientAdapter {
@@ -26,6 +29,64 @@ class _RecordingAdapter implements HttpClientAdapter {
     captured.add(options);
     return ResponseBody.fromString('{}', 200, headers: {
       Headers.contentTypeHeader: [Headers.jsonContentType]
+    });
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+// Gene - Nov, 12, 2026: Stateful HTTP adapter for widget upload/delete flows so GET /GetLCPNAPLocationImages and /GetReadingImage reflect PUT changes cleanly.
+class _StatefulPhotosAdapter implements HttpClientAdapter {
+  final Map<String, dynamic> imagesState;
+
+  _StatefulPhotosAdapter({Map<String, dynamic>? initial})
+      : imagesState = Map<String, dynamic>.from(initial ?? const {});
+
+  @override
+  Future<ResponseBody> fetch(RequestOptions options,
+      Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async {
+    final path = options.path;
+    if (options.method.toUpperCase() == 'PUT' && options.data is FormData) {
+      final formData = options.data as FormData;
+      for (final entry in formData.files) {
+        final slot = entry.key == 'Image'
+            ? 'image'
+            : (entry.key == 'Image2' ? 'image2' : 'readingImage');
+        if (entry.value.length == 0) {
+          imagesState[slot] = null;
+        } else {
+          final bytes = await entry.value
+              .clone()
+              .finalize()
+              .fold<List<int>>(<int>[], (acc, chunk) => acc..addAll(chunk));
+          imagesState[slot] = {
+            'fileContents': base64Encode(bytes),
+            'contentType': 'image/jpeg',
+            'fileDownloadName': entry.value.filename ?? '$slot.jpg',
+          };
+        }
+      }
+      return ResponseBody.fromString('{}', 200, headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      });
+    }
+    if (path.endsWith('/GetReadingImage')) {
+      return ResponseBody.fromBytes(
+        const <int>[],
+        200,
+        headers: {
+          Headers.contentTypeHeader: ['image/jpeg'],
+        },
+      );
+    }
+    if (path.endsWith('/GetLCPNAPLocationImages')) {
+      return ResponseBody.fromString(jsonEncode(imagesState), 200, headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      });
+    }
+    return ResponseBody.fromString('{}', 200, headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
     });
   }
 
@@ -271,7 +332,13 @@ void main() {
 
       // Verify title and badge
       expect(find.text('Site Enclosure & Reading Photos'), findsOneWidget);
+      /*
       expect(find.text('3 photos'), findsOneWidget);
+      */
+      // Gene - Nov, 12, 2026: Verify '3 of 3 photos' badge and 3 standalone LcpNapPhotoSlotCards.
+      expect(find.text('3 of 3 photos'), findsOneWidget);
+      expect(find.byType(LcpNapPhotoSlotCard), findsNWidgets(3));
+      expect(find.text('CAPTURED'), findsNWidgets(3));
 
       // Verify all photo labels are rendered
       expect(find.text('Enclosure Exterior'), findsOneWidget);
@@ -307,9 +374,22 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(find.text('Site Enclosure & Reading Photos'), findsOneWidget);
+      /*
       expect(find.text('No enclosure or optical reading photos uploaded yet.'),
           findsOneWidget);
       expect(find.text('3 photos'), findsNothing);
+      */
+      // Gene - Nov, 12, 2026: Verify 3 separate empty LcpNapPhotoSlotCards are rendered when 0 photos exist.
+      expect(find.text('0 of 3 photos'), findsOneWidget);
+      expect(find.byKey(const ValueKey('photoSlotCard_enc1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('photoSlotCard_enc2')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('photoSlotCard_reading')), findsOneWidget);
+      expect(find.text('EMPTY'), findsNWidgets(3));
+      expect(find.byKey(const ValueKey('btnTakePhoto_enc1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('btnTakePhoto_enc2')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('btnTakePhoto_reading')), findsOneWidget);
     });
 
     testWidgets('renders properly in dark mode without RenderFlex overflow',
@@ -342,8 +422,21 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(find.text('Site Enclosure & Reading Photos'), findsOneWidget);
+      /*
       expect(find.text('1 photos'), findsOneWidget);
+      */
+      // Gene - Nov, 12, 2026: Verify '1 of 3 photos' badge with 1 CAPTURED card and 2 separate EMPTY cards on scroll.
+      expect(find.text('1 of 3 photos'), findsOneWidget);
       expect(find.text('Enclosure Exterior'), findsOneWidget);
+      expect(find.text('CAPTURED'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('Optical Power Reading'),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Optical Power Reading'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     // Gene - Oct 29, 2026: Added tests for Upload Site Photos button and bottom sheet modal interaction.
@@ -356,6 +449,7 @@ void main() {
 
       const emptyImages = LcpNapImagesDto();
 
+      /*
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.lightTheme,
@@ -373,9 +467,6 @@ void main() {
 
       // Tap Upload Site Photos button
       await tester.tap(find.text('Upload Site Photos'));
-      /*
-      await tester.pumpAndSettle();
-      */
       // Gene - Oct 29, 2026: Use discrete pumps to prevent timeout from infinite map progress spinner animations.
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
@@ -387,6 +478,48 @@ void main() {
       expect(find.text('Enclosure Interior'), findsOneWidget);
       expect(find.text('Optical Power Reading'), findsOneWidget);
       expect(find.text('Save & Upload Photos'), findsOneWidget);
+      */
+      // Gene - Nov, 12, 2026: Verify 1-tap inline Take Photo button on empty Enclosure Exterior card captures & uploads onto that single slot while keeping the other 2 cards empty.
+      FlutterSecureStorage.setMockInitialValues({});
+      final prevAdapter = ApiClient.instance.dio.httpClientAdapter;
+      ApiClient.blockNetworkForTesting = false;
+      ApiClient.instance.dio.httpClientAdapter = _StatefulPhotosAdapter();
+      addTearDown(() {
+        ApiClient.blockNetworkForTesting = true;
+        ApiClient.instance.dio.httpClientAdapter = prevAdapter;
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: LcpNapDetailScreen(
+            locationId: 1,
+            signals: signals,
+            initialImagesForTesting: emptyImages,
+            pickImageForTesting: (_) async =>
+                'data:image/png;base64,$sampleBase64',
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('0 of 3 photos'), findsOneWidget);
+      expect(find.byKey(const ValueKey('btnTakePhoto_enc1')), findsOneWidget);
+
+      await tester.ensureVisible(
+          find.byKey(const ValueKey('btnTakePhoto_enc1')));
+      await tester.pump();
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('btnTakePhoto_enc1')));
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('1 of 3 photos'), findsOneWidget);
+      expect(find.text('CAPTURED'), findsOneWidget);
+      expect(find.text('EMPTY'), findsNWidgets(2));
     });
 
     // Gene - Oct 29, 2026: Added test for Update button in header when photos are present.
@@ -405,6 +538,7 @@ void main() {
         image: samplePhoto,
       );
 
+      /*
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.lightTheme,
@@ -422,15 +556,116 @@ void main() {
 
       // Tap Update button
       await tester.tap(find.text('Update'));
-      /*
-      await tester.pumpAndSettle();
-      */
       // Gene - Oct 29, 2026: Use discrete pumps to prevent timeout from infinite map progress spinner animations.
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
       // Verify sheet opens
       expect(find.text('Save & Upload Photos'), findsOneWidget);
+      */
+      // Gene - Nov, 12, 2026: Verify filled card exposes 48dp Retake / Gallery / Delete strip and deleting returns that card to EMPTY while keeping all 3 standalone cards visible.
+      FlutterSecureStorage.setMockInitialValues({});
+      final prevAdapter = ApiClient.instance.dio.httpClientAdapter;
+      ApiClient.blockNetworkForTesting = false;
+      final adapter = _StatefulPhotosAdapter(
+        initial: {
+          'image': samplePhoto.toJson(),
+          'image2': null,
+          'readingImage': null,
+        },
+      );
+      ApiClient.instance.dio.httpClientAdapter = adapter;
+      addTearDown(() {
+        ApiClient.blockNetworkForTesting = true;
+        ApiClient.instance.dio.httpClientAdapter = prevAdapter;
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: LcpNapDetailScreen(
+            locationId: 1,
+            signals: signals,
+            initialImagesForTesting: testImages,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byKey(const ValueKey('btnRetakePhoto_enc1')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('btnReplaceGallery_enc1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('btnDeletePhoto_enc1')), findsOneWidget);
+
+      await tester.ensureVisible(
+          find.byKey(const ValueKey('btnDeletePhoto_enc1')));
+      await tester.pump();
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('btnDeletePhoto_enc1')));
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Delete Enclosure Exterior?'), findsOneWidget);
+      await tester.runAsync(() async {
+        await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('0 of 3 photos'), findsOneWidget);
+      expect(find.text('EMPTY'), findsNWidgets(3));
+    });
+
+    // Gene - Nov, 12, 2026: Verify LcpNapDetailScreen with 3 photo cards has zero layout overflow at 200% text scale on a 402dp phone viewport.
+    testWidgets(
+        'renders 3 photo cards and Port Matrix at 200% text scale on 402dp phone without overflow',
+        (tester) async {
+      tester.view.devicePixelRatio = 2.625;
+      tester.view.physicalSize = const Size(402 * 2.625, 874 * 2.625);
+      addTearDown(tester.view.reset);
+
+      final errors = <String>[];
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (d) => errors.add(d.toString());
+      addTearDown(() => FlutterError.onError = originalOnError);
+
+      final samplePhoto = LcpNapImageFileDto(
+        fileContents: sampleBase64,
+        contentType: 'image/png',
+        fileDownloadName: 'sample.png',
+      );
+      final mixedImages = LcpNapImagesDto(image: samplePhoto);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(2.0)),
+            child: LcpNapDetailScreen(
+              locationId: 1,
+              signals: signals,
+              initialImagesForTesting: mixedImages,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await tester.scrollUntilVisible(
+        find.text('Port Matrix & Capacity'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
+
+      FlutterError.onError = originalOnError;
+      tester.takeException();
+      final overflows = errors.where((e) => e.contains('overflowed')).toList();
+      expect(overflows, isEmpty, reason: overflows.join('\n'));
     });
 
     // Gene - Nov, 8, 2026: Regression test verifying LCP NAP full-screen photo viewer opens and closes cleanly.

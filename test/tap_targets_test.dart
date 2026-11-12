@@ -149,6 +149,7 @@ void main() {
     final libDir = Directory('lib');
     for (final entity in libDir.listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
+      /*
       final contents = entity.readAsStringSync();
       if (contents.contains('VisualDensity.compact')) {
         compactOffenders.add(entity.path);
@@ -157,6 +158,21 @@ void main() {
         shrinkWrapOffenders.add(entity.path);
       }
       if (contents.contains('minimumSize: Size.zero')) {
+        zeroMinSizeOffenders.add(entity.path);
+      }
+      */
+      // Gene - Nov, 12, 2026: Strip block and line comments before scanning lib/ so deprecated code preserved in comments per policy is not falsely flagged.
+      final activeCode = entity
+          .readAsStringSync()
+          .replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '')
+          .replaceAll(RegExp(r'//.*$', multiLine: true), '');
+      if (activeCode.contains('VisualDensity.compact')) {
+        compactOffenders.add(entity.path);
+      }
+      if (activeCode.contains('MaterialTapTargetSize.shrinkWrap')) {
+        shrinkWrapOffenders.add(entity.path);
+      }
+      if (activeCode.contains('minimumSize: Size.zero')) {
         zeroMinSizeOffenders.add(entity.path);
       }
     }

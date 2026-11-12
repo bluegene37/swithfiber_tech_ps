@@ -9,6 +9,10 @@ import 'package:swithfiber_tech_ps/features/jobs/screens/job_order_detail_screen
 import 'package:swithfiber_tech_ps/features/jobs/screens/job_orders_screen.dart';
 import 'package:swithfiber_tech_ps/features/jobs/signals/jobs_signals.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/repositories/lcp_nap_repository.dart';
+// Gene - Nov, 12, 2026: Imported CabinetNapsScreen, LcpNapDetailScreen, and LcpNapImagesDto to verify 200% text scale on detail and cabinet screens.
+import 'package:swithfiber_tech_ps/features/lcp_nap/models/lcp_nap_images_model.dart';
+import 'package:swithfiber_tech_ps/features/lcp_nap/screens/cabinet_naps_screen.dart';
+import 'package:swithfiber_tech_ps/features/lcp_nap/screens/lcp_nap_detail_screen.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/screens/lcp_nap_list_screen.dart';
 import 'package:swithfiber_tech_ps/features/lcp_nap/signals/lcp_nap_signals.dart';
 import 'package:swithfiber_tech_ps/features/service_orders/models/service_order_model.dart';
@@ -116,6 +120,14 @@ void main() {
     'job orders': (j, _, __) => JobOrdersScreen(jobsSignals: j),
     'job detail': (j, _, __) => JobOrderDetailScreen(jobId: 1, jobsSignals: j),
     'LCP NAP list': (_, l, __) => LcpNapListScreen(signals: l),
+    // Gene - Nov, 12, 2026: Guard LCP NAP detail (3 separate photo cards + unified Location & GPS) and Cabinet NAPs floating add screen at 200% text scale.
+    'LCP NAP detail': (_, l, __) => LcpNapDetailScreen(
+          locationId: 1,
+          signals: l,
+          initialImagesForTesting: const LcpNapImagesDto(),
+        ),
+    'cabinet NAPs': (_, l, __) =>
+        CabinetNapsScreen(cabinet: 'CAR LCP 001', signals: l),
     'toolkit hub': (_, __, ___) => const ToolkitScreen(),
     'troubleshooting guide': (_, __, ___) => const TroubleshootingGuideTool(),
     'drop cable estimator': (_, __, ___) => const DropCableTool(),

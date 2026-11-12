@@ -10,6 +10,9 @@ import '../signals/lcp_nap_signals.dart';
 import '../widgets/lcp_nap_card.dart';
 // Gene - Nov, 11, 2026: Imported LcpNapLocationPickerSheet to allow creating new LCP NAP locations directly from the Plant screen.
 import '../widgets/lcp_nap_location_picker_sheet.dart';
+// Gene - Nov, 12, 2026: Imported searchable LCP Cabinet picker sheet and bottom floating Add pill button.
+import '../widgets/lcp_cabinet_picker_sheet.dart';
+import '../widgets/lcp_nap_floating_add_button.dart';
 import '../widgets/lcp_nap_map_view.dart';
 import 'cabinet_naps_screen.dart';
 import 'lcp_nap_detail_screen.dart';
@@ -130,6 +133,7 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
       appBar: AppBar(
         title: const Text('Plant'),
         actions: [
+          /*
           // Gene - Nov, 11, 2026: Added Create LCP NAP Location action button in the Plant AppBar.
           IconButton(
             key: const ValueKey('btnCreateLcpNap'),
@@ -137,6 +141,8 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
             tooltip: 'Create LCP NAP Location',
             onPressed: _openCreateSheet,
           ),
+          */
+          // Gene - Nov, 12, 2026: Moved Create LCP NAP action from top AppBar to bottom-right floating pill button per Calm Utility ("Read at the top, act at the bottom").
           IconButton(
             icon: const Icon(CupertinoIcons.arrow_2_circlepath),
             tooltip: 'Sync Plant Records',
@@ -152,6 +158,15 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
           ),
         ],
       ),
+      // Gene - Nov, 12, 2026: Floating extended "+ Add LCP NAP" pill at bottom-right on List view (Map view renders its own bottom-left pill to avoid zoom control overlap).
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _view == _LcpNapView.list
+          ? LcpNapFloatingAddButton(
+              buttonKey: const ValueKey('btnCreateLcpNap'),
+              label: 'Add LCP NAP',
+              onPressed: _openCreateSheet,
+            )
+          : null,
       body: Column(
         children: [
           // Search first, then one line of counts, then the view switch and
@@ -246,9 +261,17 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
 
   Widget _buildBody(BuildContext context, LcpNapSignals signals) {
     if (_view == _LcpNapView.map) {
+      /*
       return LcpNapMapView(
         signals: signals,
         onOpenDetails: _openDetails,
+      );
+      */
+      // Gene - Nov, 12, 2026: Pass _openCreateSheet so Map view renders its bottom-left "+ Add LCP NAP" pill when no pin popup is active.
+      return LcpNapMapView(
+        signals: signals,
+        onOpenDetails: _openDetails,
+        onCreateSite: _openCreateSheet,
       );
     }
 
@@ -280,7 +303,11 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
             onRefresh: signals.fetchRemote,
             color: AppTheme.primary,
             child: ListView.builder(
+              /*
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+              */
+              // Gene - Nov, 12, 2026: Added 96dp bottom scroll clearance so the floating "+ Add LCP NAP" pill never obscures the final NAP card.
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
               itemCount: locations.length + 1,
               itemBuilder: (context, index) {
                 if (index == 0) {
@@ -308,7 +335,11 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
           onRefresh: signals.fetchRemote,
           color: AppTheme.primary,
           child: ListView.separated(
+            /*
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            */
+            // Gene - Nov, 12, 2026: Added 96dp bottom scroll clearance so the floating "+ Add LCP NAP" pill never obscures the final cabinet row.
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
             itemCount: cabinets.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
@@ -358,6 +389,7 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
     );
   }
 
+  /*
   void _showCabinetSelectionModal(
     BuildContext context,
     LcpNapSignals signals,
@@ -481,6 +513,32 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
         },
       ),
     );
+  }
+  */
+  // Gene - Nov, 12, 2026: Replaced dense unsearchable modal list with shared searchable 52dp-row LCP Cabinet bottom-sheet picker.
+  Future<void> _showCabinetSelectionModal(
+    BuildContext context,
+    LcpNapSignals signals,
+    List<String> cabinets,
+    String currentSelected,
+    bool isDark,
+  ) async {
+    final grouped = signals.groupedByLcp.value;
+    final napCounts = <String, int>{
+      for (final entry in grouped.entries) entry.key: entry.value.length,
+    };
+    final selected = await showLcpCabinetPickerSheet(
+      context: context,
+      cabinets: cabinets,
+      napCounts: napCounts,
+      currentSelected: currentSelected,
+      includeAllOption: true,
+      title: 'Filter by LCP Cabinet',
+      subtitle: 'Select an LCP Cabinet to isolate its NAP plant locations:',
+    );
+    if (selected != null) {
+      signals.setLcpFilter(selected);
+    }
   }
 
   Widget _buildEmptyState(BuildContext context, LcpNapSignals signals) {

@@ -13,6 +13,8 @@ import 'lcp_nap_pin_popup.dart';
 import 'map_search_bar.dart';
 // Gene - Oct 31, 2026: Imported LcpNapLocationPickerSheet to support mapping unmapped sites from the map.
 import 'lcp_nap_location_picker_sheet.dart';
+// Gene - Nov, 12, 2026: Imported LcpNapFloatingAddButton for bottom-left Map view Add LCP NAP action.
+import 'lcp_nap_floating_add_button.dart';
 
 /// Map of LCP NAP sites, driven by the same filtered signal as the list view.
 ///
@@ -26,13 +28,25 @@ class LcpNapMapView extends StatefulWidget {
   /// Place search backend. Defaults to the phone's own geocoder; tests
   /// inject a fake so they never touch the platform plugin.
   final PlaceLookup? placeLookup;
+  // Gene - Nov, 12, 2026: Optional callback to open Create LCP NAP sheet from the bottom-left floating button on Map view.
+  final VoidCallback? onCreateSite;
 
+  /*
   const LcpNapMapView({
     super.key,
     required this.signals,
     this.tileProvider,
     this.onOpenDetails,
     this.placeLookup,
+  });
+  */
+  const LcpNapMapView({
+    super.key,
+    required this.signals,
+    this.tileProvider,
+    this.onOpenDetails,
+    this.placeLookup,
+    this.onCreateSite,
   });
 
   @override
@@ -227,10 +241,19 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                           icon: const Icon(Icons.add_location_alt_rounded,
                               size: 18),
                           label: const Text('Map'),
+                          /*
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 6),
                             minimumSize: const Size(0, 32),
+                          ),
+                          */
+                          // Gene - Nov, 12, 2026: Enforced 48dp minimum touch target height per DESIGN.md.
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 10),
+                            minimumSize: const Size(
+                                AppTheme.minTarget, AppTheme.minTarget),
                           ),
                         ),
                       ],
@@ -548,6 +571,19 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                 ],
               ),
             ),
+
+            // Gene - Nov, 12, 2026: Bottom-left floating Add LCP NAP pill on Map view; auto-hidden when a pin popup is active so it never collides with bottom-right zoom controls or the popup card.
+            if (selected == null && widget.onCreateSite != null)
+              Positioned(
+                left: 8,
+                bottom: 8,
+                child: LcpNapFloatingAddButton(
+                  buttonKey: const ValueKey('btnCreateLcpNapMap'),
+                  label: 'Add LCP NAP',
+                  maxWidth: MediaQuery.sizeOf(context).width - 80,
+                  onPressed: widget.onCreateSite!,
+                ),
+              ),
 
             // Bottom Selected Pin Popup Card
             if (selected != null)

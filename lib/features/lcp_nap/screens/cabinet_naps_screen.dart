@@ -8,6 +8,8 @@ import '../signals/lcp_nap_signals.dart';
 import '../widgets/lcp_nap_card.dart';
 // Gene - Nov, 11, 2026: Imported LcpNapLocationPickerSheet to allow adding a new NAP directly inside a cabinet view.
 import '../widgets/lcp_nap_location_picker_sheet.dart';
+// Gene - Nov, 12, 2026: Imported LcpNapFloatingAddButton for bottom-floating "+ Add NAP" pill button.
+import '../widgets/lcp_nap_floating_add_button.dart';
 import 'lcp_nap_detail_screen.dart';
 
 /// The NAPs of one cabinet, opened from a flat cabinet row on the Plant
@@ -91,6 +93,7 @@ class CabinetNapsScreen extends StatelessWidget {
         return Scaffold(
           appBar: AppBar(
             title: Text(cabinet, maxLines: 1, overflow: TextOverflow.ellipsis),
+            /*
             // Gene - Nov, 11, 2026: Added button to create a new NAP inside this cabinet.
             actions: [
               IconButton(
@@ -100,11 +103,63 @@ class CabinetNapsScreen extends StatelessWidget {
                 onPressed: () => _openAddNapSheet(context, naps),
               ),
             ],
+            */
+            // Gene - Nov, 12, 2026: Moved Add NAP action from top AppBar to bottom-right floating pill button per Calm Utility ("Read at the top, act at the bottom").
           ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButton: LcpNapFloatingAddButton(
+            buttonKey: const ValueKey('btnAddCabinetNap'),
+            label: 'Add NAP',
+            onPressed: () => _openAddNapSheet(context, naps),
+          ),
+          /*
           body: naps.isEmpty
               ? Center(
                   child: Text('No NAPs on this cabinet.',
                       style: context.text.bodyMedium),
+                )
+          */
+          // Gene - Nov, 12, 2026: Added RefreshIndicator-wrapped actionable empty state and 96dp bottom scroll clearance for the floating "+ Add NAP" pill.
+          body: naps.isEmpty
+              ? RefreshIndicator(
+                  onRefresh: signals.fetchRemote,
+                  color: AppTheme.primary,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(32, 64, 32, 96),
+                    children: [
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primarySubtleBgOf(context),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: AppTheme.primarySubtleBorderOf(context),
+                              width: 1,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.router_outlined,
+                            size: 32,
+                            color: AppTheme.primary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'No NAPs on this cabinet.',
+                        textAlign: TextAlign.center,
+                        style: context.text.titleMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Tap "+ Add NAP" below to register the first distribution box on $cabinet.',
+                        textAlign: TextAlign.center,
+                        style: context.text.bodySmall,
+                      ),
+                    ],
+                  ),
                 )
               /*
               : ListView.builder(
@@ -134,7 +189,11 @@ class CabinetNapsScreen extends StatelessWidget {
                   color: AppTheme.primary,
                   child: ListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(),
+                    /*
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    */
+                    // Gene - Nov, 12, 2026: Increased bottom padding to 96dp so the floating "+ Add NAP" pill never overlaps the final NAP card.
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                     itemCount: naps.length + 1,
                     itemBuilder: (context, index) {
                       if (index == 0) {

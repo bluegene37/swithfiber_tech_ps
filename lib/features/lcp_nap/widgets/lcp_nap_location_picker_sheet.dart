@@ -15,6 +15,8 @@ import '../models/lcp_nap_model.dart';
 import '../services/map_clustering.dart';
 import '../services/map_tiles.dart';
 import '../signals/lcp_nap_signals.dart';
+// Gene - Nov, 12, 2026: Imported searchable LCP Cabinet bottom-sheet picker to replace the 241-item PopupMenuButton.
+import 'lcp_cabinet_picker_sheet.dart';
 import 'map_search_bar.dart';
 
 /// Modal bottom sheet allowing technicians to map an LCP NAP location,
@@ -535,6 +537,11 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
     final existingLcps = widget.signals.lcpCabinetList.value
         .where((e) => e != 'All' && e.trim().isNotEmpty)
         .toList();
+    // Gene - Nov, 12, 2026: Build NAP count lookup per cabinet for the searchable cabinet picker sheet.
+    final groupedLcps = widget.signals.groupedByLcp.value;
+    final napCounts = <String, int>{
+      for (final entry in groupedLcps.entries) entry.key: entry.value.length,
+    };
     final selectedPorts = int.tryParse(_portTotalController.text.trim());
 
     return Column(
@@ -562,6 +569,7 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                   labelText: 'LCP Cabinet *',
                   hintText: 'e.g. LCP 001 - ANG',
                   prefixIcon: const Icon(Icons.dns_outlined, size: 19),
+                  /*
                   suffixIcon: existingLcps.isNotEmpty
                       ? PopupMenuButton<String>(
                           key: const ValueKey('btnPickExistingLcp'),
@@ -599,6 +607,55 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                                 ),
                               )
                               .toList(),
+                        )
+                      : null,
+                  */
+                  // Gene - Nov, 12, 2026: Replaced unwieldy 241-item PopupMenuButton with searchable 52dp-row bottom-sheet picker.
+                  suffixIcon: existingLcps.isNotEmpty
+                      ? IconButton(
+                          key: const ValueKey('btnPickExistingLcp'),
+                          tooltip: 'Search & pick LCP Cabinet',
+                          constraints: const BoxConstraints(
+                            minWidth: AppTheme.minTarget,
+                            minHeight: AppTheme.minTarget,
+                          ),
+                          icon: const Icon(Icons.arrow_drop_down_rounded),
+                          onPressed: () async {
+                            FocusScope.of(context).unfocus();
+                            final selectedLcp =
+                                await showLcpCabinetPickerSheet(
+                              context: context,
+                              cabinets: existingLcps,
+                              napCounts: napCounts,
+                              currentSelected: _lcpController.text.trim(),
+                              allowCustomCabinet: true,
+                              title: 'Select LCP Cabinet',
+                              subtitle:
+                                  'Search existing cabinets or enter a new cabinet code:',
+                            );
+                            if (selectedLcp == null || !mounted) return;
+                            setState(() {
+                              _lcpController.text = selectedLcp;
+                              if (widget.isCreateMode) {
+                                _napController.text =
+                                    _suggestNextNapForLcp(selectedLcp);
+                              }
+                              _syncLcpNapLabel();
+                              final sample = widget.signals.allLocations.value
+                                  .where((loc) => loc.lcp == selectedLcp)
+                                  .firstOrNull;
+                              if (sample != null) {
+                                if (_cityController.text.trim().isEmpty &&
+                                    (sample.city ?? '').isNotEmpty) {
+                                  _cityController.text = sample.city!;
+                                }
+                                if (_regionController.text.trim().isEmpty &&
+                                    (sample.region ?? '').isNotEmpty) {
+                                  _regionController.text = sample.region!;
+                                }
+                              }
+                            });
+                          },
                         )
                       : null,
                   border: OutlineInputBorder(
@@ -711,6 +768,7 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                 color: AppTheme.secondaryInkOf(context),
               ),
             ),
+            /*
             for (final count in _standardPortCounts)
               ChoiceChip(
                 key: ValueKey('chipPort_$count'),
@@ -722,6 +780,23 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                   });
                 },
                 visualDensity: VisualDensity.compact,
+              ),
+            */
+            // Gene - Nov, 12, 2026: Removed prohibited VisualDensity.compact and ensured 48dp minimum gloved-thumb target per DESIGN.md.
+            for (final count in _standardPortCounts)
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: AppTheme.minTarget),
+                child: ChoiceChip(
+                  key: ValueKey('chipPort_$count'),
+                  label: Text('$count Ports'),
+                  selected: selectedPorts == count,
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
+                  onSelected: (_) {
+                    setState(() {
+                      _portTotalController.text = count.toString();
+                    });
+                  },
+                ),
               ),
           ],
         ),
@@ -1009,10 +1084,18 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                       border: Border.all(
                           color: AppTheme.danger.withValues(alpha: 0.3)),
                     ),
+                    /*
                     child: Text(
                       _errorMessage!,
                       style: context.text.bodySmall!
                           .copyWith(color: AppTheme.danger),
+                    ),
+                    */
+                    // Gene - Nov, 12, 2026: Use WCAG-verified dangerInkOf token for error text in both light and dark modes.
+                    child: Text(
+                      _errorMessage!,
+                      style: context.text.bodySmall!
+                          .copyWith(color: AppTheme.dangerInkOf(context)),
                     ),
                   ),
                 ],
@@ -1109,6 +1192,7 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                 ),
               ),
             ),
+            /*
             child: SizedBox(
               width: double.infinity,
               height: 48,
@@ -1140,6 +1224,48 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+            */
+            // Gene - Nov, 12, 2026: Upgraded primary action button to 56dp minimum height (growing vertically at 200% font scale) and AppTheme.radiusButton per DESIGN.md.
+            child: SizedBox(
+              width: double.infinity,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  minHeight: AppTheme.primaryButtonHeight,
+                ),
+                child: ElevatedButton.icon(
+                  key: const ValueKey('btnSaveLocation'),
+                  onPressed: _isSaving ? null : _saveLocation,
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : Icon(
+                          widget.isCreateMode
+                              ? Icons.add_location_alt_rounded
+                              : Icons.save_rounded,
+                          size: 22,
+                        ),
+                  label: Text(_isSaving
+                      ? (widget.isCreateMode
+                          ? 'Creating Location...'
+                          : 'Saving Location...')
+                      : (widget.isCreateMode
+                          ? 'Create LCP NAP Location'
+                          : 'Save & Update Location')),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(AppTheme.radiusButton),
+                    ),
+                  ),
                 ),
               ),
             ),

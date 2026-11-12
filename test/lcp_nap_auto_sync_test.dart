@@ -606,10 +606,15 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 150));
       });
       await tester.pump();
+      /*
       expect(
         find.text('No enclosure or optical reading photos uploaded yet.'),
         findsOneWidget,
       );
+      */
+      // Gene - Nov, 12, 2026: Empty sites now render 3 standalone LcpNapPhotoSlotCards with a '0 of 3 photos' badge.
+      expect(find.text('0 of 3 photos'), findsOneWidget);
+      expect(find.text('EMPTY'), findsNWidgets(3));
 
       // Remote user uploads Enclosure Exterior while screen is open -> user pulls to refresh
       backend.serverImages[101] = {
@@ -624,8 +629,16 @@ void main() {
 
       // Pull down from the top card to trigger RefreshIndicator.onRefresh,
       // then allow real SQLite + Dio async work to complete inside runAsync.
+      /*
       await tester.fling(
         find.text('Port Matrix & Capacity'),
+        const Offset(0, 500),
+        1200,
+      );
+      */
+      // Gene - Nov, 12, 2026: Fling unified Location & GPS card near the top of the reordered ListView.
+      await tester.fling(
+        find.text('Location & GPS'),
         const Offset(0, 500),
         1200,
       );
@@ -637,12 +650,23 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
 
+      /*
       expect(
         find.text('1 photos'),
         findsOneWidget,
         reason:
             'Pull-to-refresh on LcpNapDetailScreen must pass forceRefresh: true and show newly uploaded remote photo',
       );
+      */
+      // Gene - Nov, 12, 2026: Verify updated '1 of 3 photos' count stamp and remaining 2 empty cards.
+      expect(
+        find.text('1 of 3 photos'),
+        findsOneWidget,
+        reason:
+            'Pull-to-refresh on LcpNapDetailScreen must pass forceRefresh: true and show newly uploaded remote photo',
+      );
+      expect(find.text('CAPTURED'), findsOneWidget);
+      expect(find.text('EMPTY'), findsNWidgets(2));
 
       // Now close screen, remote user uploads a 2nd photo (image2), and user re-opens LcpNapDetailScreen WITHOUT fetchRemote
       await tester.pumpWidget(const SizedBox.shrink());
@@ -678,8 +702,17 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
+      /*
       expect(
         find.text('2 photos'),
+        findsOneWidget,
+        reason:
+            'Re-entering LcpNapDetailScreen must force-refresh live server photos rather than staying stuck on stale _imagesCache',
+      );
+      */
+      // Gene - Nov, 12, 2026: Verify '2 of 3 photos' count stamp on screen re-entry.
+      expect(
+        find.text('2 of 3 photos'),
         findsOneWidget,
         reason:
             'Re-entering LcpNapDetailScreen must force-refresh live server photos rather than staying stuck on stale _imagesCache',
@@ -718,6 +751,7 @@ void main() {
 
       expect(find.byIcon(Icons.cloud_done_rounded), findsOneWidget);
 
+      /*
       // Upload photo while offline via UI sheet
       await tester.tap(find.text('Upload Site Photos'));
       await tester.pump();
@@ -747,6 +781,18 @@ void main() {
 
       // Sheet should close, photo should appear optimistically, and sync badge must show cloud_off_rounded
       expect(find.text('1 photos'), findsOneWidget);
+      */
+      // Gene - Nov, 12, 2026: Perform 1-tap inline photo upload directly on the standalone Enclosure Exterior card while offline.
+      await tester.ensureVisible(find.byKey(const ValueKey('btnTakePhoto_enc1')));
+      await tester.pump();
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('btnTakePhoto_enc1')));
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('1 of 3 photos'), findsOneWidget);
       expect(find.byIcon(Icons.cloud_off_rounded), findsOneWidget,
           reason: 'Offline uploaded photo must show unsynced cloud_off glyph');
 
@@ -908,10 +954,14 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 150));
       });
       await tester.pump();
+      /*
       expect(
         find.text('No enclosure or optical reading photos uploaded yet.'),
         findsOneWidget,
       );
+      */
+      // Gene - Nov, 12, 2026: Assert '0 of 3 photos' badge when all 3 separate photo cards start empty.
+      expect(find.text('0 of 3 photos'), findsOneWidget);
 
       // Another technician uploads an image on the server while this user has LcpNapDetailScreen open
       backend.serverImages[101] = {
@@ -934,8 +984,17 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
+      /*
       expect(
         find.text('1 photos'),
+        findsOneWidget,
+        reason:
+            'Open LcpNapDetailScreen must reactively reload site photos when background fetchRemote runs',
+      );
+      */
+      // Gene - Nov, 12, 2026: Assert '1 of 3 photos' badge after background sync loads remote photo.
+      expect(
+        find.text('1 of 3 photos'),
         findsOneWidget,
         reason:
             'Open LcpNapDetailScreen must reactively reload site photos when background fetchRemote runs',

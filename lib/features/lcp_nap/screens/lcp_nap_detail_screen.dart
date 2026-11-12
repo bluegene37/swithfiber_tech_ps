@@ -5,7 +5,10 @@ import 'dart:typed_data';
 import 'dart:async';
 // Gene - Nov, 8, 2026: Imported dart:convert for base64Encode when constructing optimistic LcpNapImagesDto after upload/delete.
 import 'dart:convert';
+/*
 import 'package:flutter/cupertino.dart';
+*/
+// Gene - Nov, 12, 2026: Commented out unused cupertino import after moving photo slot icons into LcpNapPhotoSlotCard.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -25,7 +28,11 @@ import '../../reports/widgets/photo_capture_tile.dart' show showPhotoViewer;
 // Gene - Oct 29, 2026: Import image_picker, PhotoCaptureTile and ImageCaptureService to support capturing and uploading site photos.
 import 'package:image_picker/image_picker.dart';
 import '../../../core/services/image_capture_service.dart';
+/*
 import '../../reports/widgets/photo_capture_tile.dart';
+*/
+// Gene - Nov, 12, 2026: Show only showPhotoViewer from photo_capture_tile.dart and import LcpNapPhotoSlotCard for standalone per-slot upload cards.
+import '../../reports/widgets/photo_capture_tile.dart' show showPhotoViewer;
 import '../models/lcp_nap_images_model.dart';
 import '../models/lcp_nap_model.dart';
 import '../services/map_clustering.dart';
@@ -35,6 +42,7 @@ import '../signals/lcp_nap_signals.dart';
 import 'package:geocoding/geocoding.dart' as geo;
 import '../../../core/services/location_service.dart';
 import '../widgets/lcp_nap_location_picker_sheet.dart';
+import '../widgets/lcp_nap_photo_slot_card.dart';
 import '../widgets/map_search_bar.dart' show PlaceLookup;
 
 /// Screen displaying comprehensive details and status controls for an LCP NAP site with full Dark Mode support.
@@ -95,6 +103,9 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
   Timer? _photoAutoSyncTimer;
   // Gene - Nov, 11, 2026: Reactive effect cleanup for signals.photoSyncRevision listener.
   EffectCleanup? _disposePhotoSyncEffect;
+  // Gene - Nov, 12, 2026: Per-slot busy tracking so 1-tap upload or delete shows an inline spinner only on the active photo card.
+  final Set<String> _busyPhotoSlots = <String>{};
+  final Map<String, String> _busyPhotoLabels = <String, String>{};
 
   /*
   @override
@@ -434,6 +445,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
                 ),
                 const SizedBox(height: 16),
 
+                /*
                 // 2. Mini Interactive Map Card (if location is mappable)
                 if (location.isMappable) ...[
                   _buildMiniMapCard(context, location, cabinetColor, isDark),
@@ -704,6 +716,16 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
                     ),
                   ),
                 ),
+                */
+                // Gene - Nov, 12, 2026: Reordered detail layout to Overview -> Unified Location & GPS -> 3 Separate Site Photo Cards -> Port Matrix & Capacity per Calm Utility UX audit.
+                _buildLocationAndGpsCard(
+                    context, location, cabinetColor, isDark),
+                const SizedBox(height: 16),
+
+                ..._buildSitePhotosSection(context, location, isDark),
+                const SizedBox(height: 16),
+
+                _buildPortMatrixCard(context, location),
               ],
             ),
           ),
@@ -712,6 +734,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
     );
   }
 
+  /*
   Widget _buildMiniMapCard(
     BuildContext context,
     LcpNapDto location,
@@ -773,10 +796,6 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
             child: tiles == null
                 ? const Center(
                     child: CircularProgressIndicator(color: AppTheme.primary))
-                /*
-                : FlutterMap(
-                    options: MapOptions(
-                */
                 // Gene - Nov, 11, 2026: Key FlutterMap by location ID & coordinates so live GPS auto-sync updates re-center the mini-map immediately.
                 : FlutterMap(
                     key: ValueKey(
@@ -794,14 +813,6 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
                       ),
                     ),
                     children: [
-                      /*
-                      TileLayer(
-                        urlTemplate: MapTiles.streetUrl,
-                        maxZoom: MapTiles.streetMaxZoom,
-                        userAgentPackageName: MapTiles.userAgentPackageName,
-                        tileProvider: tiles,
-                      ),
-                      */
                       // Gene - Nov, 11, 2026: Pass maxNativeZoom alongside maxZoom on detail screen mini-map TileLayer.
                       TileLayer(
                         urlTemplate: MapTiles.streetUrl,
@@ -850,6 +861,394 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
       ),
     );
   }
+  */
+  // Gene - Nov, 12, 2026: Unified Mini-Map + GPS Geolocation into one Location & GPS Card with JetBrains Mono coordinates, outline status stamp, and 48dp/56dp gloved-thumb CTAs.
+  Widget _buildLocationAndGpsCard(
+    BuildContext context,
+    LcpNapDto location,
+    Color cabinetColor,
+    bool isDark,
+  ) {
+    final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+    final hairline = AppTheme.hairlineOf(context);
+    final isMapped = location.isMappable;
+    final statusColor = isMapped
+        ? AppTheme.successInkOf(context)
+        : AppTheme.warningInkOf(context);
+
+    final stamp = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppTheme.radiusStamp),
+        border: Border.all(color: statusColor, width: 1.5),
+      ),
+      child: Text(
+        isMapped ? 'MAPPED' : 'UNMAPPED',
+        style: context.text.labelMedium!.copyWith(color: statusColor),
+      ),
+    );
+
+    final tiles = _tiles;
+
+    final navBtn = ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: AppTheme.minTarget),
+      child: FilledButton.icon(
+        key: const ValueKey('btnNavigateSite'),
+        onPressed: isMapped
+            ? () {
+                MapNavigationService.showNavigationChooser(
+                  context: context,
+                  latitude: location.latLng!.latitude,
+                  longitude: location.latLng!.longitude,
+                  title: location.lcpNap,
+                  subtitle:
+                      '${location.street ?? ""}, ${location.barangay ?? ""}, ${location.city ?? ""}',
+                );
+              }
+            : null,
+        icon: const Icon(Icons.navigation_rounded, size: 20),
+        label: const Text('Navigate'),
+      ),
+    );
+
+    final updateBtn = ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: AppTheme.minTarget),
+      child: OutlinedButton.icon(
+        key: const ValueKey('btnUpdateSiteCoordinates'),
+        onPressed: () => _showLocationMappingSheet(context, location),
+        icon: const Icon(Icons.edit_location_alt_outlined, size: 20),
+        label: const Text('Update GPS'),
+      ),
+    );
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            child: scale > 1.5
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.pin_drop_outlined,
+                              size: 20, color: AppTheme.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Location & GPS',
+                              style: context.text.titleMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      stamp,
+                    ],
+                  )
+                : Row(
+                    children: [
+                      const Icon(Icons.pin_drop_outlined,
+                          size: 20, color: AppTheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Location & GPS',
+                          style: context.text.titleMedium,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      stamp,
+                    ],
+                  ),
+          ),
+          if (isMapped) ...[
+            Divider(height: 1, thickness: 1, color: hairline),
+            SizedBox(
+              height: 180,
+              width: double.infinity,
+              child: tiles == null
+                  ? const Center(
+                      child:
+                          CircularProgressIndicator(color: AppTheme.primary))
+                  : FlutterMap(
+                      key: ValueKey(
+                          'minimap_${location.id}_${location.coordinates}'),
+                      options: MapOptions(
+                        initialCenter: location.latLng!,
+                        initialZoom: 16,
+                        interactionOptions: const InteractionOptions(
+                          flags: InteractiveFlag.pinchZoom |
+                              InteractiveFlag.doubleTapZoom,
+                        ),
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate: MapTiles.streetUrl,
+                          maxNativeZoom: MapTiles.streetMaxNativeZoom,
+                          maxZoom: MapTiles.streetMaxZoom,
+                          userAgentPackageName: MapTiles.userAgentPackageName,
+                          tileProvider: tiles,
+                        ),
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              point: location.latLng!,
+                              width: 36,
+                              height: 36,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: cabinetColor,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                      color: Colors.white, width: 2.5),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x66000000),
+                                      blurRadius: 6,
+                                      offset: Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    location.nap.replaceAll(RegExp(r'\D'), ''),
+                                    style: context.text.labelSmall!.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+            ),
+          ],
+          Divider(height: 1, thickness: 1, color: hairline),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.fillOf(context),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: hairline),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'WGS84 Coordinates',
+                              style: context.text.labelSmall!
+                                  .copyWith(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              location.coordinates ?? 'No GPS fix recorded',
+                              style: location.coordinates != null
+                                  ? context.text.bodyLarge
+                                  : context.text.bodySmall!.copyWith(
+                                      color: AppTheme.secondaryInkOf(context),
+                                    ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (location.coordinates != null)
+                        IconButton(
+                          constraints: const BoxConstraints(
+                            minWidth: AppTheme.minTarget,
+                            minHeight: AppTheme.minTarget,
+                          ),
+                          icon: const Icon(Icons.copy_rounded, size: 20),
+                          tooltip: 'Copy coordinates',
+                          onPressed: () {
+                            Clipboard.setData(
+                              ClipboardData(text: location.coordinates!),
+                            );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                    'Copied: ${location.coordinates}'),
+                                behavior: SnackBarBehavior.floating,
+                                backgroundColor: isDark
+                                    ? AppTheme.darkCard
+                                    : AppTheme.darkSlate,
+                              ),
+                            );
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (!isMapped)
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(
+                        minHeight: AppTheme.primaryButtonHeight),
+                    child: ElevatedButton.icon(
+                      key: const ValueKey('btnMapUnmappedSite'),
+                      onPressed: () =>
+                          _showLocationMappingSheet(context, location),
+                      icon:
+                          const Icon(Icons.add_location_alt_rounded, size: 20),
+                      label: const Text('Map This Site (Set GPS)'),
+                    ),
+                  )
+                else if (scale > 1.3)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      navBtn,
+                      const SizedBox(height: 8),
+                      updateBtn,
+                    ],
+                  )
+                else
+                  Row(
+                    children: [
+                      Expanded(child: navBtn),
+                      const SizedBox(width: 10),
+                      Expanded(child: updateBtn),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Gene - Nov, 12, 2026: Responsive Port Matrix & Capacity card using JetBrains Mono port numbers and 2-col fallback at large text scales.
+  Widget _buildPortMatrixCard(BuildContext context, LcpNapDto location) {
+    final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+    final hairline = AppTheme.hairlineOf(context);
+    final totalBadge = Text(
+      '${location.portTotal} ports total',
+      style: context.text.labelLarge!.copyWith(
+        color: AppTheme.brandInkOf(context),
+      ),
+    );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (scale > 1.5)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.hub_outlined,
+                          size: 20, color: AppTheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Port Matrix & Capacity',
+                          style: context.text.titleMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  totalBadge,
+                ],
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Icon(Icons.hub_outlined,
+                            size: 20, color: AppTheme.primary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Port Matrix & Capacity',
+                            style: context.text.titleMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  totalBadge,
+                ],
+              ),
+            const SizedBox(height: 14),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: scale > 1.3 ? 2 : 4,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                childAspectRatio: scale > 1.3 ? 2.1 : 1.8,
+              ),
+              itemCount: location.portTotal,
+              itemBuilder: (context, index) {
+                final portNumber = index + 1;
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.fillOf(context),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: hairline),
+                  ),
+                  child: Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.circle_outlined,
+                          size: 18,
+                          color: AppTheme.secondaryInkOf(context),
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            'P$portNumber',
+                            overflow: TextOverflow.ellipsis,
+                            style: context.text.bodyLarge!.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Standard NAP distribution box. Ready for drop cable splicing.',
+              style: context.text.labelSmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _copySiteSummary(BuildContext context, LcpNapDto location, bool isDark) {
     final summary = 'Switch Fiber Plant Record:\n'
@@ -870,8 +1269,417 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
     );
   }
 
+  /*
   // Gene - Oct 24, 2026: Site enclosure and optical power reading photos card.
   Widget _buildSitePhotosCard(
+    BuildContext context,
+    LcpNapDto location,
+    bool isDark,
+  ) {
+  */
+  // Gene - Nov, 12, 2026: Replaced single nested _buildSitePhotosCard with _buildSitePhotosSection rendering 3 standalone top-level LcpNapPhotoSlotCards (always visible even when empty) and 1-tap inline upload.
+  List<Widget> _buildSitePhotosSection(
+    BuildContext context,
+    LcpNapDto location,
+    bool isDark,
+  ) {
+    final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+    final hairline = AppTheme.hairlineOf(context);
+
+    // When _sitePhotos has been loaded/updated, treat it as authoritative so
+    // deleted slots do not fall back to stale location columns.
+    final enc1Bytes = _sitePhotos != null
+        ? _sitePhotos!.image?.bytes
+        : (location.image != null
+            ? (PhotoStorageService.instance.resolveBytes(location.image!) ??
+                DataUrl.decode(location.image!))
+            : null);
+    final enc1Url = _sitePhotos == null &&
+            location.image != null &&
+            (location.image!.startsWith('http://') ||
+                location.image!.startsWith('https://'))
+        ? location.image!
+        : null;
+
+    final enc2Bytes = _sitePhotos != null
+        ? _sitePhotos!.image2?.bytes
+        : (location.image2 != null
+            ? (PhotoStorageService.instance.resolveBytes(location.image2!) ??
+                DataUrl.decode(location.image2!))
+            : null);
+    final enc2Url = _sitePhotos == null &&
+            location.image2 != null &&
+            (location.image2!.startsWith('http://') ||
+                location.image2!.startsWith('https://'))
+        ? location.image2!
+        : null;
+
+    final readingBytes = _sitePhotos != null
+        ? _sitePhotos!.readingImage?.bytes
+        : (location.readingImage != null
+            ? (PhotoStorageService.instance
+                    .resolveBytes(location.readingImage!) ??
+                DataUrl.decode(location.readingImage!))
+            : null);
+    final readingUrl = _sitePhotos == null &&
+            location.readingImage != null &&
+            (location.readingImage!.startsWith('http://') ||
+                location.readingImage!.startsWith('https://'))
+        ? location.readingImage!
+        : null;
+
+    bool hasSlot(Uint8List? b, String? url) =>
+        (b != null && b.isNotEmpty) || (url != null && url.trim().isNotEmpty);
+
+    final uploadedCount = (hasSlot(enc1Bytes, enc1Url) ? 1 : 0) +
+        (hasSlot(enc2Bytes, enc2Url) ? 1 : 0) +
+        (hasSlot(readingBytes, readingUrl) ? 1 : 0);
+
+    final countColor = uploadedCount > 0
+        ? AppTheme.successInkOf(context)
+        : AppTheme.secondaryInkOf(context);
+
+    final countStamp = Container(
+      key: const ValueKey('sitePhotosCountBadge'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppTheme.radiusStamp),
+        border: Border.all(
+          color: uploadedCount > 0 ? countColor : hairline,
+          width: uploadedCount > 0 ? 1.5 : 1,
+        ),
+      ),
+      child: Text(
+        '$uploadedCount of 3 photos',
+        style: context.text.labelMedium!.copyWith(color: countColor),
+      ),
+    );
+
+    final slots = <({
+      String key,
+      String title,
+      String subtitle,
+      IconData icon,
+      Uint8List? bytes,
+      String? remoteUrl,
+    })>[
+      (
+        key: 'enc1',
+        title: 'Enclosure Exterior',
+        subtitle: 'NAP Box Enclosure 1',
+        icon: Icons.router_outlined,
+        bytes: enc1Bytes,
+        remoteUrl: enc1Url,
+      ),
+      (
+        key: 'enc2',
+        title: 'Enclosure Interior',
+        subtitle: 'NAP Splicing Tray / Ports',
+        icon: Icons.cable_rounded,
+        bytes: enc2Bytes,
+        remoteUrl: enc2Url,
+      ),
+      (
+        key: 'reading',
+        title: 'Optical Power Reading',
+        subtitle: 'OPM Power Capture',
+        icon: Icons.speed_rounded,
+        bytes: readingBytes,
+        remoteUrl: readingUrl,
+      ),
+    ];
+
+    return [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: scale > 1.5
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.photo_library_outlined,
+                          size: 20, color: AppTheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Site Enclosure & Reading Photos',
+                          style: context.text.titleMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  countStamp,
+                ],
+              )
+            : Row(
+                children: [
+                  const Icon(Icons.photo_library_outlined,
+                      size: 20, color: AppTheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Site Enclosure & Reading Photos',
+                      style: context.text.titleMedium,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  countStamp,
+                ],
+              ),
+      ),
+      if (_isLoadingPhotos && _sitePhotos == null && uploadedCount == 0) ...[
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppTheme.cardOf(context),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: hairline),
+          ),
+          child: Row(
+            children: [
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppTheme.primary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Loading site photos from server...',
+                  style: context.text.bodySmall,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      const SizedBox(height: 10),
+      for (int i = 0; i < slots.length; i++) ...[
+        if (i > 0) const SizedBox(height: 12),
+        LcpNapPhotoSlotCard(
+          slotKey: slots[i].key,
+          title: slots[i].title,
+          subtitle: slots[i].subtitle,
+          icon: slots[i].icon,
+          bytes: slots[i].bytes,
+          remoteUrl: slots[i].remoteUrl,
+          isBusy: _busyPhotoSlots.contains(slots[i].key),
+          busyLabel: _busyPhotoLabels[slots[i].key],
+          onTakePhoto: () => _captureAndUploadSlot(
+            context,
+            location,
+            photoKey: slots[i].key,
+            photoTitle: slots[i].title,
+            source: ImageSource.camera,
+          ),
+          onPickFromGallery: () => _captureAndUploadSlot(
+            context,
+            location,
+            photoKey: slots[i].key,
+            photoTitle: slots[i].title,
+            source: ImageSource.gallery,
+          ),
+          onViewPhoto: () => _openSlotPhotoViewer(
+            context,
+            title: slots[i].title,
+            bytes: slots[i].bytes,
+            remoteUrl: slots[i].remoteUrl,
+          ),
+          onDeletePhoto: () => _confirmDeletePhoto(
+            context,
+            location,
+            photoKey: slots[i].key,
+            photoTitle: slots[i].title,
+          ),
+        ),
+      ],
+    ];
+  }
+
+  void _openSlotPhotoViewer(
+    BuildContext context, {
+    required String title,
+    required Uint8List? bytes,
+    required String? remoteUrl,
+  }) {
+    if (bytes != null && bytes.isNotEmpty) {
+      showPhotoViewer(context, bytes, title: title);
+    } else if (remoteUrl != null && remoteUrl.trim().isNotEmpty) {
+      showPhotoViewer(
+        context,
+        Uint8List(0),
+        title: title,
+        imageUrl: remoteUrl,
+      );
+    }
+  }
+
+  LcpNapImageFileDto? _resolveSlotFileDto({
+    required LcpNapImageFileDto? currentDto,
+    required String? fallbackLocationField,
+    required String downloadName,
+  }) {
+    if (_sitePhotos != null) return currentDto;
+    final raw = fallbackLocationField?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return null;
+    final decoded =
+        PhotoStorageService.instance.resolveBytes(raw) ?? DataUrl.decode(raw);
+    if (decoded == null || decoded.isEmpty) return null;
+    return LcpNapImageFileDto(
+      fileContents: base64Encode(decoded),
+      contentType: 'image/jpeg',
+      fileDownloadName: downloadName,
+    );
+  }
+
+  // Gene - Nov, 12, 2026: 1-tap Camera or Gallery capture + immediate per-card upload without an intermediate staging sheet.
+  Future<void> _captureAndUploadSlot(
+    BuildContext context,
+    LcpNapDto location, {
+    required String photoKey,
+    required String photoTitle,
+    required ImageSource source,
+  }) async {
+    if (_busyPhotoSlots.contains(photoKey)) return;
+
+    String? picked;
+    try {
+      if (widget.pickImageForTesting != null) {
+        picked = await widget.pickImageForTesting!(source);
+      } else {
+        picked = await ImageCaptureService.instance.pickAsDataUrl(
+          source,
+          fallbackLat: location.latitude,
+          fallbackLng: location.longitude,
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(
+          content: Text('Could not capture photo: $e'),
+          backgroundColor: AppTheme.danger,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (picked == null || picked.trim().isEmpty || !mounted) return;
+
+    final rawBytes = PhotoStorageService.instance.resolveBytes(picked) ??
+        DataUrl.decode(picked);
+    if (rawBytes == null || rawBytes.isEmpty) {
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        const SnackBar(
+          content: Text('Selected image could not be read.'),
+          backgroundColor: AppTheme.danger,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _busyPhotoSlots.add(photoKey);
+      _busyPhotoLabels[photoKey] = 'Uploading $photoTitle...';
+    });
+
+    try {
+      if (_sitePhotos != null) {
+        widget.signals.repository.seedImagesCache(location.id, _sitePhotos!);
+      }
+
+      final success = await widget.signals.uploadLocationPhotos(
+        locationId: location.id,
+        location: location,
+        imageBytes: photoKey == 'enc1' ? rawBytes : null,
+        image2Bytes: photoKey == 'enc2' ? rawBytes : null,
+        readingImageBytes: photoKey == 'reading' ? rawBytes : null,
+      );
+
+      if (!mounted) return;
+      if (success) {
+        final newSlotDto = LcpNapImageFileDto(
+          fileContents: base64Encode(rawBytes),
+          contentType: 'image/jpeg',
+          fileDownloadName: photoKey == 'enc1'
+              ? 'image.jpg'
+              : (photoKey == 'enc2' ? 'image2.jpg' : 'readingImage.jpg'),
+        );
+        final updatedDto = LcpNapImagesDto(
+          image: photoKey == 'enc1'
+              ? newSlotDto
+              : _resolveSlotFileDto(
+                  currentDto: _sitePhotos?.image,
+                  fallbackLocationField: location.image,
+                  downloadName: 'image.jpg',
+                ),
+          image2: photoKey == 'enc2'
+              ? newSlotDto
+              : _resolveSlotFileDto(
+                  currentDto: _sitePhotos?.image2,
+                  fallbackLocationField: location.image2,
+                  downloadName: 'image2.jpg',
+                ),
+          readingImage: photoKey == 'reading'
+              ? newSlotDto
+              : _resolveSlotFileDto(
+                  currentDto: _sitePhotos?.readingImage,
+                  fallbackLocationField: location.readingImage,
+                  downloadName: 'readingImage.jpg',
+                ),
+        );
+        setState(() => _sitePhotos = updatedDto);
+        await _loadSitePhotos(forceRefresh: true, silent: true);
+        if (!mounted) return;
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded,
+                    color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('$photoTitle uploaded successfully!'),
+                ),
+              ],
+            ),
+            backgroundColor: AppTheme.success,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.signals.errorMessage.value ??
+                  'Failed to upload $photoTitle. Please check your connection.',
+            ),
+            backgroundColor: AppTheme.danger,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busyPhotoSlots.remove(photoKey);
+          _busyPhotoLabels.remove(photoKey);
+        });
+      }
+    }
+  }
+
+  /*
+  Widget _buildSitePhotosCard_previous(
     BuildContext context,
     LcpNapDto location,
     bool isDark,
@@ -1330,6 +2138,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
       ),
     );
   }
+  */
 
   // Gene - Oct 31, 2026: Confirms and deletes/clears a single photo directly from the photo card.
   Future<void> _confirmDeletePhoto(
@@ -1338,6 +2147,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
     required String photoKey,
     required String photoTitle,
   }) async {
+    if (_busyPhotoSlots.contains(photoKey)) return;
     /*
     final isDark = Theme.of(context).brightness == Brightness.dark;
     */
@@ -1378,6 +2188,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
       await _loadSitePhotos();
       if (!mounted) return;
     */
+    /*
     // Gene - Nov, 8, 2026: Seed current _sitePhotos into repository cache before deleting so sibling photos are preserved, then optimistically remove the deleted slot and force-refresh from live API.
     if (_sitePhotos != null) {
       widget.signals.repository.seedImagesCache(location.id, _sitePhotos!);
@@ -1401,58 +2212,99 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
       setState(() => _sitePhotos = updatedPhotos);
       await _loadSitePhotos(forceRefresh: true, silent: true);
       if (!mounted) return;
-      ScaffoldMessenger.of(this.context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_rounded,
-                  color: Colors.white, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text('$photoTitle deleted successfully!'),
-              ),
-            ],
-          ),
-          backgroundColor: AppTheme.success,
-          behavior: SnackBarBehavior.floating,
-        ),
+    */
+    // Gene - Nov, 12, 2026: Show per-card busy spinner while deleting and preserve sibling slot DTOs even when _sitePhotos had not been loaded yet.
+    setState(() {
+      _busyPhotoSlots.add(photoKey);
+      _busyPhotoLabels[photoKey] = 'Deleting $photoTitle...';
+    });
+
+    try {
+      if (_sitePhotos != null) {
+        widget.signals.repository.seedImagesCache(location.id, _sitePhotos!);
+      }
+
+      final success = await widget.signals.uploadLocationPhotos(
+        locationId: location.id,
+        location: location,
+        clearImage: photoKey == 'enc1',
+        clearImage2: photoKey == 'enc2',
+        clearReadingImage: photoKey == 'reading',
       );
-    } else {
-      ScaffoldMessenger.of(this.context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.signals.errorMessage.value ??
-                'Failed to delete photo. Please check your connection.',
+
+      if (!mounted) return;
+      if (success) {
+        final updatedPhotos = LcpNapImagesDto(
+          image: photoKey == 'enc1'
+              ? null
+              : _resolveSlotFileDto(
+                  currentDto: _sitePhotos?.image,
+                  fallbackLocationField: location.image,
+                  downloadName: 'image.jpg',
+                ),
+          image2: photoKey == 'enc2'
+              ? null
+              : _resolveSlotFileDto(
+                  currentDto: _sitePhotos?.image2,
+                  fallbackLocationField: location.image2,
+                  downloadName: 'image2.jpg',
+                ),
+          readingImage: photoKey == 'reading'
+              ? null
+              : _resolveSlotFileDto(
+                  currentDto: _sitePhotos?.readingImage,
+                  fallbackLocationField: location.readingImage,
+                  downloadName: 'readingImage.jpg',
+                ),
+        );
+        setState(() => _sitePhotos = updatedPhotos);
+        await _loadSitePhotos(forceRefresh: true, silent: true);
+        if (!mounted) return;
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded,
+                    color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('$photoTitle deleted successfully!'),
+                ),
+              ],
+            ),
+            backgroundColor: AppTheme.success,
+            behavior: SnackBarBehavior.floating,
           ),
-          backgroundColor: AppTheme.danger,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+        );
+      } else {
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.signals.errorMessage.value ??
+                  'Failed to delete photo. Please check your connection.',
+            ),
+            backgroundColor: AppTheme.danger,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busyPhotoSlots.remove(photoKey);
+          _busyPhotoLabels.remove(photoKey);
+        });
+      }
     }
   }
 
+  /*
   // Gene - Oct 29, 2026: Opens modal bottom sheet to capture and upload LCP NAP site enclosure and reading photos.
+  // Gene - Nov, 12, 2026: Commented out staging sheet helper in favor of 1-tap inline per-card upload (_captureAndUploadSlot).
   Future<void> _showUploadPhotosSheet(
     BuildContext context,
     LcpNapDto location,
   ) async {
-    /*
-    final updated = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _LcpNapUploadPhotosSheet(
-        location: location,
-        signals: widget.signals,
-        initialImages: _sitePhotos,
-        pickImageForTesting: widget.pickImageForTesting,
-      ),
-    );
-
-    if (updated == true) {
-      await _loadSitePhotos();
-      if (!mounted) return;
-    */
     // Gene - Nov, 8, 2026: Receive updated LcpNapImagesDto from upload sheet, apply immediately, and force-refresh from live server.
     final updated = await showModalBottomSheet<LcpNapImagesDto>(
       context: context,
@@ -1490,6 +2342,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
       );
     }
   }
+  */
 
   // Gene - Oct 31, 2026: Opens modal bottom sheet to map or update LCP NAP location coordinates.
   Future<void> _showLocationMappingSheet(
@@ -1572,6 +2425,8 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
   }
 }
 
+/*
+// Gene - Nov, 12, 2026: Commented out _LcpNapUploadPhotosSheet after replacing multi-step modal upload with 1-tap inline LcpNapPhotoSlotCard upload.
 // Gene - Oct 29, 2026: Modal bottom sheet for capturing and uploading LCP NAP site enclosure and reading photos.
 class _LcpNapUploadPhotosSheet extends StatefulWidget {
   final LcpNapDto location;
@@ -1935,3 +2790,4 @@ class _LcpNapUploadPhotosSheetState extends State<_LcpNapUploadPhotosSheet> {
     );
   }
 }
+*/
