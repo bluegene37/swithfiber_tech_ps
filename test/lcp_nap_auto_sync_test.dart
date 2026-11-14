@@ -783,7 +783,8 @@ void main() {
       expect(find.text('1 photos'), findsOneWidget);
       */
       // Gene - Nov, 12, 2026: Perform 1-tap inline photo upload directly on the standalone Enclosure Exterior card while offline.
-      await tester.ensureVisible(find.byKey(const ValueKey('btnTakePhoto_enc1')));
+      await tester
+          .ensureVisible(find.byKey(const ValueKey('btnTakePhoto_enc1')));
       await tester.pump();
       await tester.runAsync(() async {
         await tester.tap(find.byKey(const ValueKey('btnTakePhoto_enc1')));

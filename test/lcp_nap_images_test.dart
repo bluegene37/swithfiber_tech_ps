@@ -507,8 +507,8 @@ void main() {
       expect(find.text('0 of 3 photos'), findsOneWidget);
       expect(find.byKey(const ValueKey('btnTakePhoto_enc1')), findsOneWidget);
 
-      await tester.ensureVisible(
-          find.byKey(const ValueKey('btnTakePhoto_enc1')));
+      await tester
+          .ensureVisible(find.byKey(const ValueKey('btnTakePhoto_enc1')));
       await tester.pump();
       await tester.runAsync(() async {
         await tester.tap(find.byKey(const ValueKey('btnTakePhoto_enc1')));
@@ -598,8 +598,8 @@ void main() {
           find.byKey(const ValueKey('btnReplaceGallery_enc1')), findsOneWidget);
       expect(find.byKey(const ValueKey('btnDeletePhoto_enc1')), findsOneWidget);
 
-      await tester.ensureVisible(
-          find.byKey(const ValueKey('btnDeletePhoto_enc1')));
+      await tester
+          .ensureVisible(find.byKey(const ValueKey('btnDeletePhoto_enc1')));
       await tester.pump();
       await tester.runAsync(() async {
         await tester.tap(find.byKey(const ValueKey('btnDeletePhoto_enc1')));

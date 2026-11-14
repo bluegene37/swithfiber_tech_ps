@@ -1149,10 +1149,9 @@ class LcpNapRepository {
     final cleanLcpNap = (lcpNap != null && lcpNap.trim().isNotEmpty)
         ? lcpNap.trim()
         : '$cleanLcp $cleanNap'.trim();
-    final cleanCoords =
-        (coordinates != null && coordinates.trim().isNotEmpty)
-            ? coordinates.trim()
-            : null;
+    final cleanCoords = (coordinates != null && coordinates.trim().isNotEmpty)
+        ? coordinates.trim()
+        : null;
     final cleanStreet =
         (street != null && street.trim().isNotEmpty) ? street.trim() : null;
     final cleanBarangay = (barangay != null && barangay.trim().isNotEmpty)
@@ -1166,10 +1165,9 @@ class LcpNapRepository {
         (modifiedBy != null && modifiedBy.trim().isNotEmpty)
             ? modifiedBy.trim()
             : '1';
-    final resolvedUserEmail =
-        (userEmail != null && userEmail.trim().isNotEmpty)
-            ? userEmail.trim()
-            : null;
+    final resolvedUserEmail = (userEmail != null && userEmail.trim().isNotEmpty)
+        ? userEmail.trim()
+        : null;
 
     final nowUtc = DateTime.now().toUtc();
     final nowIso = nowUtc.toIso8601String();
@@ -1326,11 +1324,10 @@ class LcpNapRepository {
       final savedImg2 = (image2Bytes != null && image2Bytes.isNotEmpty)
           ? await _persistPhotoSlotLocally(tempId, 'enc2', image2Bytes)
           : null;
-      final savedReading =
-          (readingImageBytes != null && readingImageBytes.isNotEmpty)
-              ? await _persistPhotoSlotLocally(
-                  tempId, 'reading', readingImageBytes)
-              : null;
+      final savedReading = (readingImageBytes != null &&
+              readingImageBytes.isNotEmpty)
+          ? await _persistPhotoSlotLocally(tempId, 'reading', readingImageBytes)
+          : null;
 
       final offlineDto = LcpNapDto(
         id: tempId,

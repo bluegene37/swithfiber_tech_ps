@@ -97,8 +97,9 @@ class _LcpCabinetPickerSheetState extends State<LcpCabinetPickerSheet> {
     final hasExactMatch = realCabinets.any(
       (c) => c.trim().toLowerCase() == normalizedQuery,
     );
-    final showCustomEntry =
-        widget.allowCustomCabinet && normalizedQuery.isNotEmpty && !hasExactMatch;
+    final showCustomEntry = widget.allowCustomCabinet &&
+        normalizedQuery.isNotEmpty &&
+        !hasExactMatch;
     final customValue = _query.trim().toUpperCase();
     final showAllRow = widget.includeAllOption && normalizedQuery.isEmpty;
 

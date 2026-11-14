@@ -972,8 +972,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
               width: double.infinity,
               child: tiles == null
                   ? const Center(
-                      child:
-                          CircularProgressIndicator(color: AppTheme.primary))
+                      child: CircularProgressIndicator(color: AppTheme.primary))
                   : FlutterMap(
                       key: ValueKey(
                           'minimap_${location.id}_${location.coordinates}'),
@@ -1081,8 +1080,8 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
                             );
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(
-                                    'Copied: ${location.coordinates}'),
+                                content:
+                                    Text('Copied: ${location.coordinates}'),
                                 behavior: SnackBarBehavior.floating,
                                 backgroundColor: isDark
                                     ? AppTheme.darkCard

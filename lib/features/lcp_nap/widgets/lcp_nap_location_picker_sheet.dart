@@ -412,7 +412,9 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
     final parsed = _parsedLatLng;
     final rawCoords = _coordinatesController.text.trim();
 
-    if ((!widget.isCreateMode && !widget.allowEmptyCoordinates && parsed == null) ||
+    if ((!widget.isCreateMode &&
+            !widget.allowEmptyCoordinates &&
+            parsed == null) ||
         (rawCoords.isNotEmpty && parsed == null)) {
       setState(() {
         _errorMessage =
@@ -622,8 +624,7 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
                           icon: const Icon(Icons.arrow_drop_down_rounded),
                           onPressed: () async {
                             FocusScope.of(context).unfocus();
-                            final selectedLcp =
-                                await showLcpCabinetPickerSheet(
+                            final selectedLcp = await showLcpCabinetPickerSheet(
                               context: context,
                               cabinets: existingLcps,
                               napCounts: napCounts,
@@ -785,7 +786,8 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
             // Gene - Nov, 12, 2026: Removed prohibited VisualDensity.compact and ensured 48dp minimum gloved-thumb target per DESIGN.md.
             for (final count in _standardPortCounts)
               ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: AppTheme.minTarget),
+                constraints:
+                    const BoxConstraints(minHeight: AppTheme.minTarget),
                 child: ChoiceChip(
                   key: ValueKey('chipPort_$count'),
                   label: Text('$count Ports'),
