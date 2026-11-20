@@ -73,6 +73,12 @@ class JobOrderDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Gene - Nov, 20, 2026: Ensure opening JobOrderDetailScreen directly marks the job as read safely after the current frame.
+    if (!readOnly && !jobsSignals.isJobReadPeek(jobId)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        jobsSignals.markJobAsRead(jobId);
+      });
+    }
 
     return SignalBuilder(
       builder: (context) {

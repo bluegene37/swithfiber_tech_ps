@@ -2,9 +2,12 @@ import 'dart:async';
 // Gene - Oct 3, 2026: Commented out unused services.dart import now that sound and haptics are encapsulated in SoundService.
 // import 'package:flutter/services.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+// Gene - Nov, 20, 2026: Added app_constants and secure_storage_service imports for persisting read service order IDs.
+import '../../../core/constants/app_constants.dart';
 import '../../../core/services/sound_service.dart';
 import '../../../core/database/daos/service_orders_dao.dart';
 import '../../../core/services/photo_storage_service.dart';
+import '../../../core/storage/secure_storage_service.dart';
 import '../models/service_order_model.dart';
 import '../services/service_orders_api.dart';
 import '../services/service_orders_sync_worker.dart';
@@ -48,12 +51,31 @@ class ServiceOrdersSignals {
   final void Function(ServiceOrderDto order)? onNewOrderAlert;
 
   StreamSubscription<List<ServiceOrderDto>>? _driftSubscription;
+  // Gene - Nov, 20, 2026: Added storage dependency for persisting read service order IDs across restarts.
+  final SecureStorageService _storage;
 
+  /*
   ServiceOrdersSignals({
     ServiceOrdersApi? api,
     this.dao,
     this.onNewOrderAlert,
   }) : api = api ?? ServiceOrdersApi() {
+    if (dao != null) {
+      syncWorker = ServiceOrdersSyncWorker(dao!, api: this.api);
+      _initDriftStream();
+    } else {
+      syncWorker = null;
+    }
+  }
+  */
+  // Gene - Nov, 20, 2026: Added optional storage parameter to constructor for read/unread badge persistence and testing.
+  ServiceOrdersSignals({
+    ServiceOrdersApi? api,
+    this.dao,
+    this.onNewOrderAlert,
+    SecureStorageService? storage,
+  })  : api = api ?? ServiceOrdersApi(),
+        _storage = storage ?? SecureStorageService.instance {
     if (dao != null) {
       syncWorker = ServiceOrdersSyncWorker(dao!, api: this.api);
       _initDriftStream();
@@ -68,6 +90,10 @@ class ServiceOrdersSignals {
   bool _hasInitialSnapshot = false;
   final Set<int> _knownOrderIds = <int>{};
   final Set<int> _myAssignedOrderIds = <int>{};
+
+  // Gene - Nov, 20, 2026: Track read service order IDs per technician session so Repairs bubble only counts unread tickets.
+  final readOrderIds = signal<Set<int>>(<int>{});
+  int _readLoadEpoch = 0;
 
   void _initDriftStream() {
     if (dao == null) return;
@@ -107,7 +133,16 @@ class ServiceOrdersSignals {
             !_myAssignedOrderIds.contains(order.id) &&
             matchesTech;
 
+        /*
         if (order.isOpen && matchesTech && (isNewSynced || isNewlyAssigned)) {
+          newOpenOrders.add(order);
+        }
+        */
+        // Gene - Nov, 20, 2026: Ensure newly reassigned open service orders reset back to unread (NEW) when re-entering the technician queue.
+        if (order.isOpen && matchesTech && (isNewSynced || isNewlyAssigned)) {
+          if (isNewlyAssigned) {
+            markOrderAsUnread(order.id);
+          }
           newOpenOrders.add(order);
         }
 
@@ -160,6 +195,7 @@ class ServiceOrdersSignals {
   }
 
   /// Scopes the service orders to technician and resets alert snapshot caches if changed
+  /*
   void setTechnicianEmail(String? email) {
     if (technicianEmail.value != email) {
       _hasInitialSnapshot = false;
@@ -168,6 +204,29 @@ class ServiceOrdersSignals {
       newOrderAlert.value = null;
     }
     technicianEmail.value = email;
+  }
+  */
+  // Gene - Nov, 20, 2026: Restore and scope persisted read service order IDs whenever the normalized technician email changes.
+  void setTechnicianEmail(String? email) {
+    final previousNormalized = technicianEmail.value?.trim().toLowerCase();
+    final nextNormalized = email?.trim().toLowerCase();
+    if (technicianEmail.value != email) {
+      _hasInitialSnapshot = false;
+      _knownOrderIds.clear();
+      _myAssignedOrderIds.clear();
+      newOrderAlert.value = null;
+    }
+    technicianEmail.value = email;
+    if (previousNormalized != nextNormalized) {
+      if (previousNormalized != null && previousNormalized.isNotEmpty) {
+        readOrderIds.value = <int>{};
+      }
+      if (nextNormalized == null || nextNormalized.isEmpty) {
+        _readLoadEpoch++;
+      } else {
+        unawaited(restoreReadIds());
+      }
+    }
   }
 
   void dispose() {
@@ -201,6 +260,70 @@ class ServiceOrdersSignals {
   /// Total count of service orders visible to technician
   late final ReadonlySignal<int> totalCount =
       computed(() => filteredOrders.value.length);
+
+  // Gene - Nov, 20, 2026: Count only unread open service orders scoped to the technician for the Repairs navigation bubble and launcher badge.
+  late final ReadonlySignal<int> unreadCount = computed(() {
+    final read = readOrderIds.value;
+    final onlyMe = onlyAssignedToMe.value;
+    final email = technicianEmail.value?.trim();
+    return allOrders.value.where((order) {
+      if (!order.isOpen) return false;
+      if (onlyMe &&
+          (email != null && email.isNotEmpty) &&
+          !order.isAssignedTo(email)) {
+        return false;
+      }
+      return !read.contains(order.id);
+    }).length;
+  });
+
+  // Gene - Nov, 20, 2026: Helpers to inspect, mutate, and persist read/unread status for service orders.
+  String _readStorageKey([String? email]) {
+    final normalized = (email ?? technicianEmail.value)?.trim().toLowerCase();
+    if (normalized == null || normalized.isEmpty) {
+      return AppConstants.keyReadServiceOrderIds;
+    }
+    return '${AppConstants.keyReadServiceOrderIds}_$normalized';
+  }
+
+  bool isOrderRead(int orderId) => readOrderIds.value.contains(orderId);
+
+  bool isOrderReadPeek(int orderId) => readOrderIds.peek().contains(orderId);
+
+  bool isOrderUnread(ServiceOrderDto order) =>
+      order.isOpen && !readOrderIds.value.contains(order.id);
+
+  void markOrderAsRead(int orderId) {
+    final current = readOrderIds.peek();
+    if (current.contains(orderId)) return;
+    final updated = {...current, orderId};
+    readOrderIds.value = updated;
+    unawaited(_storage.writeIntSet(_readStorageKey(), updated));
+  }
+
+  void markOrderAsUnread(int orderId) {
+    final current = readOrderIds.peek();
+    if (!current.contains(orderId)) return;
+    final updated = {...current}..remove(orderId);
+    readOrderIds.value = updated;
+    unawaited(_storage.writeIntSet(_readStorageKey(), updated));
+  }
+
+  Future<void> restoreReadIds() async {
+    final epoch = ++_readLoadEpoch;
+    final key = _readStorageKey();
+    final stored = await _storage.readIntSet(key);
+    if (epoch != _readLoadEpoch) return;
+    if (stored.isEmpty) return;
+    final current = readOrderIds.peek();
+    final merged = {...stored, ...current};
+    if (merged.length != current.length) {
+      readOrderIds.value = merged;
+    }
+    if (current.any((id) => !stored.contains(id))) {
+      unawaited(_storage.writeIntSet(key, merged));
+    }
+  }
 
   /// Urgent service orders count
   late final ReadonlySignal<int> urgentCount =

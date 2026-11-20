@@ -2,7 +2,10 @@ import 'dart:async';
 // Gene - Oct 3, 2026: Commented out unused services.dart import now that sound and haptics are encapsulated in SoundService.
 // import 'package:flutter/services.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+// Gene - Nov, 20, 2026: Added app_constants and secure_storage_service imports for persisting read job IDs.
+import '../../../core/constants/app_constants.dart';
 import '../../../core/services/sound_service.dart';
+import '../../../core/storage/secure_storage_service.dart';
 import '../../../core/widgets/loading_states.dart';
 import '../models/job_order_images_model.dart';
 import '../models/job_order_model.dart';
@@ -44,12 +47,26 @@ class JobsSignals {
   final void Function(JobOrderDto job)? onNewJobAlert;
 
   StreamSubscription<List<JobOrderDto>>? _driftSubscription;
+  // Gene - Nov, 20, 2026: Added storage dependency for persisting read job order IDs across restarts.
+  final SecureStorageService _storage;
 
+  /*
   JobsSignals(
     this.repository, {
     DateTime Function()? clock,
     this.onNewJobAlert,
   }) : clock = clock ?? DateTime.now {
+    _initDriftStream();
+  }
+  */
+  // Gene - Nov, 20, 2026: Added optional storage parameter to constructor for read/unread badge persistence and testing.
+  JobsSignals(
+    this.repository, {
+    DateTime Function()? clock,
+    this.onNewJobAlert,
+    SecureStorageService? storage,
+  })  : clock = clock ?? DateTime.now,
+        _storage = storage ?? SecureStorageService.instance {
     _initDriftStream();
   }
 
@@ -75,6 +92,10 @@ class JobsSignals {
   bool _hasInitialSnapshot = false;
   final Set<int> _knownJobIds = <int>{};
   final Set<int> _myAssignedJobIds = <int>{};
+
+  // Gene - Nov, 20, 2026: Track read job IDs per technician session so navigation bubbles only count unread dispatches.
+  final readJobIds = signal<Set<int>>(<int>{});
+  int _readLoadEpoch = 0;
 
   // Technician history: activated jobs whose assignedEmail matches the
   // signed-in technician, with their own date, area and search filters so the
@@ -134,6 +155,62 @@ class JobsSignals {
   // Gene - Oct 3, 2026: Exclude inProgress from scheduledCount per user request so only strictly scheduled jobs are counted in Today queue badge and summary.
   late final ReadonlySignal<int> scheduledCount =
       computed(() => _countOf(JobStatus.scheduled));
+
+  // Gene - Nov, 20, 2026: Count only unread scheduled jobs for the Today navigation bubble and app launcher badge.
+  late final ReadonlySignal<int> unreadScheduledCount = computed(() {
+    final read = readJobIds.value;
+    return allJobs.value
+        .where((j) => j.jobStatus == JobStatus.scheduled && !read.contains(j.id))
+        .length;
+  });
+
+  // Gene - Nov, 20, 2026: Helpers to inspect, mutate, and persist read/unread status for scheduled job orders.
+  String _readStorageKey([String? email]) {
+    final normalized = (email ?? technicianEmail.value)?.trim().toLowerCase();
+    if (normalized == null || normalized.isEmpty) {
+      return AppConstants.keyReadJobIds;
+    }
+    return '${AppConstants.keyReadJobIds}_$normalized';
+  }
+
+  bool isJobRead(int jobId) => readJobIds.value.contains(jobId);
+
+  bool isJobReadPeek(int jobId) => readJobIds.peek().contains(jobId);
+
+  bool isJobUnread(JobOrderDto job) =>
+      job.jobStatus == JobStatus.scheduled && !readJobIds.value.contains(job.id);
+
+  void markJobAsRead(int jobId) {
+    final current = readJobIds.peek();
+    if (current.contains(jobId)) return;
+    final updated = {...current, jobId};
+    readJobIds.value = updated;
+    unawaited(_storage.writeIntSet(_readStorageKey(), updated));
+  }
+
+  void markJobAsUnread(int jobId) {
+    final current = readJobIds.peek();
+    if (!current.contains(jobId)) return;
+    final updated = {...current}..remove(jobId);
+    readJobIds.value = updated;
+    unawaited(_storage.writeIntSet(_readStorageKey(), updated));
+  }
+
+  Future<void> restoreReadIds() async {
+    final epoch = ++_readLoadEpoch;
+    final key = _readStorageKey();
+    final stored = await _storage.readIntSet(key);
+    if (epoch != _readLoadEpoch) return;
+    if (stored.isEmpty) return;
+    final current = readJobIds.peek();
+    final merged = {...stored, ...current};
+    if (merged.length != current.length) {
+      readJobIds.value = merged;
+    }
+    if (current.any((id) => !stored.contains(id))) {
+      unawaited(_storage.writeIntSet(key, merged));
+    }
+  }
 
   late final ReadonlySignal<int> activatedCount =
       computed(() => _countOf(JobStatus.activated));
@@ -302,7 +379,16 @@ class JobsSignals {
             !_myAssignedJobIds.contains(job.id) &&
             matchesTech;
 
+        /*
         if (job.isOpen && matchesTech && (isNewSynced || isNewlyAssigned)) {
+          newOpenJobs.add(job);
+        }
+        */
+        // Gene - Nov, 20, 2026: Ensure newly reassigned open jobs reset back to unread (NEW) when re-entering the technician queue.
+        if (job.isOpen && matchesTech && (isNewSynced || isNewlyAssigned)) {
+          if (isNewlyAssigned) {
+            markJobAsUnread(job.id);
+          }
           newOpenJobs.add(job);
         }
 
@@ -406,6 +492,7 @@ class JobsSignals {
   }
 
   /// The signed-in technician's email, which scopes the job history.
+  /*
   void setTechnicianEmail(String? email) {
     if (technicianEmail.value != email) {
       _hasInitialSnapshot = false;
@@ -414,6 +501,29 @@ class JobsSignals {
       newJobAlert.value = null;
     }
     technicianEmail.value = email;
+  }
+  */
+  // Gene - Nov, 20, 2026: Restore and scope persisted read job IDs whenever the normalized technician email changes.
+  void setTechnicianEmail(String? email) {
+    final previousNormalized = technicianEmail.value?.trim().toLowerCase();
+    final nextNormalized = email?.trim().toLowerCase();
+    if (technicianEmail.value != email) {
+      _hasInitialSnapshot = false;
+      _knownJobIds.clear();
+      _myAssignedJobIds.clear();
+      newJobAlert.value = null;
+    }
+    technicianEmail.value = email;
+    if (previousNormalized != nextNormalized) {
+      if (previousNormalized != null && previousNormalized.isNotEmpty) {
+        readJobIds.value = <int>{};
+      }
+      if (nextNormalized == null || nextNormalized.isEmpty) {
+        _readLoadEpoch++;
+      } else {
+        unawaited(restoreReadIds());
+      }
+    }
   }
 
   /// Apply a date window. [start] and [end] (inclusive dates) are only used

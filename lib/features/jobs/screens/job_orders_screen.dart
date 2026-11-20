@@ -97,7 +97,36 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
     super.dispose();
   }
 
+  /*
   void _openDetails(JobOrderDto job) {
+    if (widget.onSelectJobForDetails != null) {
+      widget.onSelectJobForDetails!(job);
+      return;
+    }
+
+    final isTablet = MediaQuery.sizeOf(context).width >= 768;
+    if (isTablet) {
+      setState(() => _selectedJobId = job.id);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => JobOrderDetailScreen(
+          jobId: job.id,
+          jobsSignals: widget.jobsSignals,
+          lcpNapSignals: widget.lcpNapSignals,
+          onOpenReport: widget.onSelectJobForReport,
+          readOnly: _showDone,
+        ),
+      ),
+    );
+  }
+  */
+  // Gene - Nov, 20, 2026: Mark job order as read whenever its details are opened from the list, tablet pane, or map.
+  void _openDetails(JobOrderDto job) {
+    widget.jobsSignals.markJobAsRead(job.id);
     if (widget.onSelectJobForDetails != null) {
       widget.onSelectJobForDetails!(job);
       return;
@@ -143,6 +172,7 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
     );
   }
   */
+  /*
   // Gene - Oct 13, 2026: Guarded _openReport so rescheduled jobs cannot open the report screen or modify records.
   void _openReport(JobOrderDto job) {
     // Gene - Nov 07, 2026: Wrapped single-line if statement in curly braces for linter compliance (curly_braces_in_flow_control_structures).
@@ -151,6 +181,29 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
     if (job.isRescheduled || job.siteException == SiteException.reschedule) {
       return;
     }
+    if (widget.onSelectJobForReport != null) {
+      widget.onSelectJobForReport!(job);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateReportScreen(
+          jobsSignals: widget.jobsSignals,
+          reportSignals: ReportSignals()..setJobOrder(job),
+          onReportSubmitted: () => Navigator.of(context).maybePop(),
+        ),
+      ),
+    );
+  }
+  */
+  // Gene - Nov, 20, 2026: Mark job order as read when opening its completion report via the trailing shortcut.
+  void _openReport(JobOrderDto job) {
+    if (job.isRescheduled || job.siteException == SiteException.reschedule) {
+      return;
+    }
+    widget.jobsSignals.markJobAsRead(job.id);
     if (widget.onSelectJobForReport != null) {
       widget.onSelectJobForReport!(job);
       return;
@@ -462,6 +515,8 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
       builder: (context) {
         final jobs = signals.filteredJobs.value;
         final phase = signals.loadPhase.value;
+        // Gene - Nov, 20, 2026: Subscribe to readJobIds so NEW tags and unread counts clear immediately when items are clicked or opened.
+        final readJobIds = signals.readJobIds.value;
 
         if (phase == DataLoadPhase.downloading) {
           return const DownloadingIndicator(
@@ -611,8 +666,19 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
                     count: bgyMap[bgy]!.length,
                   ),
                   for (final job in bgyMap[bgy]!) ...[
+                    /*
                     _JobRow(
                       job: job,
+                      onTap: () => _openDetails(job),
+                      onOpenReport: () => _openReport(job),
+                    ),
+                    */
+                    // Gene - Nov, 20, 2026: Pass unread NEW state and read-marking callback to _JobRow in Barangay view.
+                    _JobRow(
+                      job: job,
+                      isNew: job.jobStatus == JobStatus.scheduled &&
+                          !readJobIds.contains(job.id),
+                      onMarkRead: () => signals.markJobAsRead(job.id),
                       onTap: () => _openDetails(job),
                       onOpenReport: () => _openReport(job),
                     ),
@@ -657,8 +723,19 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
                           count: bgyMap[bgy]!.length,
                         ),
                       for (final job in bgyMap[bgy]!) ...[
+                        /*
                         _JobRow(
                           job: job,
+                          onTap: () => _openDetails(job),
+                          onOpenReport: () => _openReport(job),
+                        ),
+                        */
+                        // Gene - Nov, 20, 2026: Pass unread NEW state and read-marking callback to _JobRow in Date view.
+                        _JobRow(
+                          job: job,
+                          isNew: job.jobStatus == JobStatus.scheduled &&
+                              !readJobIds.contains(job.id),
+                          onMarkRead: () => signals.markJobAsRead(job.id),
                           onTap: () => _openDetails(job),
                           onOpenReport: () => _openReport(job),
                         ),
@@ -949,12 +1026,29 @@ class _JobRow extends StatelessWidget {
 */
 // Gene - Oct 6, 2026: Made _JobRow expandable so secondary details (address, plant, contact, actions) are collapsed by default and toggleable via trailing chevron button.
 // Gene - Oct 13, 2026: Added onOpenReport callback to trigger direct completion report creation from trailing shortcut.
+/*
 class _JobRow extends StatefulWidget {
   final JobOrderDto job;
   final VoidCallback onTap;
   final VoidCallback? onOpenReport;
 
   const _JobRow({required this.job, required this.onTap, this.onOpenReport});
+*/
+// Gene - Nov, 20, 2026: Added isNew and onMarkRead properties to _JobRow for unread NEW badge display and click-to-read tracking.
+class _JobRow extends StatefulWidget {
+  final JobOrderDto job;
+  final bool isNew;
+  final VoidCallback? onMarkRead;
+  final VoidCallback onTap;
+  final VoidCallback? onOpenReport;
+
+  const _JobRow({
+    required this.job,
+    this.isNew = false,
+    this.onMarkRead,
+    required this.onTap,
+    this.onOpenReport,
+  });
 
   /// A plant value the server left blank or wrote as "0" is unassigned.
   static String? _assigned(String? raw) {
@@ -972,6 +1066,12 @@ class _JobRow extends StatefulWidget {
 
 class _JobRowState extends State<_JobRow> {
   bool _isExpanded = false;
+
+  // Gene - Nov, 20, 2026: Mark job as read when its list card or expand chevron is tapped.
+  void _toggleExpanded() {
+    widget.onMarkRead?.call();
+    setState(() => _isExpanded = !_isExpanded);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1110,7 +1210,9 @@ class _JobRowState extends State<_JobRow> {
           color: AppTheme.secondaryInkOf(context),
         ),
         tooltip: _isExpanded ? 'Collapse details' : 'Expand details',
-        onPressed: () => setState(() => _isExpanded = !_isExpanded),
+        // Gene - Nov, 20, 2026: Use _toggleExpanded so chevron tap also marks the job as read.
+        // onPressed: () => setState(() => _isExpanded = !_isExpanded),
+        onPressed: _toggleExpanded,
       ),
       /*
       trailing: Tooltip(
@@ -1175,7 +1277,10 @@ class _JobRowState extends State<_JobRow> {
             )
           : null,
       statusLabel: label,
-      onTap: () => setState(() => _isExpanded = !_isExpanded),
+      // Gene - Nov, 20, 2026: Pass isNew flag to StatusRailRow and mark job as read on card tap.
+      isNew: widget.isNew,
+      // onTap: () => setState(() => _isExpanded = !_isExpanded),
+      onTap: _toggleExpanded,
 /*
       actions: _isExpanded
           ? [
@@ -1202,6 +1307,7 @@ class _JobRowState extends State<_JobRow> {
             ]
           : null,
 */
+/*
       // Gene - Oct 13, 2026: Always show action buttons at the bottom of the card/list item, decoupled from expand/collapse.
       actions: [
         StatusRailAction(
@@ -1218,6 +1324,39 @@ class _JobRowState extends State<_JobRow> {
           icon: Icons.sms_rounded,
           label: 'SMS',
           onTap: () => smsJob(context, job),
+        ),
+        StatusRailAction(
+          icon: Icons.assignment_outlined,
+          label: 'Details',
+          onTap: widget.onTap,
+        ),
+      ],
+*/
+      // Gene - Nov, 20, 2026: Mark job as read when interacting with any footer action (Navigate, Call, SMS, or Details).
+      actions: [
+        StatusRailAction(
+          icon: Icons.navigation_rounded,
+          label: 'Navigate',
+          onTap: () {
+            widget.onMarkRead?.call();
+            navigateToJob(job);
+          },
+        ),
+        StatusRailAction(
+          icon: Icons.call_rounded,
+          label: 'Call',
+          onTap: () {
+            widget.onMarkRead?.call();
+            callJob(context, job);
+          },
+        ),
+        StatusRailAction(
+          icon: Icons.sms_rounded,
+          label: 'SMS',
+          onTap: () {
+            widget.onMarkRead?.call();
+            smsJob(context, job);
+          },
         ),
         StatusRailAction(
           icon: Icons.assignment_outlined,

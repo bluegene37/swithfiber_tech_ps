@@ -91,6 +91,12 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
     // or overwrite a choice made while it was in flight.
     _selectedRouterModel = _initialRouterModel(_availableRouters);
     _loadCatalog();
+    // Gene - Nov, 20, 2026: Ensure opening ServiceOrderDetailScreen directly marks the order as read safely after the current frame.
+    if (!widget.signals.isOrderReadPeek(widget.orderId)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.signals.markOrderAsRead(widget.orderId);
+      });
+    }
   }
 
   ServiceOrderDto? _findOrder() {

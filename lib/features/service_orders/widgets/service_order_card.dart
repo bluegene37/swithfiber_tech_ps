@@ -1,5 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+// Gene - Nov, 20, 2026: Added signals_flutter import for reactive unread NEW tag display on ServiceOrderCard.
+import 'package:signals_flutter/signals_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/map_navigation_service.dart';
@@ -60,7 +62,21 @@ class ServiceOrderCard extends StatelessWidget {
           Material(
             color: Colors.transparent,
             child: InkWell(
+              /*
               onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ServiceOrderDetailScreen(
+                      orderId: order.id,
+                      signals: signals,
+                    ),
+                  ),
+                );
+              },
+              */
+              // Gene - Nov, 20, 2026: Mark service order as read when card is tapped before opening details.
+              onTap: () {
+                signals.markOrderAsRead(order.id);
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => ServiceOrderDetailScreen(
@@ -76,6 +92,7 @@ class ServiceOrderCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Top Row: Monospace Ticket HUD, Concern Pill & Urgent / Distance
+                    /*
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -186,6 +203,157 @@ class ServiceOrderCard extends StatelessWidget {
                           ),
                         ],
                       ],
+                    ),
+                    */
+                    // Gene - Nov, 20, 2026: Wrap top header row in SignalBuilder to display NEW tag on unread open service orders and clear it immediately when read.
+                    SignalBuilder(
+                      builder: (context) {
+                        final isNew =
+                            order.isOpen && !signals.isOrderRead(order.id);
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 8,
+                                runSpacing: 4,
+                                children: [
+                                  Text(
+                                    'SO-${order.id.toString().padLeft(4, '0')}',
+                                    style: context.text.labelMedium!.copyWith(
+                                      fontFamily: 'JetBrains Mono',
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.5,
+                                      color: AppTheme.brandInkOf(context),
+                                    ),
+                                  ),
+                                  if (!order.isSynced)
+                                    const Icon(
+                                      CupertinoIcons.cloud_upload,
+                                      size: 18,
+                                      color: AppTheme.warning,
+                                    ),
+                                  if (isNew)
+                                    Container(
+                                      key: ValueKey(
+                                          'service_order_new_tag_${order.id}'),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: isDark
+                                            ? const Color(0xFF33260F)
+                                            : AppTheme.warningSubtle,
+                                        borderRadius: BorderRadius.circular(
+                                            AppTheme.radiusStamp),
+                                        border: Border.all(
+                                          color: AppTheme.warningInkOf(context)
+                                              .withValues(alpha: 0.45),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'NEW',
+                                        style:
+                                            context.text.labelSmall!.copyWith(
+                                          color: AppTheme.warningInkOf(context),
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.6,
+                                        ),
+                                      ),
+                                    ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: isDark
+                                          ? AppTheme.primarySubtleBgDark
+                                          : AppTheme.primarySubtleBg,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: isDark
+                                            ? AppTheme.primarySubtleBorderDark
+                                            : AppTheme.primarySubtleBorder,
+                                        width: 0.5,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          order.concern
+                                                  .toLowerCase()
+                                                  .contains('pullout')
+                                              ? CupertinoIcons
+                                                  .arrow_right_arrow_left
+                                              : CupertinoIcons.wrench_fill,
+                                          size: 20,
+                                          color: AppTheme.primary,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Flexible(
+                                          child: Text(
+                                            order.concern,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: context.text.labelSmall!
+                                                .copyWith(
+                                              fontWeight: FontWeight.w600,
+                                              color:
+                                                  AppTheme.brandInkOf(context),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (!isUrgent && distanceStr != null)
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          CupertinoIcons.location_solid,
+                                          size: 20,
+                                          color:
+                                              AppTheme.secondaryInkOf(context),
+                                        ),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          distanceStr,
+                                          style:
+                                              context.text.labelSmall!.copyWith(
+                                            color: AppTheme.secondaryInkOf(
+                                                context),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                ],
+                              ),
+                            ),
+                            if (isUrgent) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.danger,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  'URGENT',
+                                  style: context.text.labelSmall!.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        );
+                      },
                     ),
                     const SizedBox(height: 10),
 
@@ -353,7 +521,25 @@ class ServiceOrderCard extends StatelessWidget {
                     child: StatusRailAction(
                       icon: Icons.navigation_rounded,
                       label: 'Navigate',
+                      /*
                       onTap: () async {
+                        final latLng = order.latLng;
+                        if (latLng != null) {
+                          await MapNavigationService.navigateTo(
+                            latLng,
+                            label: order.fullName,
+                          );
+                        } else {
+                          final fullAddr =
+                              '${order.address}${order.barangay != null ? ", ${order.barangay}" : ""}${order.city != null ? ", ${order.city}" : ""}, Philippines';
+                          await MapNavigationService.navigateToAddress(
+                              fullAddr);
+                        }
+                      },
+                      */
+                      // Gene - Nov, 20, 2026: Mark service order as read when Navigate action is tapped.
+                      onTap: () async {
+                        signals.markOrderAsRead(order.id);
                         final latLng = order.latLng;
                         if (latLng != null) {
                           await MapNavigationService.navigateTo(
@@ -374,9 +560,22 @@ class ServiceOrderCard extends StatelessWidget {
                     child: StatusRailAction(
                       icon: Icons.call_rounded,
                       label: 'Call',
+                      /*
                       onTap: order.contactNumber.isEmpty
                           ? null
                           : () async {
+                              final uri =
+                                  Uri.parse('tel:${order.contactNumber}');
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri);
+                              }
+                            },
+                      */
+                      // Gene - Nov, 20, 2026: Mark service order as read when Call action is tapped.
+                      onTap: order.contactNumber.isEmpty
+                          ? null
+                          : () async {
+                              signals.markOrderAsRead(order.id);
                               final uri =
                                   Uri.parse('tel:${order.contactNumber}');
                               if (await canLaunchUrl(uri)) {

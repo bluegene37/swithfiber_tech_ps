@@ -33,6 +33,9 @@ class AppConstants {
   static const String keyApiBaseUrl = 'api_base_url';
   static const String keyDarkMode = 'dark_mode_enabled';
   static const String keyPowerSyncToken = 'powersync_token';
+  // Gene - Nov, 20, 2026: Added local storage keys for tracking read Job Orders and Service Orders across restarts.
+  static const String keyReadJobIds = 'read_job_order_ids';
+  static const String keyReadServiceOrderIds = 'read_service_order_ids';
 
   // PowerSync Self-Hosted Server Config
   static const String defaultPowerSyncEndpoint = 'http://103.249.198.50:8080';

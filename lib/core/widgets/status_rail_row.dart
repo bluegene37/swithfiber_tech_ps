@@ -29,6 +29,8 @@ class StatusRailRow extends StatelessWidget {
   /// contact line with its copy button on a job card.
   final Widget? extra;
   final String statusLabel;
+  // Gene - Nov, 20, 2026: Added isNew flag to surface an unread NEW tag alongside the status label.
+  final bool isNew;
   final Widget? trailing;
   // Gene - Oct 13, 2026: Added expandToggle widget placed on the card body before the partitioned trailing divider.
   final Widget? expandToggle;
@@ -56,6 +58,7 @@ class StatusRailRow extends StatelessWidget {
     this.actions,
   });
   */
+  /*
   // Gene - Oct 13, 2026: Added expandToggle to StatusRailRow constructor.
   const StatusRailRow({
     super.key,
@@ -68,6 +71,25 @@ class StatusRailRow extends StatelessWidget {
     this.footnote,
     this.extra,
     required this.statusLabel,
+    this.trailing,
+    this.expandToggle,
+    this.onTap,
+    this.actions,
+  });
+  */
+  // Gene - Nov, 20, 2026: Added isNew parameter (default false) to StatusRailRow constructor.
+  const StatusRailRow({
+    super.key,
+    this.leading,
+    required this.railColor,
+    this.statusInk,
+    required this.title,
+    this.subtitle,
+    this.data,
+    this.footnote,
+    this.extra,
+    required this.statusLabel,
+    this.isNew = false,
     this.trailing,
     this.expandToggle,
     this.onTap,
@@ -379,10 +401,60 @@ class StatusRailRow extends StatelessWidget {
                                             extra!,
                                           ],
                                           const SizedBox(height: 6),
+                                          /*
                                           Text(
                                             statusLabel.toUpperCase(),
                                             style: context.text.labelMedium!
                                                 .copyWith(color: wordInk),
+                                          ),
+                                          */
+                                          // Gene - Nov, 20, 2026: Show NEW tag beside the status word for unread items and wrap cleanly at large text scales.
+                                          Wrap(
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
+                                            spacing: 8,
+                                            runSpacing: 4,
+                                            children: [
+                                              Text(
+                                                statusLabel.toUpperCase(),
+                                                style: context.text.labelMedium!
+                                                    .copyWith(color: wordInk),
+                                              ),
+                                              if (isNew)
+                                                Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: AppTheme
+                                                        .primarySubtleBgOf(
+                                                            context),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            AppTheme
+                                                                .radiusStamp),
+                                                    border: Border.all(
+                                                      color: AppTheme
+                                                          .primarySubtleBorderOf(
+                                                              context),
+                                                      width: 1,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    'NEW',
+                                                    style: context
+                                                        .text.labelSmall!
+                                                        .copyWith(
+                                                      color: AppTheme
+                                                          .brandInkOf(context),
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      letterSpacing: 0.6,
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
                                           ),
                                         ],
                                       ),

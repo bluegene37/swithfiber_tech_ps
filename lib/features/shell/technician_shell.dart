@@ -205,12 +205,21 @@ class _TechnicianShellState extends State<TechnicianShell>
       }
     });
 
+    /*
     // Gene - Oct 3, 2026: Synchronize launcher icon badge count with total active open work (scheduled jobs + repair service orders).
     _disposeBadgeEffect = effect(() {
       final scheduled = widget.jobsSignals.scheduledCount.value;
       final repairs = _serviceOrdersSignals.totalCount.value;
       final totalOpen = scheduled + repairs;
       BadgeService.instance.updateBadgeCount(totalOpen).catchError((_) {});
+    });
+    */
+    // Gene - Nov, 20, 2026: Synchronize launcher icon badge count with unread Today jobs and unread Repairs only.
+    _disposeBadgeEffect = effect(() {
+      final unreadScheduled = widget.jobsSignals.unreadScheduledCount.value;
+      final unreadRepairs = _serviceOrdersSignals.unreadCount.value;
+      final totalUnread = unreadScheduled + unreadRepairs;
+      BadgeService.instance.updateBadgeCount(totalUnread).catchError((_) {});
     });
   }
 
@@ -273,11 +282,19 @@ class _TechnicianShellState extends State<TechnicianShell>
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden) {
+      /*
       // Gene - Oct 3, 2026: Update launcher icon badge count when app is minimized, closed, or paused.
       final scheduled = widget.jobsSignals.scheduledCount.value;
       final repairs = _serviceOrdersSignals.totalCount.value;
       BadgeService.instance
           .updateBadgeCount(scheduled + repairs)
+          .catchError((_) {});
+      */
+      // Gene - Nov, 20, 2026: Update launcher icon badge count with unread Today and Repairs items when backgrounded.
+      final unreadScheduled = widget.jobsSignals.unreadScheduledCount.value;
+      final unreadRepairs = _serviceOrdersSignals.unreadCount.value;
+      BadgeService.instance
+          .updateBadgeCount(unreadScheduled + unreadRepairs)
           .catchError((_) {});
     }
   }
@@ -335,6 +352,7 @@ class _TechnicianShellState extends State<TechnicianShell>
     );
   }
 
+  /*
   void _viewAlertJob(JobOrderDto job) {
     widget.jobsSignals.dismissAlert();
     if (_currentIndex != _tabScheduled) {
@@ -351,9 +369,46 @@ class _TechnicianShellState extends State<TechnicianShell>
       ),
     );
   }
+  */
+  // Gene - Nov, 20, 2026: Mark job as read when opened from the top dispatch alert banner.
+  void _viewAlertJob(JobOrderDto job) {
+    widget.jobsSignals.markJobAsRead(job.id);
+    widget.jobsSignals.dismissAlert();
+    if (_currentIndex != _tabScheduled) {
+      setState(() => _currentIndex = _tabScheduled);
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => JobOrderDetailScreen(
+          jobId: job.id,
+          jobsSignals: widget.jobsSignals,
+          lcpNapSignals: widget.lcpNapSignals,
+          onOpenReport: _openReportForJob,
+        ),
+      ),
+    );
+  }
 
+  /*
   // Gene - Oct, 1, 2026: Navigates to ServiceOrderDetailScreen from service order alert banner and switches tab to Repairs.
   void _viewAlertServiceOrder(ServiceOrderDto order) {
+    _serviceOrdersSignals.dismissAlert();
+    if (_currentIndex != _tabRepairs) {
+      setState(() => _currentIndex = _tabRepairs);
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ServiceOrderDetailScreen(
+          orderId: order.id,
+          signals: _serviceOrdersSignals,
+        ),
+      ),
+    );
+  }
+  */
+  // Gene - Nov, 20, 2026: Mark service order as read when opened from the top repair alert banner.
+  void _viewAlertServiceOrder(ServiceOrderDto order) {
+    _serviceOrdersSignals.markOrderAsRead(order.id);
     _serviceOrdersSignals.dismissAlert();
     if (_currentIndex != _tabRepairs) {
       setState(() => _currentIndex = _tabRepairs);
@@ -732,6 +787,7 @@ class _TechnicianShellState extends State<TechnicianShell>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
+              /*
               // 1. Scheduled Job Orders
               _buildIosTabItem(
                 index: _tabScheduled,
@@ -762,6 +818,38 @@ class _TechnicianShellState extends State<TechnicianShell>
                 label: 'Plant',
                 badgeSignal: widget.lcpNapSignals.totalSitesCount,
                 badgeColor: AppTheme.info,
+                isDark: isDark,
+              ),
+              */
+              // Gene - Nov, 20, 2026: Show only unread counts on Today and Repairs bubbles, and remove the count bubble from Plant.
+              // 1. Scheduled Job Orders
+              _buildIosTabItem(
+                index: _tabScheduled,
+                icon: CupertinoIcons.calendar,
+                activeIcon: CupertinoIcons.calendar_today,
+                label: 'Today',
+                badgeSignal: jobs.unreadScheduledCount,
+                badgeColor: AppTheme.primary,
+                isDark: isDark,
+              ),
+
+              // 2. Service & Repair Tickets
+              _buildIosTabItem(
+                index: _tabRepairs,
+                icon: CupertinoIcons.hammer,
+                activeIcon: CupertinoIcons.hammer_fill,
+                label: 'Repairs',
+                badgeSignal: _serviceOrdersSignals.unreadCount,
+                badgeColor: AppTheme.warning,
+                isDark: isDark,
+              ),
+
+              // 3. LCP NAP Plant Sites
+              _buildIosTabItem(
+                index: _tabLcpNap,
+                icon: CupertinoIcons.map,
+                activeIcon: CupertinoIcons.map_fill,
+                label: 'Plant',
                 isDark: isDark,
               ),
 
