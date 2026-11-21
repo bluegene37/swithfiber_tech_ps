@@ -34,7 +34,9 @@ concurrency:
 jobs:
   deploy-testflight:
     name: Build & Deploy to TestFlight
-    runs-on: macos-latest
+    # Gene - Nov, 21, 2026: Switched iOS runner from macos-latest (Xcode 26.6 / iOS 26.5 SDK) to xcode-27 (Xcode 27.1+ / iOS 27 SDK) to satisfy Apple's April 2027 App Store Connect SDK requirement (ITMS-90725).
+    # runs-on: macos-latest
+    runs-on: xcode-27
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -264,7 +264,9 @@ jobs:
   # Gene - Oct 08, 2026: Added iOS TestFlight CI build and release job with ephemeral keychain and App Store Connect upload.
   ios:
     name: iOS IPA + TestFlight
-    runs-on: macos-latest
+    # Gene - Nov, 21, 2026: Switched iOS runner from macos-latest (Xcode 26.6 / iOS 26.5 SDK) to xcode-27 (Xcode 27.1+ / iOS 27 SDK) to satisfy Apple's April 2027 App Store Connect SDK requirement (ITMS-90725).
+    # runs-on: macos-latest
+    runs-on: xcode-27
     # Gene - Oct 08, 2026: Gated ios job to skip when pushing android-v* tags.
     # if: github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == 'ios'
     if: (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/android-v')) || inputs.platform == 'all' || inputs.platform == 'ios'
