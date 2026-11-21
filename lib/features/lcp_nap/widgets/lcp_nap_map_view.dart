@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 
+import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/lcp_nap_model.dart';
@@ -30,6 +31,8 @@ class LcpNapMapView extends StatefulWidget {
   final PlaceLookup? placeLookup;
   // Gene - Nov, 12, 2026: Optional callback to open Create LCP NAP sheet from the bottom-left floating button on Map view.
   final VoidCallback? onCreateSite;
+  // Gene - Nov, 21, 2026: Injectable LocationService so Plant map auto-locate works cleanly and is widget-testable.
+  final LocationService? locationService;
 
   /*
   const LcpNapMapView({
@@ -40,6 +43,7 @@ class LcpNapMapView extends StatefulWidget {
     this.placeLookup,
   });
   */
+  /*
   const LcpNapMapView({
     super.key,
     required this.signals,
@@ -47,6 +51,16 @@ class LcpNapMapView extends StatefulWidget {
     this.onOpenDetails,
     this.placeLookup,
     this.onCreateSite,
+  });
+  */
+  const LcpNapMapView({
+    super.key,
+    required this.signals,
+    this.tileProvider,
+    this.onOpenDetails,
+    this.placeLookup,
+    this.onCreateSite,
+    this.locationService,
   });
 
   @override
@@ -77,12 +91,23 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
   /// Where the last place search landed, and what was typed to get there.
   LatLng? _searchTarget;
   String? _searchLabel;
+  // Gene - Nov, 21, 2026: Track technician GPS marker and pending camera move for the Plant map auto-locate control.
+  LatLng? _userLocation;
+  bool _isLocating = false;
+  LatLng? _pendingUserMove;
 
   @override
   void initState() {
     super.initState();
     _tiles = widget.tileProvider;
     if (_tiles == null) _loadTileProvider();
+  }
+
+  // Gene - Nov, 21, 2026: Dispose MapController when LcpNapMapView unmounts.
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadTileProvider() async {
@@ -342,10 +367,80 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
     });
   }
 
+  /*
   void _onMapReady() {
     _mapReady = true;
     final pending = _pendingFit;
     if (pending != null) _fitOnFirstLoad(pending);
+  }
+  */
+  // Gene - Nov, 21, 2026: Flush queued auto-locate camera move on map ready and expose _locateUser() for Plant map GPS centering.
+  void _onMapReady() {
+    _mapReady = true;
+    final pendingUser = _pendingUserMove;
+    if (pendingUser != null) {
+      _pendingUserMove = null;
+      _pendingFit = null;
+      _didInitialFit = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        try {
+          _mapController.move(pendingUser, 18);
+        } catch (_) {}
+      });
+      return;
+    }
+    final pending = _pendingFit;
+    if (pending != null) _fitOnFirstLoad(pending);
+  }
+
+  Future<void> _locateUser() async {
+    setState(() => _isLocating = true);
+    try {
+      final service = widget.locationService ?? LocationService.instance;
+      final pos = await service.getCurrentPosition();
+      if (!mounted) return;
+      if (pos != null) {
+        final target = LatLng(pos.latitude, pos.longitude);
+        setState(() {
+          _userLocation = target;
+          _selected = null;
+          _showLegend = false;
+          _didInitialFit = true;
+        });
+        if (_mapReady) {
+          try {
+            _mapController.move(target, 18);
+          } catch (_) {
+            _pendingUserMove = target;
+          }
+        } else {
+          _pendingUserMove = target;
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not acquire current GPS location. Please check location permissions.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not acquire current GPS location. Please check location permissions.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
   }
 
   /// Zoom to a cluster's members so they separate into individual pins.
@@ -478,6 +573,32 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                       ),
                     ],
                   ),
+                // Gene - Nov, 21, 2026: Render technician GPS position marker when auto-located on the Plant map.
+                if (_userLocation != null)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        key: const Key('lcpNapUserLocationPin'),
+                        point: _userLocation!,
+                        width: 24,
+                        height: 24,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2563EB),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2.5),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x662563EB),
+                                blurRadius: 10,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
               ],
             ),
 
@@ -546,7 +667,7 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
               ),
             ),
 
-            // Right Float: Zoom Controls + Fit Bounds
+            // Right Float: Zoom Controls + Fit Bounds + My Location
             Positioned(
               right: 8,
               bottom: selected == null ? 8 : 220,
@@ -558,7 +679,7 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                     onZoomOut: _zoomOut,
                   ),
                   const SizedBox(height: 8),
-                  if (sites.isNotEmpty)
+                  if (sites.isNotEmpty) ...[
                     FloatingActionButton.small(
                       heroTag: 'lcpNapFitBounds',
                       backgroundColor:
@@ -568,6 +689,29 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                       onPressed: () => _fitToSites(sites),
                       child: const Icon(Icons.fit_screen_rounded),
                     ),
+                    const SizedBox(height: 8),
+                  ],
+                  // Gene - Nov, 21, 2026: Add My Location auto-locate button to center the Plant map on technician GPS coordinates.
+                  FloatingActionButton.small(
+                    key: const ValueKey('btnLcpNapMapMyLocation'),
+                    heroTag: 'lcpNapMyLocation',
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
+                    backgroundColor:
+                        Theme.of(context).cardTheme.color ?? Colors.white,
+                    foregroundColor: AppTheme.primary,
+                    tooltip: 'My location',
+                    onPressed: _isLocating ? null : _locateUser,
+                    child: _isLocating
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.primary,
+                            ),
+                          )
+                        : const Icon(Icons.my_location_rounded, size: 20),
+                  ),
                 ],
               ),
             ),

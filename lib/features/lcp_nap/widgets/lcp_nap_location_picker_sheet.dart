@@ -125,6 +125,11 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
   bool _isSaving = false;
   String? _errorMessage;
   TileProvider? _tiles;
+  // Gene - Nov, 21, 2026: Track preview MapController & readiness so auto-locate, pin picker, and typed coordinates immediately move the mini preview map camera.
+  final MapController _previewMapController = MapController();
+  bool _previewMapReady = false;
+  LatLng? _pendingPreviewCenter;
+  LatLng? _lastPreviewCenter;
 
   static const List<int> _standardPortCounts = [8, 16, 24, 32];
   static const List<String> _standardNaps = [
@@ -175,8 +180,25 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
     } catch (_) {}
   }
 
+  /*
   @override
   void dispose() {
+    _lcpController.dispose();
+    _napController.dispose();
+    _lcpNapController.dispose();
+    _portTotalController.dispose();
+    _coordinatesController.dispose();
+    _streetController.dispose();
+    _barangayController.dispose();
+    _cityController.dispose();
+    _regionController.dispose();
+    super.dispose();
+  }
+  */
+  // Gene - Nov, 21, 2026: Dispose the preview MapController alongside form text controllers.
+  @override
+  void dispose() {
+    _previewMapController.dispose();
     _lcpController.dispose();
     _napController.dispose();
     _lcpNapController.dispose();
@@ -261,7 +283,43 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
     }
   }
 
+  // Gene - Nov, 21, 2026: Move mini preview map camera reliably once FlutterMap is ready (or queue until onMapReady fires).
+  void _movePreviewMap(LatLng target) {
+    _lastPreviewCenter = target;
+    if (_previewMapReady) {
+      try {
+        _previewMapController.move(target, 16);
+      } catch (_) {
+        _previewMapReady = false;
+        _pendingPreviewCenter = target;
+      }
+    } else {
+      _pendingPreviewCenter = target;
+    }
+  }
+
+  void _onPreviewMapReady() {
+    _previewMapReady = true;
+    final pending = _pendingPreviewCenter;
+    if (pending != null) {
+      _pendingPreviewCenter = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        try {
+          _previewMapController.move(pending, 16);
+        } catch (_) {}
+      });
+    }
+  }
+
+  void _resetPreviewMapState() {
+    _previewMapReady = false;
+    _pendingPreviewCenter = null;
+    _lastPreviewCenter = null;
+  }
+
   /// Click 1: Acquire device GPS coordinates
+  /*
   Future<void> _useCurrentLocation() async {
     setState(() {
       _isLocating = true;
@@ -276,6 +334,45 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
         final formatted =
             '${pos.latitude.toStringAsFixed(6)}, ${pos.longitude.toStringAsFixed(6)}';
         _coordinatesController.text = formatted;
+        await _reverseGeocode(pos.latitude, pos.longitude);
+      } else {
+        setState(() {
+          _errorMessage =
+              'Could not acquire current GPS location. Please check location permissions.';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'GPS acquisition error: $e';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLocating = false);
+      }
+    }
+  }
+  */
+  // Gene - Nov, 21, 2026: Update coordinates field, pin marker, and mini preview map camera immediately when Current GPS succeeds.
+  Future<void> _useCurrentLocation() async {
+    setState(() {
+      _isLocating = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final pos = await _locationService.getCurrentPosition();
+      if (!mounted) return;
+
+      if (pos != null) {
+        final target = LatLng(pos.latitude, pos.longitude);
+        final formatted =
+            '${pos.latitude.toStringAsFixed(6)}, ${pos.longitude.toStringAsFixed(6)}';
+        setState(() {
+          _coordinatesController.text = formatted;
+        });
+        _movePreviewMap(target);
         await _reverseGeocode(pos.latitude, pos.longitude);
       } else {
         setState(() {
@@ -327,12 +424,24 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
       ),
     );
 
+    /*
     if (picked != null && mounted) {
       final formatted =
           '${picked.latitude.toStringAsFixed(6)}, ${picked.longitude.toStringAsFixed(6)}';
       setState(() {
         _coordinatesController.text = formatted;
       });
+      await _reverseGeocode(picked.latitude, picked.longitude);
+    }
+    */
+    // Gene - Nov, 21, 2026: Also move the mini preview map camera when returning with a picked pin coordinate.
+    if (picked != null && mounted) {
+      final formatted =
+          '${picked.latitude.toStringAsFixed(6)}, ${picked.longitude.toStringAsFixed(6)}';
+      setState(() {
+        _coordinatesController.text = formatted;
+      });
+      _movePreviewMap(picked);
       await _reverseGeocode(picked.latitude, picked.longitude);
     }
   }
@@ -886,6 +995,7 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
         const SizedBox(height: 16),
 
         // Mini preview map if coordinates are valid
+        /*
         if (currentLatLng != null && _tiles != null) ...[
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
@@ -982,6 +1092,164 @@ class _LcpNapLocationPickerSheetState extends State<LcpNapLocationPickerSheet> {
             ),
           ),
           onChanged: (_) => setState(() {}),
+        ),
+        */
+        // Gene - Nov, 21, 2026: Attach _previewMapController so auto-locate & edits move the mini preview map camera, and make the mini preview map tappable to open LcpNapMapPickerScreen.
+        if (currentLatLng != null && _tiles != null) ...[
+          GestureDetector(
+            key: const ValueKey('btnPreviewMapOpenPicker'),
+            behavior: HitTestBehavior.opaque,
+            onTap: _isSaving ? null : _openMapPinPicker,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                height: 120,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    IgnorePointer(
+                      child: FlutterMap(
+                        mapController: _previewMapController,
+                        options: MapOptions(
+                          initialCenter: currentLatLng,
+                          initialZoom: 16,
+                          onMapReady: _onPreviewMapReady,
+                          interactionOptions: const InteractionOptions(
+                            flags: InteractiveFlag.none,
+                          ),
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate: MapTiles.streetUrl,
+                            maxNativeZoom: MapTiles.streetMaxNativeZoom,
+                            maxZoom: MapTiles.streetMaxZoom,
+                            userAgentPackageName: MapTiles.userAgentPackageName,
+                            tileProvider: _tiles,
+                          ),
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: currentLatLng,
+                                width: 32,
+                                height: 32,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: HSLColor.fromAHSL(
+                                      1,
+                                      lcpColorSeed(activeLcp),
+                                      0.62,
+                                      0.44,
+                                    ).toColor(),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                        color: Colors.white, width: 2),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.black26,
+                                        blurRadius: 4,
+                                        offset: Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      activeNap.replaceAll(RegExp(r'\D'), ''),
+                                      style: context.text.labelSmall!.copyWith(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color:
+                              (Theme.of(context).brightness == Brightness.dark
+                                      ? AppTheme.darkCard
+                                      : Colors.white)
+                                  .withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppTheme.hairlineOf(context),
+                          ),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 4,
+                              offset: Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.open_in_full_rounded,
+                              size: 20,
+                              color: AppTheme.primary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Tap map to adjust',
+                              style: context.text.labelSmall!.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+
+        // Coordinates Input Field
+        TextField(
+          key: const ValueKey('inputCoordinates'),
+          controller: _coordinatesController,
+          decoration: InputDecoration(
+            labelText: widget.isCreateMode || widget.allowEmptyCoordinates
+                ? 'WGS84 Coordinates (Lat, Long — optional)'
+                : 'WGS84 Coordinates (Lat, Long)',
+            hintText: 'e.g. 14.586200, 121.061800',
+            prefixIcon: const Icon(Icons.gps_fixed_rounded, size: 20),
+            suffixIcon: _coordinatesController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear_rounded, size: 18),
+                    onPressed: () => setState(() {
+                      _coordinatesController.clear();
+                      _resetPreviewMapState();
+                    }),
+                  )
+                : null,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          onChanged: (_) {
+            setState(() {});
+            final parsed = _parsedLatLng;
+            if (parsed == null) {
+              _resetPreviewMapState();
+            } else if (parsed != _lastPreviewCenter) {
+              _movePreviewMap(parsed);
+            }
+          },
         ),
         const SizedBox(height: 14),
       ],
@@ -1286,7 +1554,10 @@ class LcpNapMapPickerScreen extends StatefulWidget {
   final TileProvider? tileProvider;
   final PlaceLookup? placeLookup;
   final LocationService? locationService;
+  // Gene - Nov, 21, 2026: Allow callers (e.g. detail screen tap-to-open map) to customize the confirmation button label.
+  final String confirmButtonLabel;
 
+  /*
   const LcpNapMapPickerScreen({
     super.key,
     required this.location,
@@ -1294,6 +1565,16 @@ class LcpNapMapPickerScreen extends StatefulWidget {
     this.tileProvider,
     this.placeLookup,
     this.locationService,
+  });
+  */
+  const LcpNapMapPickerScreen({
+    super.key,
+    required this.location,
+    this.initialLatLng,
+    this.tileProvider,
+    this.placeLookup,
+    this.locationService,
+    this.confirmButtonLabel = 'Confirm Pin Location',
   });
 
   @override
@@ -1306,6 +1587,11 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
   late LatLng _pinLocation;
   bool _satellite = false;
   bool _isLocating = false;
+  // Gene - Nov, 21, 2026: Track map readiness, pending camera move, and live user GPS marker so auto-locate always moves both pin and camera cleanly.
+  bool _mapReady = false;
+  LatLng? _pendingMoveTarget;
+  double? _pendingMoveZoom;
+  LatLng? _currentUserGps;
 
   static const LatLng _fallbackCenter =
       LatLng(LocationService.fallbackLat, LocationService.fallbackLng);
@@ -1319,6 +1605,13 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
     if (_tiles == null) _loadTiles();
   }
 
+  // Gene - Nov, 21, 2026: Dispose MapController when LcpNapMapPickerScreen closes.
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadTiles() async {
     try {
       final p = await MapTiles.provider();
@@ -1329,6 +1622,41 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
   LocationService get _locationService =>
       widget.locationService ?? LocationService.instance;
 
+  // Gene - Nov, 21, 2026: Safe camera move helper that flushes queued moves once MapOptions.onMapReady fires.
+  void _onMapReady() {
+    _mapReady = true;
+    final pendingTarget = _pendingMoveTarget;
+    final pendingZoom = _pendingMoveZoom;
+    if (pendingTarget != null && pendingZoom != null) {
+      _pendingMoveTarget = null;
+      _pendingMoveZoom = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        try {
+          _mapController.move(pendingTarget, pendingZoom);
+        } catch (_) {}
+      });
+    }
+  }
+
+  void _moveCamera(LatLng target, double zoom) {
+    final maxAllowed =
+        _satellite ? MapTiles.satelliteMaxZoom : MapTiles.streetMaxZoom;
+    final clampedZoom = zoom.clamp(4.0, maxAllowed);
+    if (_mapReady) {
+      try {
+        _mapController.move(target, clampedZoom);
+      } catch (_) {
+        _pendingMoveTarget = target;
+        _pendingMoveZoom = clampedZoom;
+      }
+    } else {
+      _pendingMoveTarget = target;
+      _pendingMoveZoom = clampedZoom;
+    }
+  }
+
+  /*
   Future<void> _centerOnGps() async {
     setState(() => _isLocating = true);
     try {
@@ -1357,6 +1685,52 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
     */
     // Gene - Nov, 11, 2026: Zoom closer (19.0) after place search for street/pole-level pinning.
     _mapController.move(target, 19.0);
+  }
+  */
+  // Gene - Nov, 21, 2026: Move both the pin and camera reliably on auto-locate/search, display user GPS halo, and report GPS lookup failures via SnackBar.
+  Future<void> _centerOnGps() async {
+    setState(() => _isLocating = true);
+    try {
+      final pos = await _locationService.getCurrentPosition();
+      if (!mounted) return;
+      if (pos != null) {
+        final target = LatLng(pos.latitude, pos.longitude);
+        setState(() {
+          _pinLocation = target;
+          _currentUserGps = target;
+        });
+        _moveCamera(target, 19.5);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not acquire current GPS location. Please check location permissions.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not acquire current GPS location. Please check location permissions.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
+  }
+
+  void _onPlaceLocated(LatLng target, String query) {
+    setState(() {
+      _pinLocation = target;
+    });
+    _moveCamera(target, 19.0);
   }
 
   // Gene - Nov, 11, 2026: Added explicit zoom-in / zoom-out helpers up to maxZoom (22) for precise pole pinning.
@@ -1411,6 +1785,7 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
           // FlutterMap
           FlutterMap(
             mapController: _mapController,
+            /*
             options: MapOptions(
               initialCenter: _pinLocation,
               /*
@@ -1420,6 +1795,18 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
               initialZoom: 18.0,
               minZoom: 4,
               maxZoom: MapTiles.streetMaxZoom,
+              onTap: (_, point) {
+                setState(() => _pinLocation = point);
+              },
+            ),
+            */
+            // Gene - Nov, 21, 2026: Wire onMapReady so queued GPS/search camera moves execute reliably.
+            options: MapOptions(
+              initialCenter: _pinLocation,
+              initialZoom: 18.0,
+              minZoom: 4,
+              maxZoom: MapTiles.streetMaxZoom,
+              onMapReady: _onMapReady,
               onTap: (_, point) {
                 setState(() => _pinLocation = point);
               },
@@ -1451,8 +1838,72 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
                   tileProvider: _tiles,
                 ),
               // Marker for the pinned location
+              /*
               MarkerLayer(
                 markers: [
+                  Marker(
+                    point: _pinLocation,
+                    width: 48,
+                    height: 48,
+                    alignment: Alignment.topCenter,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: cabinetColor,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2.5),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black38,
+                                blurRadius: 6,
+                                offset: Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.location_on_rounded,
+                            size: 20,
+                            color: Colors.white,
+                          ),
+                        ),
+                        Container(
+                          width: 4,
+                          height: 6,
+                          color: cabinetColor,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              */
+              // Gene - Nov, 21, 2026: Show live blue GPS halo dot when auto-located alongside the adjustable site pin marker.
+              MarkerLayer(
+                markers: [
+                  if (_currentUserGps != null)
+                    Marker(
+                      key: const Key('pickerUserGpsMarker'),
+                      point: _currentUserGps!,
+                      width: 24,
+                      height: 24,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2563EB),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2.5),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x662563EB),
+                              blurRadius: 10,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   Marker(
                     point: _pinLocation,
                     width: 48,
@@ -1530,6 +1981,7 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
             ),
           ),
           */
+          /*
           // Gene - Nov, 11, 2026: Added + / - zoom buttons above the GPS button on the Pin Picker screen so technicians can zoom to level 22 and pin accurately.
           Positioned(
             right: 16,
@@ -1660,6 +2112,154 @@ class _LcpNapMapPickerScreenState extends State<LcpNapMapPickerScreen> {
                   ],
                 ),
               ),
+            ),
+          ),
+          */
+          // Gene - Nov, 21, 2026: Stack zoom controls & auto-locate FAB cleanly above the bottom confirmation card so fabCenterGps is never obscured by the card.
+          Positioned(
+            left: 14,
+            right: 14,
+            bottom: MediaQuery.of(context).padding.bottom + 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Material(
+                        elevation: 3,
+                        borderRadius: BorderRadius.circular(10),
+                        color: isDark ? AppTheme.darkCard : Colors.white,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            InkWell(
+                              key: const ValueKey('btnPickerZoomIn'),
+                              onTap: _zoomIn,
+                              borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(10)),
+                              child: Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: Icon(
+                                  Icons.add_rounded,
+                                  size: 20,
+                                  color: isDark
+                                      ? Colors.white
+                                      : AppTheme.darkSlate,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              height: 1,
+                              width: 28,
+                              color: isDark
+                                  ? AppTheme.borderDark
+                                  : AppTheme.borderLight,
+                            ),
+                            InkWell(
+                              key: const ValueKey('btnPickerZoomOut'),
+                              onTap: _zoomOut,
+                              borderRadius: const BorderRadius.vertical(
+                                  bottom: Radius.circular(10)),
+                              child: Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: Icon(
+                                  Icons.remove_rounded,
+                                  size: 20,
+                                  color: isDark
+                                      ? Colors.white
+                                      : AppTheme.darkSlate,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      FloatingActionButton.small(
+                        key: const ValueKey('fabCenterGps'),
+                        heroTag: 'fabMapPickerGps',
+                        materialTapTargetSize: MaterialTapTargetSize.padded,
+                        backgroundColor:
+                            isDark ? AppTheme.darkCard : Colors.white,
+                        foregroundColor: AppTheme.primary,
+                        tooltip: 'Center on My GPS Location',
+                        onPressed: _isLocating ? null : _centerOnGps,
+                        child: _isLocating
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppTheme.primary,
+                                ),
+                              )
+                            : const Icon(Icons.my_location_rounded, size: 20),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.pin_drop_rounded,
+                                color: AppTheme.primary, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Selected Coordinates',
+                                    style: context.text.labelSmall!.copyWith(
+                                      color: AppTheme.secondaryInkOf(context),
+                                    ),
+                                  ),
+                                  Text(
+                                    '${_pinLocation.latitude.toStringAsFixed(6)}, ${_pinLocation.longitude.toStringAsFixed(6)}',
+                                    style: context.text.titleSmall!.copyWith(
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              minHeight: AppTheme.minTarget,
+                            ),
+                            child: ElevatedButton.icon(
+                              key: const ValueKey('btnConfirmPinLocation'),
+                              onPressed: () =>
+                                  Navigator.of(context).pop(_pinLocation),
+                              icon: const Icon(Icons.check_rounded, size: 20),
+                              label: Text(widget.confirmButtonLabel),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

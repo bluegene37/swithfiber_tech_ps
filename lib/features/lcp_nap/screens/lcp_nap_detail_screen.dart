@@ -44,6 +44,9 @@ import '../../../core/services/location_service.dart';
 import '../widgets/lcp_nap_location_picker_sheet.dart';
 import '../widgets/lcp_nap_photo_slot_card.dart';
 import '../widgets/map_search_bar.dart' show PlaceLookup;
+// Gene - Nov, 21, 2026: Imported latlong2 and AuthSignals to support tapping the detail mini-map to open LcpNapMapPickerScreen and persist updated GPS coordinates directly.
+import 'package:latlong2/latlong.dart';
+import '../../auth/signals/auth_signals.dart';
 
 /// Screen displaying comprehensive details and status controls for an LCP NAP site with full Dark Mode support.
 class LcpNapDetailScreen extends StatefulWidget {
@@ -967,6 +970,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
           ),
           if (isMapped) ...[
             Divider(height: 1, thickness: 1, color: hairline),
+            /*
             SizedBox(
               height: 180,
               width: double.infinity,
@@ -1026,6 +1030,123 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
                           ],
                         ),
                       ],
+                    ),
+            ),
+            */
+            // Gene - Nov, 21, 2026: Make the detail mini-map single-tappable to open the full interactive map picker with pin placement and auto-locate.
+            SizedBox(
+              height: 180,
+              width: double.infinity,
+              child: tiles == null
+                  ? const Center(
+                      child: CircularProgressIndicator(color: AppTheme.primary))
+                  : GestureDetector(
+                      key: const ValueKey('detailMiniMapTapArea'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _openFullMapPicker(context, location),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          IgnorePointer(
+                            child: FlutterMap(
+                              key: ValueKey(
+                                  'minimap_${location.id}_${location.coordinates}'),
+                              options: MapOptions(
+                                initialCenter: location.latLng!,
+                                initialZoom: 16,
+                                interactionOptions: const InteractionOptions(
+                                  flags: InteractiveFlag.none,
+                                ),
+                              ),
+                              children: [
+                                TileLayer(
+                                  urlTemplate: MapTiles.streetUrl,
+                                  maxNativeZoom: MapTiles.streetMaxNativeZoom,
+                                  maxZoom: MapTiles.streetMaxZoom,
+                                  userAgentPackageName:
+                                      MapTiles.userAgentPackageName,
+                                  tileProvider: tiles,
+                                ),
+                                MarkerLayer(
+                                  markers: [
+                                    Marker(
+                                      point: location.latLng!,
+                                      width: 36,
+                                      height: 36,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: cabinetColor,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                              color: Colors.white, width: 2.5),
+                                          boxShadow: const [
+                                            BoxShadow(
+                                              color: Color(0x66000000),
+                                              blurRadius: 6,
+                                              offset: Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            location.nap
+                                                .replaceAll(RegExp(r'\D'), ''),
+                                            style: context.text.labelSmall!
+                                                .copyWith(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          Positioned(
+                            right: 10,
+                            bottom: 10,
+                            child: Container(
+                              key: const ValueKey('btnDetailMapOpenFull'),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color:
+                                    (isDark ? AppTheme.darkCard : Colors.white)
+                                        .withValues(alpha: 0.92),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: hairline),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x33000000),
+                                    blurRadius: 4,
+                                    offset: Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.open_in_full_rounded,
+                                    size: 20,
+                                    color: AppTheme.primary,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Open map',
+                                    style: context.text.labelSmall!.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
             ),
           ],
@@ -2377,6 +2498,125 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
             ],
           ),
           backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  // Gene - Nov, 21, 2026: Open interactive LcpNapMapPickerScreen directly when tapping the detail mini-map, allowing pin adjustment and auto-locate before saving coordinates.
+  Future<void> _openFullMapPicker(
+    BuildContext context,
+    LcpNapDto location,
+  ) async {
+    final picked = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        builder: (_) => LcpNapMapPickerScreen(
+          location: location,
+          initialLatLng: location.latLng,
+          tileProvider: _tiles,
+          placeLookup: widget.placeLookupForTesting,
+          locationService: widget.locationServiceForTesting,
+          confirmButtonLabel: 'Save Pin Location',
+        ),
+      ),
+    );
+
+    if (picked == null || !mounted) return;
+
+    final coordinates =
+        '${picked.latitude.toStringAsFixed(6)}, ${picked.longitude.toStringAsFixed(6)}';
+
+    String? street = location.street?.trim().isNotEmpty == true
+        ? location.street!.trim()
+        : null;
+    String? barangay = location.barangay?.trim().isNotEmpty == true
+        ? location.barangay!.trim()
+        : null;
+    String? city =
+        location.city?.trim().isNotEmpty == true ? location.city!.trim() : null;
+    String? region = location.region?.trim().isNotEmpty == true
+        ? location.region!.trim()
+        : null;
+
+    if (street == null || barangay == null || city == null || region == null) {
+      try {
+        final placemarks = widget.reverseGeocodeForTesting != null
+            ? await widget.reverseGeocodeForTesting!(
+                picked.latitude, picked.longitude)
+            : await geo.Geocoding()
+                .placemarkFromCoordinates(picked.latitude, picked.longitude);
+        if (placemarks.isNotEmpty) {
+          final p = placemarks.first;
+          final st = p.street ?? p.thoroughfare;
+          if (street == null && st != null && st.trim().isNotEmpty) {
+            street = st.trim();
+          }
+          if (barangay == null && (p.subLocality?.trim().isNotEmpty ?? false)) {
+            barangay = p.subLocality!.trim();
+          }
+          final ct = p.locality ?? p.subAdministrativeArea;
+          if (city == null && ct != null && ct.trim().isNotEmpty) {
+            city = ct.trim();
+          }
+          if (region == null &&
+              (p.administrativeArea?.trim().isNotEmpty ?? false)) {
+            region = p.administrativeArea!.trim();
+          }
+        }
+      } catch (_) {
+        // Graceful offline fallback
+      }
+    }
+
+    if (!mounted) return;
+
+    final user = AuthSignals.instance.currentUser.value;
+    final modifiedBy = user != null
+        ? (user.fullName.isNotEmpty ? user.fullName : user.username)
+        : location.modifiedBy;
+    final userEmail =
+        user != null && user.email.isNotEmpty ? user.email : location.userEmail;
+
+    final success = await widget.signals.updateLocationCoordinates(
+      locationId: location.id,
+      location: location,
+      coordinates: coordinates,
+      street: street,
+      barangay: barangay,
+      city: city,
+      region: region,
+      modifiedBy: modifiedBy,
+      userEmail: userEmail,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child:
+                    Text('LCP NAP location coordinates updated successfully!'),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.signals.errorMessage.value ??
+                'Failed to update location coordinates. Please try again.',
+          ),
+          backgroundColor: AppTheme.danger,
           behavior: SnackBarBehavior.floating,
         ),
       );

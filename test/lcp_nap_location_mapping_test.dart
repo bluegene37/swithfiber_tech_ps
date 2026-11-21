@@ -42,10 +42,24 @@ class _OfflineTileProvider extends TileProvider {
 class _RecordingAdapter implements HttpClientAdapter {
   final captured = <RequestOptions>[];
 
+  /*
   @override
   Future<ResponseBody> fetch(RequestOptions options,
       Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async {
     captured.add(options);
+    return ResponseBody.fromString('{}', 200, headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType]
+    });
+  }
+  */
+  // Gene - Nov, 21, 2026: Return empty 204 for GetReadingImage binary fallback so photoSyncRevision refreshes do not decode '{}' as invalid image bytes.
+  @override
+  Future<ResponseBody> fetch(RequestOptions options,
+      Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async {
+    captured.add(options);
+    if (options.path.contains('GetReadingImage')) {
+      return ResponseBody.fromBytes(const <int>[], 204);
+    }
     return ResponseBody.fromString('{}', 200, headers: {
       Headers.contentTypeHeader: [Headers.jsonContentType]
     });
@@ -740,6 +754,273 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
       expect(find.byKey(const ValueKey('btnCreateLcpNapMap')), findsNothing);
+    });
+
+    // Gene - Nov, 21, 2026: Verify mini preview map camera moves on auto-locate and opens interactive map picker on tap.
+    testWidgets(
+        'LcpNapLocationPickerSheet auto-locate moves mini preview map camera and tap opens LcpNapMapPickerScreen without overlap',
+        (tester) async {
+      tester.view.physicalSize = const Size(412, 915);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final loc = LcpNapDto(
+        id: 201,
+        lcp: 'LCP 20',
+        nap: 'NAP 01',
+        lcpNap: 'LCP 20 - NAP 01',
+        coordinates: '14.500000, 121.100000',
+      );
+      final fakeLocationService =
+          _FakeLocationService(fakePosition: samplePosition);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: Scaffold(
+            body: LcpNapLocationPickerSheet(
+              location: loc,
+              signals: signals,
+              tileProvider: _OfflineTileProvider(),
+              locationService: fakeLocationService,
+              reverseGeocodeForTesting: (_, __) async => const [],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final initialMap = tester.widget<FlutterMap>(find.byType(FlutterMap));
+      expect(initialMap.mapController!.camera.center.latitude,
+          closeTo(14.500000, 0.0001));
+      expect(initialMap.mapController!.camera.center.longitude,
+          closeTo(121.100000, 0.0001));
+
+      // Auto-locate via Current GPS button: field, marker, and preview camera must all move.
+      await tester.tap(find.byKey(const ValueKey('btnCurrentLocation')));
+      await tester.pumpAndSettle();
+
+      final coordField = tester
+          .widget<TextField>(find.byKey(const ValueKey('inputCoordinates')));
+      expect(coordField.controller?.text, '14.586200, 121.061800');
+
+      final updatedMap = tester.widget<FlutterMap>(find.byType(FlutterMap));
+      expect(updatedMap.mapController!.camera.center.latitude,
+          closeTo(14.586200, 0.0001));
+      expect(updatedMap.mapController!.camera.center.longitude,
+          closeTo(121.061800, 0.0001));
+
+      // Clear and reset, then enter another coordinate and tap the mini preview map to open the full picker.
+      await tester.enterText(
+        find.byKey(const ValueKey('inputCoordinates')),
+        '14.500000, 121.100000',
+      );
+      await tester.pumpAndSettle();
+
+      await tester
+          .ensureVisible(find.byKey(const ValueKey('btnPreviewMapOpenPicker')));
+      await tester.tap(find.byKey(const ValueKey('btnPreviewMapOpenPicker')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pin Location on Map'), findsOneWidget);
+
+      // Verify auto-locate FAB sits strictly above the confirmation Card (no overlap).
+      final fabRect =
+          tester.getRect(find.byKey(const ValueKey('fabCenterGps')));
+      final cardRect = tester.getRect(
+        find
+            .ancestor(
+              of: find.byKey(const ValueKey('btnConfirmPinLocation')),
+              matching: find.byType(Card),
+            )
+            .first,
+      );
+      expect(fabRect.bottom, lessThanOrEqualTo(cardRect.top));
+
+      // Tap auto-locate FAB inside LcpNapMapPickerScreen: pin, user GPS marker, and map camera all move.
+      await tester.tap(find.byKey(const ValueKey('fabCenterGps')));
+      await tester.pumpAndSettle();
+
+      final pickerMap = tester.widget<FlutterMap>(find.byType(FlutterMap));
+      expect(pickerMap.mapController!.camera.center.latitude,
+          closeTo(14.586200, 0.0001));
+      expect(pickerMap.mapController!.camera.center.longitude,
+          closeTo(121.061800, 0.0001));
+      expect(find.byKey(const Key('pickerUserGpsMarker')), findsOneWidget);
+      expect(find.text('14.586200, 121.061800'), findsOneWidget);
+
+      // Confirm and verify sheet updates both coordinates and preview map camera.
+      await tester.tap(find.byKey(const ValueKey('btnConfirmPinLocation')));
+      await tester.pumpAndSettle();
+
+      expect(coordField.controller?.text, '14.586200, 121.061800');
+      final returnedMap = tester.widget<FlutterMap>(find.byType(FlutterMap));
+      expect(returnedMap.mapController!.camera.center.latitude,
+          closeTo(14.586200, 0.0001));
+      expect(returnedMap.mapController!.camera.center.longitude,
+          closeTo(121.061800, 0.0001));
+    });
+
+    // Gene - Nov, 21, 2026: Verify tapping LcpNapDetailScreen mini-map opens interactive map with pin & auto-locate and saves coordinates.
+    testWidgets(
+        'tapping LcpNapDetailScreen mini-map opens LcpNapMapPickerScreen, auto-locates, and saves updated coordinates',
+        (tester) async {
+      tester.view.physicalSize = const Size(412, 915);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      FlutterSecureStorage.setMockInitialValues({});
+      final adapter = _RecordingAdapter();
+      final dio = ApiClient.instance.dio;
+      final originalAdapter = dio.httpClientAdapter;
+      ApiClient.blockNetworkForTesting = false;
+      dio.httpClientAdapter = adapter;
+      addTearDown(() {
+        ApiClient.blockNetworkForTesting = true;
+        dio.httpClientAdapter = originalAdapter;
+      });
+
+      final mappedLoc = LcpNapDto(
+        id: 202,
+        lcp: 'LCP 21',
+        nap: 'NAP 02',
+        lcpNap: 'LCP 21 - NAP 02',
+        coordinates: '14.500000, 121.100000',
+      );
+      await tester.runAsync(() async {
+        await dao.insertOrUpdateLocation(mappedLoc);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+
+      final fakeLocationService =
+          _FakeLocationService(fakePosition: samplePosition);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: LcpNapDetailScreen(
+            locationId: 202,
+            signals: signals,
+            tileProvider: _OfflineTileProvider(),
+            initialImagesForTesting: const LcpNapImagesDto(),
+            locationServiceForTesting: fakeLocationService,
+            reverseGeocodeForTesting: (_, __) async => [
+              const geo.Placemark(
+                street: 'Meralco Ave',
+                subLocality: 'Ugong',
+                locality: 'Pasig',
+                administrativeArea: 'NCR',
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(
+          find.byKey(const ValueKey('btnDetailMapOpenFull')), findsOneWidget);
+      await tester
+          .ensureVisible(find.byKey(const ValueKey('detailMiniMapTapArea')));
+      await tester.tap(find.byKey(const ValueKey('detailMiniMapTapArea')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pin Location on Map'), findsOneWidget);
+      expect(find.text('Save Pin Location'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('fabCenterGps')));
+      await tester.pumpAndSettle();
+
+      final pickerMap = tester.widget<FlutterMap>(find.byType(FlutterMap));
+      expect(pickerMap.mapController!.camera.center.latitude,
+          closeTo(14.586200, 0.0001));
+      expect(pickerMap.mapController!.camera.center.longitude,
+          closeTo(121.061800, 0.0001));
+
+      await tester.tap(find.byKey(const ValueKey('btnConfirmPinLocation')));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        final current =
+            signals.allLocations.value.where((l) => l.id == 202).firstOrNull;
+        if (current?.coordinates == '14.586200, 121.061800') break;
+      }
+      await tester.pumpAndSettle();
+
+      expect(
+        adapter.captured
+            .any((r) => r.method == 'PUT' && r.path == '/LCPNapLocations/202'),
+        isTrue,
+      );
+      expect(
+        signals.allLocations.value.firstWhere((l) => l.id == 202).coordinates,
+        '14.586200, 121.061800',
+        reason: 'signals.allLocations must update after confirm save',
+      );
+      expect(find.text('14.586200, 121.061800'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('minimap_202_14.586200, 121.061800')),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    // Gene - Nov, 21, 2026: Verify LcpNapMapView My Location button acquires GPS, draws user dot, and moves map camera.
+    testWidgets(
+        'LcpNapMapView My Location button locates technician and moves map camera',
+        (tester) async {
+      tester.view.physicalSize = const Size(412, 915);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final loc = LcpNapDto(
+        id: 203,
+        lcp: 'LCP 22',
+        nap: 'NAP 01',
+        lcpNap: 'LCP 22 - NAP 01',
+        coordinates: '14.500000, 121.100000',
+      );
+      await tester.runAsync(() async {
+        await dao.insertOrUpdateLocation(loc);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+
+      final fakeLocationService =
+          _FakeLocationService(fakePosition: samplePosition);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: Scaffold(
+            body: LcpNapMapView(
+              signals: signals,
+              tileProvider: _OfflineTileProvider(),
+              locationService: fakeLocationService,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final myLocationBtn =
+          find.byKey(const ValueKey('btnLcpNapMapMyLocation'));
+      expect(myLocationBtn, findsOneWidget);
+
+      await tester.tap(myLocationBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('lcpNapUserLocationPin')), findsOneWidget);
+      final map = tester.widget<FlutterMap>(find.byType(FlutterMap));
+      expect(map.mapController!.camera.center.latitude,
+          closeTo(14.586200, 0.0001));
+      expect(map.mapController!.camera.center.longitude,
+          closeTo(121.061800, 0.0001));
     });
   });
 }
