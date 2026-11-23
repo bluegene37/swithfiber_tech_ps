@@ -5,22 +5,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+// Gene - Nov, 23, 2026: Added AppConstants, SecureStorageService, and AuthSignals for Visit By auto-fill & same-day Visit With memory.
+import '../../../core/constants/app_constants.dart';
+import '../../../core/services/draft_storage_service.dart';
 import '../../../core/services/image_capture_service.dart';
 import '../../../core/services/photo_storage_service.dart';
+import '../../../core/storage/secure_storage_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/adaptive_dialogs.dart';
 import '../../../core/widgets/port_tile_grid.dart';
 import '../../../core/widgets/step_header.dart';
 import '../../../core/widgets/sticky_action_bar.dart';
 import '../../../core/utils/data_url.dart';
 import '../../../core/widgets/material_counter_row.dart';
 import '../../../core/widgets/searchable_picker_sheet.dart';
+import '../../auth/signals/auth_signals.dart';
 import '../../catalogs/models/catalog_model.dart';
 import '../../catalogs/services/catalog_service.dart';
 import '../../catalogs/widgets/router_model_picker.dart';
 import '../../jobs/models/job_order_model.dart';
 import '../../jobs/signals/jobs_signals.dart';
 import '../../../core/widgets/serial_scanner_sheet.dart';
+import '../../toolkit/services/bom_handoff_service.dart';
 import '../signals/report_signals.dart';
 // Gene - Oct 13, 2026: Commented out unused optical_power_gauge import since Optical reading was removed from report.
 // import '../widgets/optical_power_gauge.dart';
@@ -119,6 +126,14 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   // Gene - Oct 13, 2026: Signature pad lock state to prevent accidental scratch lines while scrolling.
   bool _isSignaturePadActive = false;
 
+  // Gene - Nov, 23, 2026: Added draft auto-save state and unsaved-changes tracking for PopScope guard.
+  bool _hasUnsavedChanges = false;
+  bool _draftRestored = false;
+  bool _isApplyingProgrammaticText = false;
+  Timer? _draftDebounce;
+  // Gene - Nov, 23, 2026: Reset nonce so cancelling Custom VLAN reverts dropdown display to current VLAN.
+  int _vlanResetNonce = 0;
+
   @override
   void initState() {
     super.initState();
@@ -137,6 +152,13 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       _serialController.text = rep.routerSerial.value;
       _remarksController.text = rep.remarks.value;
       _dbmController.text = rep.opticalPower.value.toStringAsFixed(1);
+    }
+
+    _serialController.addListener(_onDraftControllerEdited);
+    _remarksController.addListener(_onDraftControllerEdited);
+    final initialJob = rep.selectedJobOrder.value;
+    if (initialJob != null) {
+      unawaited(_restoreDraftIfAny(initialJob.id));
     }
   }
 
@@ -246,6 +268,66 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       _availableTechnicians = results[5] as List<String>;
       _availableMaterials = results[6] as List<String>;
     });
+    // Gene - Nov, 23, 2026: Apply logged-in technician Visit By & same-day Visit With defaults if no draft was restored.
+    if (!_draftRestored) {
+      await _applyCrewDefaults();
+    }
+  }
+
+  static String _todayIsoDate() {
+    final now = DateTime.now();
+    final m = now.month.toString().padLeft(2, '0');
+    final d = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$m-$d';
+  }
+
+  String _matchTechnicianName(String raw) {
+    final lower = raw.trim().toLowerCase();
+    for (final tech in _availableTechnicians) {
+      if (tech.toLowerCase() == lower) return tech;
+    }
+    return raw.trim();
+  }
+
+  Future<void> _applyCrewDefaults() async {
+    if (!mounted || _draftRestored) return;
+    final rep = widget.reportSignals;
+    if (rep.visitBy.value == 'None') {
+      final fullName =
+          AuthSignals.instance.currentUser.value?.fullName.trim() ?? '';
+      if (fullName.isNotEmpty) {
+        rep.visitBy.value = _matchTechnicianName(fullName);
+      }
+    }
+    if (rep.visitWith.value == 'None') {
+      try {
+        final storedDate = await SecureStorageService.instance
+            .read(AppConstants.keyLastVisitWithDate);
+        final storedPartner = await SecureStorageService.instance
+            .read(AppConstants.keyLastVisitWith);
+        if (!mounted || _draftRestored) return;
+        if (rep.visitWith.value == 'None' &&
+            storedDate == _todayIsoDate() &&
+            storedPartner != null &&
+            storedPartner.trim().isNotEmpty &&
+            storedPartner.trim() != 'None') {
+          rep.visitWith.value = _matchTechnicianName(storedPartner);
+        }
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _persistVisitWithForToday(String val) async {
+    try {
+      await SecureStorageService.instance.write(
+        AppConstants.keyLastVisitWith,
+        val == 'None' ? '' : val,
+      );
+      await SecureStorageService.instance.write(
+        AppConstants.keyLastVisitWithDate,
+        _todayIsoDate(),
+      );
+    } catch (_) {}
   }
 
   Timer? _signatureDebounce;
@@ -261,6 +343,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     super.dispose();
   }
   */
+  /*
   // Gene - Oct 13, 2026: Dispose _materialAddQtyController when CreateReportScreen is destroyed.
   @override
   void dispose() {
@@ -273,6 +356,193 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     _materialAddQtyController.dispose();
     */
     super.dispose();
+  }
+  */
+  // Gene - Nov, 23, 2026: Cancel pending draft timer and remove draft listeners on dispose.
+  @override
+  void dispose() {
+    _signatureDebounce?.cancel();
+    _draftDebounce?.cancel();
+    _serialController.removeListener(_onDraftControllerEdited);
+    _remarksController.removeListener(_onDraftControllerEdited);
+    _signatureController.dispose();
+    _serialController.dispose();
+    _remarksController.dispose();
+    _dbmController.dispose();
+    super.dispose();
+  }
+
+  String _draftKeyFor(int jobId) => 'job_report_$jobId';
+
+  void _onDraftControllerEdited() {
+    if (_isApplyingProgrammaticText) return;
+    _markDirtyAndSave();
+  }
+
+  void _markDirtyAndSave() {
+    if (!_hasUnsavedChanges && mounted) {
+      setState(() => _hasUnsavedChanges = true);
+    } else {
+      _hasUnsavedChanges = true;
+    }
+    _scheduleDraftSave();
+  }
+
+  void _scheduleDraftSave() {
+    _draftDebounce?.cancel();
+    _draftDebounce = Timer(const Duration(milliseconds: 400), () {
+      unawaited(_saveDraftNow());
+    });
+  }
+
+  Future<void> _saveDraftNow() async {
+    final rep = widget.reportSignals;
+    final job = rep.selectedJobOrder.value;
+    if (job == null) return;
+
+    final photosMap = <String, String>{
+      for (final entry in rep.photos.value.entries) entry.key.name: entry.value,
+    };
+
+    String? sig = rep.signature.value;
+    if ((sig == null || sig.isEmpty) && !_signatureController.isEmpty) {
+      sig = await _signatureController.toDataUrl();
+    }
+
+    await DraftStorageService.instance.saveDraft(_draftKeyFor(job.id), {
+      'routerSerial': _serialController.text,
+      'routerModel': rep.routerModel.value,
+      'lcp': rep.lcp.value,
+      'nap': rep.nap.value,
+      'napPort': rep.napPort.value,
+      'vlan': rep.vlan.value,
+      'planId': rep.planId.value,
+      'planName': rep.planName.value,
+      'connectionType': rep.connectionType.value,
+      'visitBy': rep.visitBy.value,
+      'visitWith': rep.visitWith.value,
+      'remarks': _remarksController.text,
+      'materialsUsed': rep.materialsUsed.value,
+      'photos': photosMap,
+      'signature': sig,
+    });
+  }
+
+  Future<void> _restoreDraftIfAny(int jobId) async {
+    final draft =
+        await DraftStorageService.instance.loadDraft(_draftKeyFor(jobId));
+    if (!mounted || draft == null) return;
+    final rep = widget.reportSignals;
+    if (rep.selectedJobOrder.value?.id != jobId) return;
+
+    _isApplyingProgrammaticText = true;
+    try {
+      final serial = draft['routerSerial'] as String?;
+      if (serial != null) {
+        rep.routerSerial.value = serial;
+        _serialController.text = serial;
+      }
+      final model = draft['routerModel'] as String?;
+      if (model != null && model.isNotEmpty) {
+        rep.routerModel.value = model;
+      }
+      if (draft.containsKey('lcp')) {
+        rep.lcp.value = draft['lcp'] as String?;
+      }
+      if (draft.containsKey('nap')) {
+        rep.nap.value = draft['nap'] as String?;
+      }
+      final napPort = draft['napPort'] as String?;
+      if (napPort != null && napPort.isNotEmpty) {
+        rep.napPort.value = napPort;
+      }
+      final vlan = draft['vlan'] as String?;
+      if (vlan != null && vlan.isNotEmpty) {
+        rep.vlan.value = vlan;
+      }
+      if (draft.containsKey('planId') || draft.containsKey('planName')) {
+        rep.setPlan(
+          draft['planId'] is num ? (draft['planId'] as num).toInt() : null,
+          draft['planName'] as String?,
+        );
+      }
+      final conn = draft['connectionType'] as String?;
+      if (conn != null && conn.isNotEmpty) {
+        rep.connectionType.value = conn;
+      }
+      final vBy = draft['visitBy'] as String?;
+      if (vBy != null && vBy.isNotEmpty) {
+        rep.visitBy.value = vBy;
+      }
+      final vWith = draft['visitWith'] as String?;
+      if (vWith != null && vWith.isNotEmpty) {
+        rep.visitWith.value = vWith;
+      }
+      final remarks = draft['remarks'] as String?;
+      if (remarks != null) {
+        rep.remarks.value = remarks;
+        _remarksController.text = remarks;
+      }
+      final matsRaw = draft['materialsUsed'];
+      if (matsRaw is Map) {
+        final mats = <String, int>{};
+        matsRaw.forEach((k, v) {
+          final qty = v is num ? v.toInt() : int.tryParse(v.toString()) ?? 0;
+          if (qty > 0) mats[k.toString()] = qty;
+        });
+        rep.materialsUsed.value = mats;
+      }
+      final photosRaw = draft['photos'];
+      if (photosRaw is Map) {
+        final restoredPhotos = <JobPhoto, String>{};
+        photosRaw.forEach((k, v) {
+          final match =
+              JobPhoto.values.where((p) => p.name == k.toString()).firstOrNull;
+          if (match != null && v is String) {
+            restoredPhotos[match] = v;
+          }
+        });
+        if (restoredPhotos.isNotEmpty) {
+          rep.photos.value = restoredPhotos;
+        }
+      }
+      final sig = draft['signature'] as String?;
+      if (sig != null && sig.isNotEmpty) {
+        rep.setSignature(sig);
+      }
+    } finally {
+      _isApplyingProgrammaticText = false;
+    }
+
+    if (mounted) {
+      setState(() {
+        _draftRestored = true;
+        _hasUnsavedChanges = true;
+      });
+    }
+  }
+
+  Future<void> _discardDraft(ReportSignals rep) async {
+    final job = rep.selectedJobOrder.value;
+    if (job != null) {
+      await DraftStorageService.instance.clearDraft(_draftKeyFor(job.id));
+      _isApplyingProgrammaticText = true;
+      try {
+        rep.setJobOrder(job);
+        _serialController.text = rep.routerSerial.value;
+        _remarksController.text = rep.remarks.value;
+        _dbmController.text = rep.opticalPower.value.toStringAsFixed(1);
+        _signatureController.clear();
+      } finally {
+        _isApplyingProgrammaticText = false;
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _draftRestored = false;
+        _hasUnsavedChanges = false;
+      });
+    }
   }
 
   Future<String?> _pick(ImageSource source) =>
@@ -288,6 +558,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         _serialController.text = clean;
       });
       widget.reportSignals.routerSerial.value = clean;
+      _markDirtyAndSave();
     }
   }
 
@@ -395,6 +666,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       final dataUrl = await _signatureController.toDataUrl();
       if (dataUrl != null && mounted) {
         rep.setSignature(dataUrl);
+        _markDirtyAndSave();
       }
       _signatureController.clear();
     }
@@ -503,6 +775,17 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     if (!mounted) return;
 
     if (success) {
+      // Gene - Nov, 23, 2026: Clear saved draft and unsaved-changes flag before closing/notifying on successful report save.
+      _draftDebounce?.cancel();
+      final job = rep.selectedJobOrder.value;
+      if (job != null) {
+        await DraftStorageService.instance.clearDraft(_draftKeyFor(job.id));
+      }
+      if (!mounted) return;
+      setState(() {
+        _hasUnsavedChanges = false;
+        _draftRestored = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -529,6 +812,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     }
   }
 
+  /*
   @override
   Widget build(BuildContext context) {
     final rep = widget.reportSignals;
@@ -543,84 +827,135 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              /*
-              // 1. Target Job Order Selector
               _buildJobOrderSummary(rep),
-              const SizedBox(height: 16),
+  */
+  // Gene - Nov, 23, 2026: Wrapped Completion report in PopScope unsaved-changes guard and added restored-draft banner.
+  Future<void> _handleBackWithUnsavedDraft() async {
+    await _saveDraftNow();
+    if (!mounted) return;
+    final leave = await showConfirmDialog(
+      context,
+      title: 'Leave report?',
+      message:
+          'Your progress is saved as a draft on this phone and will resume when you return.',
+      confirmLabel: 'Leave (keep draft)',
+    );
+    if (leave == true && mounted) {
+      setState(() => _hasUnsavedChanges = false);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).pop();
+      });
+    }
+  }
 
-              // 2. Optical Power Reading Gauge & Input
-              _buildOpticalPowerSection(rep),
-              const SizedBox(height: 16),
-
-              // 3. Hardware & Port Details
-              KeyedSubtree(
-                key: _hardwareSectionKey,
-                child: _buildHardwareSection(rep),
+  Widget _buildDraftRestoredBanner(ReportSignals rep) {
+    if (!_draftRestored) return const SizedBox.shrink();
+    return Container(
+      key: const ValueKey('report_draft_restored_banner'),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.primarySubtleBgOf(context),
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        border: Border.all(
+          color: AppTheme.primarySubtleBorderOf(context),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.restore_rounded,
+            size: 20,
+            color: AppTheme.brandInkOf(context),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Restored saved draft from phone',
+              style: context.text.bodySmall!.copyWith(
+                fontWeight: FontWeight.w600,
+                color: AppTheme.brandInkOf(context),
               ),
-              const SizedBox(height: 16),
+            ),
+          ),
+          TextButton(
+            key: const ValueKey('discard_report_draft_button'),
+            onPressed: () => _discardDraft(rep),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+  }
 
-              // 4. Materials Consumed On-Site (BOM)
-              _buildMaterialsSection(rep),
-              const SizedBox(height: 16),
+  @override
+  Widget build(BuildContext context) {
+    final rep = widget.reportSignals;
 
-              // 5. Photo Proof Attachments
-              _buildPhotoProofSection(rep),
-              const SizedBox(height: 16),
+    return SignalBuilder(
+      builder: (context) {
+        final submitting = rep.isSubmitting.value;
+        return PopScope(
+          canPop: !_hasUnsavedChanges || submitting,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) return;
+            unawaited(_handleBackWithUnsavedDraft());
+          },
+          child: Scaffold(
+            appBar: AppBar(title: const Text('Completion report')),
+            bottomNavigationBar: _buildSaveBar(rep),
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildDraftRestoredBanner(rep),
+                    _buildJobOrderSummary(rep),
+                    const SizedBox(height: 16),
 
-              // 5. On-site Remarks
-              _buildRemarksSection(),
-              const SizedBox(height: 16),
+                    // Step 1: Network Plant & Hardware Details
+                    KeyedSubtree(
+                      key: _hardwareSectionKey,
+                      child: _buildHardwareSection(rep),
+                    ),
+                    const SizedBox(height: 16),
 
-              // 6. Customer Electronic Sign-Off
-              KeyedSubtree(
-                key: _signOffSectionKey,
-                child: _buildCustomerSignOffSection(rep),
-              ),
-              const SizedBox(height: 24),
-              */
-              // Gene - Oct 13, 2026: Reordered sections into consistent AppSheet field flow:
-              // Context Header -> 1. Network Plant & Hardware -> 2. Optical Reading -> 3. Materials (BOM) -> 4. Photo Proofs -> 5. Customer Sign-Off -> 6. Technician Remarks & Status.
-              _buildJobOrderSummary(rep),
-              const SizedBox(height: 16),
-
-              // Step 1: Network Plant & Hardware Details
-              KeyedSubtree(
-                key: _hardwareSectionKey,
-                child: _buildHardwareSection(rep),
-              ),
-              const SizedBox(height: 16),
-
-              /*
+                    /*
               // Step 2: Optical Power Reading Gauge & Input
               _buildOpticalPowerSection(rep),
               const SizedBox(height: 16),
               */
-              // Gene - Oct 13, 2026: Removed optical reading from report screen as requested. Remaining sections follow physical flow.
+                    // Gene - Oct 13, 2026: Removed optical reading from report screen as requested. Remaining sections follow physical flow.
 
-              // Step 2: Materials Consumed On-Site
-              _buildMaterialsSection(rep),
-              const SizedBox(height: 16),
+                    // Step 2: Materials Consumed On-Site
+                    _buildMaterialsSection(rep),
+                    const SizedBox(height: 16),
 
-              // Step 3: Photo Proof Attachments
-              _buildPhotoProofSection(rep),
-              const SizedBox(height: 16),
+                    // Step 3: Photo Proof Attachments
+                    _buildPhotoProofSection(rep),
+                    const SizedBox(height: 16),
 
-              // Step 4: Customer Electronic Sign-Off
-              KeyedSubtree(
-                key: _signOffSectionKey,
-                child: _buildCustomerSignOffSection(rep),
+                    // Step 4: Customer Electronic Sign-Off
+                    KeyedSubtree(
+                      key: _signOffSectionKey,
+                      child: _buildCustomerSignOffSection(rep),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Step 5: Technician Remarks & Status
+                    _buildRemarksSection(),
+                    const SizedBox(height: 24),
+
+                    const SizedBox(height: 24),
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
-
-              // Step 5: Technician Remarks & Status
-              _buildRemarksSection(),
-              const SizedBox(height: 24),
-
-              const SizedBox(height: 24),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -1092,6 +1427,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                             final chosen =
                                 plans.firstWhere((p) => p.id == newId);
                             rep.setPlan(chosen.id, chosen.name);
+                            _markDirtyAndSave();
                           }
                         },
                       ),
@@ -1388,7 +1724,10 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                       routers: _availableRouters,
                       selected: model,
                     );
-                    if (picked != null) rep.routerModel.value = picked;
+                    if (picked != null) {
+                      rep.routerModel.value = picked;
+                      _markDirtyAndSave();
+                    }
                   },
                 );
               },
@@ -1554,6 +1893,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       if (prev != null && prev != picked.name) {
         rep.nap.value = null;
       }
+      _markDirtyAndSave();
     }
   }
 
@@ -1713,6 +2053,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                 onSelected: (port) {
                                   rep.napPort.value = port;
                                   setState(() => _portsExpanded = false);
+                                  _markDirtyAndSave();
                                 },
                               ),
                               if (usedPorts.isNotEmpty)
@@ -1774,6 +2115,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   onChanged: (val) {
                     if (val != null) {
                       rep.vlan.value = val;
+                      _markDirtyAndSave();
                     }
                   },
                 );
@@ -1797,10 +2139,12 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   onChanged: (val) {
                     if (val != null) {
                       rep.vlan.value = val;
+                      _markDirtyAndSave();
                     }
                   },
                 );
                 */
+                /*
                 // Gene - Oct 13, 2026: Set isExpanded: true and initialValue on VLAN dropdown to prevent horizontal overflow and avoid deprecated value parameter.
                 return DropdownButtonFormField<String>(
                   key: const ValueKey('vlan_dropdown_field'),
@@ -1819,8 +2163,43 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   onChanged: (val) {
                     if (val != null) {
                       rep.vlan.value = val;
+                      _markDirtyAndSave();
                     }
                   },
+                );
+                */
+                // Gene - Nov, 23, 2026: Added Custom VLAN option (1-4094 numeric dialog) to VLAN dropdown.
+                return KeyedSubtree(
+                  key: ValueKey('vlan_reset_$_vlanResetNonce'),
+                  child: DropdownButtonFormField<String>(
+                    key: const ValueKey('vlan_dropdown_field'),
+                    initialValue: currentVlan,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'VLAN',
+                      prefixIcon: Icon(Icons.alt_route_rounded, size: 20),
+                    ),
+                    items: [
+                      ...items.map((v) => DropdownMenuItem(
+                            value: v,
+                            child: Text(v == '1000' ? '$v (Default)' : v),
+                          )),
+                      const DropdownMenuItem(
+                        value: '__custom__',
+                        child: Text('Custom VLAN...'),
+                      ),
+                    ],
+                    onChanged: (val) {
+                      if (val == '__custom__') {
+                        unawaited(_showCustomVlanDialog(context, rep));
+                        return;
+                      }
+                      if (val != null) {
+                        rep.vlan.value = val;
+                        _markDirtyAndSave();
+                      }
+                    },
+                  ),
                 );
               },
             ),
@@ -1852,6 +2231,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   onChanged: (val) {
                     if (val != null) {
                       rep.connectionType.value = val;
+                      _markDirtyAndSave();
                     }
                   },
                 );
@@ -1885,6 +2265,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   onChanged: (val) {
                     if (val != null) {
                       rep.visitBy.value = val;
+                      _markDirtyAndSave();
                     }
                   },
                 );
@@ -1914,9 +2295,20 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                             child: Text(t == 'None' ? '$t (Default)' : t),
                           ))
                       .toList(),
+                  /*
                   onChanged: (val) {
                     if (val != null) {
                       rep.visitWith.value = val;
+                      _markDirtyAndSave();
+                    }
+                  },
+                  */
+                  // Gene - Nov, 23, 2026: Remember selected Visit With partner for same-day reports.
+                  onChanged: (val) {
+                    if (val != null) {
+                      rep.visitWith.value = val;
+                      unawaited(_persistVisitWithForToday(val));
+                      _markDirtyAndSave();
                     }
                   },
                 );
@@ -1969,7 +2361,10 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                       routers: _availableRouters,
                       selected: model,
                     );
-                    if (picked != null) rep.routerModel.value = picked;
+                    if (picked != null) {
+                      rep.routerModel.value = picked;
+                      _markDirtyAndSave();
+                    }
                   },
                 );
               },
@@ -2018,7 +2413,10 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       isSelected: (n) => n.name == rep.nap.value,
       emptyMessage: (q) => 'No NAP matching "$q"',
     );
-    if (picked != null) rep.nap.value = picked.name;
+    if (picked != null) {
+      rep.nap.value = picked.name;
+      _markDirtyAndSave();
+    }
   }
 
   static IconData _iconFor(JobPhoto photo) => switch (photo) {
@@ -2537,11 +2935,103 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     setState(() {
       _selectedMaterialToAdd = null;
     });
+    _markDirtyAndSave();
+  }
+
+  // Gene - Nov, 23, 2026: Custom numeric VLAN dialog (validates 1..4094), catalog material resolver, Standard FTTH Kit preset, and quick-add chips.
+  Future<void> _showCustomVlanDialog(
+      BuildContext context, ReportSignals rep) async {
+    final initialText = const ['1000', '100', '200', '300', '400', '500']
+            .contains(rep.vlan.value)
+        ? ''
+        : rep.vlan.value;
+    final entered = await showAdaptiveDialog<String>(
+      context: context,
+      builder: (_) => _CustomVlanDialog(initialText: initialText),
+    );
+    if (!mounted) return;
+    if (entered != null) {
+      rep.vlan.value = entered;
+      setState(() => _vlanResetNonce++);
+      _markDirtyAndSave();
+    } else {
+      setState(() => _vlanResetNonce++);
+    }
+  }
+
+  String _resolveCatalogMaterialName(String preferred, List<String> aliases) {
+    for (final candidate in [preferred, ...aliases]) {
+      final lower = candidate.toLowerCase();
+      for (final item in _availableMaterials) {
+        if (item.toLowerCase() == lower) return item;
+      }
+    }
+    for (final candidate in [preferred, ...aliases]) {
+      final lower = candidate.toLowerCase();
+      for (final item in _availableMaterials) {
+        if (item.toLowerCase().contains(lower)) return item;
+      }
+    }
+    return preferred;
+  }
+
+  void _applyStandardFtthKit(ReportSignals rep) {
+    const presets = [
+      (name: 'Drop Cable (m)', aliases: ['drop cable'], qty: 50),
+      (
+        name: 'SC/APC Fast Connector',
+        aliases: ['fast connector', 'sc connector'],
+        qty: 2
+      ),
+      (name: 'S-Clamp', aliases: ['s-clamp', 'clamp'], qty: 2),
+      (
+        name: 'Patch Cord',
+        aliases: ['apc-sc to apc-sc (green)', 'patch cord'],
+        qty: 1
+      ),
+    ];
+    for (final item in presets) {
+      final resolved = _resolveCatalogMaterialName(item.name, item.aliases);
+      final current = rep.materialsUsed.value[resolved] ?? 0;
+      if (current <= 0) {
+        rep.setMaterialQuantity(resolved, item.qty);
+      }
+    }
+    _markDirtyAndSave();
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Standard FTTH kit applied'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _quickAddMaterial(
+      ReportSignals rep, String preferred, List<String> aliases) {
+    final resolved = _resolveCatalogMaterialName(preferred, aliases);
+    final currentQty = rep.materialsUsed.value[resolved] ?? 0;
+    rep.setMaterialQuantity(resolved, currentQty > 0 ? currentQty + 1 : 1);
+    _markDirtyAndSave();
   }
 
   // Gene - Oct 13, 2026: Dynamic materials consumed section: dropdown selector with search, Add button with custom quantity, and dynamic list of added items with counters and remove buttons.
   Widget _buildMaterialsSection(ReportSignals rep) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    const quickMaterials = [
+      (label: 'Drop Cable (m)', aliases: ['drop cable']),
+      (
+        label: 'SC/APC Fast Connector',
+        aliases: ['fast connector', 'sc connector']
+      ),
+      (label: 'S-Clamp', aliases: ['s-clamp', 'clamp']),
+      (
+        label: 'Patch Cord',
+        aliases: ['apc-sc to apc-sc (green)', 'patch cord']
+      ),
+      (label: 'Fiber Wall Plate', aliases: ['fiber wall plate', 'ioo box']),
+    ];
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -2564,6 +3054,131 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   ],
                 ),
                 const SizedBox(height: 14),
+
+                // Gene - Nov, 23, 2026: 1-tap import banner when Drop Cable Estimator stages a BOM.
+                SignalBuilder(
+                  builder: (context) {
+                    final staged = BomHandoffService.instance.pendingBom.value;
+                    if (staged == null) return const SizedBox.shrink();
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primarySubtleBgOf(context),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: AppTheme.primarySubtleBorderOf(context),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.calculate_outlined,
+                                  size: 20,
+                                  color: AppTheme.brandInkOf(context)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  staged.summary.isNotEmpty
+                                      ? 'Import Toolkit BOM (${staged.summary})'
+                                      : 'Import calculated BOM from Toolkit',
+                                  style: context.text.labelLarge!.copyWith(
+                                    color: AppTheme.brandInkOf(context),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Dismiss BOM',
+                                onPressed: BomHandoffService.instance.clear,
+                                icon: Icon(Icons.close_rounded,
+                                    size: 20,
+                                    color: AppTheme.brandInkOf(context)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: FilledButton.tonalIcon(
+                              key: const ValueKey('import_toolkit_bom_button'),
+                              onPressed: () {
+                                const aliasMap = <String, List<String>>{
+                                  'Drop Cable (m)': ['drop cable'],
+                                  'SC/APC Fast Connector': [
+                                    'fast connector',
+                                    'sc connector',
+                                  ],
+                                  'S-Clamp': ['s-clamp', 'clamp'],
+                                  'Patch Cord': [
+                                    'apc-sc to apc-sc (green)',
+                                    'patch cord',
+                                  ],
+                                  'Fiber Wall Plate': [
+                                    'fiber wall plate',
+                                    'ioo box',
+                                  ],
+                                };
+                                for (final e in staged.materials.entries) {
+                                  final resolved = _resolveCatalogMaterialName(
+                                    e.key,
+                                    aliasMap[e.key] ?? const [],
+                                  );
+                                  final existing =
+                                      rep.materialsUsed.value[resolved] ?? 0;
+                                  rep.setMaterialQuantity(
+                                    resolved,
+                                    existing + e.value,
+                                  );
+                                }
+                                BomHandoffService.instance.clear();
+                                _markDirtyAndSave();
+                              },
+                              icon:
+                                  const Icon(Icons.download_rounded, size: 20),
+                              label: const Text('Import'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+
+                // Gene - Nov, 23, 2026: Added 1-tap Standard FTTH Kit button and quick-add material chips.
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('apply_standard_kit_button'),
+                    onPressed: () => _applyStandardFtthKit(rep),
+                    icon: const Icon(Icons.bolt_rounded, size: 20),
+                    label: const Text('Apply Standard FTTH Kit'),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: quickMaterials
+                      .map(
+                        (item) => ActionChip(
+                          key: ValueKey(
+                              'quick_add_material_${_materialKeySlug(item.label)}'),
+                          label: Text('+ ${item.label}'),
+                          onPressed: () =>
+                              _quickAddMaterial(rep, item.label, item.aliases),
+                        ),
+                      )
+                      .toList(),
+                ),
+                const SizedBox(height: 12),
 
                 // Dynamic Material Selector: Dropdown with search
                 PickerField(
@@ -2690,8 +3305,10 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                               minusKey: ValueKey('counter_minus_$slug'),
                               fieldKey: ValueKey('counter_field_$slug'),
                               plusKey: ValueKey('counter_plus_$slug'),
-                              onChanged: (qty) =>
-                                  rep.setMaterialQuantity(entry.key, qty),
+                              onChanged: (qty) {
+                                rep.setMaterialQuantity(entry.key, qty);
+                                _markDirtyAndSave();
+                              },
                             ),
                           ),
                           IconButton(
@@ -2699,8 +3316,10 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                             icon: const Icon(Icons.close_rounded, size: 20),
                             color: AppTheme.secondaryInkOf(context),
                             tooltip: 'Remove ${entry.key}',
-                            onPressed: () =>
-                                rep.setMaterialQuantity(entry.key, 0),
+                            onPressed: () {
+                              rep.setMaterialQuantity(entry.key, 0);
+                              _markDirtyAndSave();
+                            },
                           ),
                         ],
                       ),
@@ -2848,7 +3467,10 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                       icon: _iconFor(photo),
                       value: rep.photoFor(photo),
                       pick: _pick,
-                      onChanged: (v) => rep.setPhoto(photo, v),
+                      onChanged: (v) {
+                        rep.setPhoto(photo, v);
+                        _markDirtyAndSave();
+                      },
                     );
                   },
                 );
@@ -2952,6 +3574,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                               rep.setSignature(null);
                               _signatureController.clear();
                               setState(() => _isSignaturePadActive = true);
+                              _markDirtyAndSave();
                             },
                             icon: const Icon(Icons.refresh_rounded, size: 20),
                             label: const Text('Sign again'),
@@ -3269,6 +3892,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                               rep.setSignature(null);
                               _signatureController.clear();
                               setState(() => _isSignaturePadActive = true);
+                              _markDirtyAndSave();
                             },
                             icon: const Icon(Icons.lock_open_rounded, size: 20),
                             label: const Text('Unlock to sign'),
@@ -3495,6 +4119,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                   ? () {
                                       _signatureController.clear();
                                       rep.setSignature(null);
+                                      _markDirtyAndSave();
                                     }
                                   : null,
                               icon: const Icon(Icons.backspace_outlined,
@@ -3529,6 +4154,78 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// Gene - Nov, 23, 2026: Stateful dialog wrapper so TextEditingController is disposed only after exit animation finishes.
+class _CustomVlanDialog extends StatefulWidget {
+  final String initialText;
+
+  const _CustomVlanDialog({required this.initialText});
+
+  @override
+  State<_CustomVlanDialog> createState() => _CustomVlanDialogState();
+}
+
+class _CustomVlanDialogState extends State<_CustomVlanDialog> {
+  late final TextEditingController _controller;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialText);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog.adaptive(
+      title: const Text('Custom VLAN'),
+      content: Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: TextField(
+          key: const ValueKey('custom_vlan_input'),
+          controller: _controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: InputDecoration(
+            labelText: 'VLAN ID (1–4094)',
+            hintText: 'e.g. 1250',
+            errorText: _errorText,
+          ),
+        ),
+      ),
+      actions: [
+        adaptiveDialogAction(
+          context,
+          label: 'Cancel',
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        adaptiveDialogAction(
+          context,
+          label: 'Apply',
+          isDefault: true,
+          onPressed: () {
+            final raw = _controller.text.trim();
+            final parsed = int.tryParse(raw);
+            if (parsed == null || parsed < 1 || parsed > 4094) {
+              setState(() {
+                _errorText = 'Enter a VLAN ID between 1 and 4094';
+              });
+              return;
+            }
+            Navigator.of(context).pop(parsed.toString());
+          },
+        ),
+      ],
     );
   }
 }

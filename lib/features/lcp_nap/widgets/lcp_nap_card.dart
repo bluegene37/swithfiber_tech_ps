@@ -8,11 +8,23 @@ import '../models/lcp_nap_model.dart';
 class LcpNapCard extends StatelessWidget {
   final LcpNapDto location;
   final VoidCallback onTap;
+  // Gene - Nov, 23, 2026: Added optional freePorts and distanceLabel for live capacity and nearby-free-ports sorting.
+  final int? freePorts;
+  final String? distanceLabel;
 
+  /*
   const LcpNapCard({
     super.key,
     required this.location,
     required this.onTap,
+  });
+  */
+  const LcpNapCard({
+    super.key,
+    required this.location,
+    required this.onTap,
+    this.freePorts,
+    this.distanceLabel,
   });
 
   @override
@@ -59,7 +71,11 @@ class LcpNapCard extends StatelessWidget {
                         ),
                       ),
                       child: Text(
+                        /*
                         'LCP',
+                        */
+                        // Gene - Nov, 23, 2026: Fixed card badge label from LCP to NAP (ISSUE-005).
+                        'NAP',
                         style: context.text.labelSmall!.copyWith(
                           fontWeight: FontWeight.w800,
                           color: AppTheme.brandInkOf(context),
@@ -73,6 +89,7 @@ class LcpNapCard extends StatelessWidget {
                         style: context.text.titleSmall,
                       ),
                     ),
+                    /*
                     // Port capacity pill
                     Flexible(
                       child: Container(
@@ -94,6 +111,42 @@ class LcpNapCard extends StatelessWidget {
                           '${location.portTotal} ports',
                           style: context.text.labelMedium!.copyWith(
                             color: AppTheme.brandInkOf(context),
+                          ),
+                        ),
+                      ),
+                    ),
+                    */
+                    // Gene - Nov, 23, 2026: Display free ports vs total when port occupancy is available.
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2.5),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? const Color(0xFF3F2327)
+                              : AppTheme.primarySubtleBg,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isDark
+                                ? const Color(0xFF882933)
+                                : AppTheme.primarySubtleBorder,
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Text(
+                          freePorts != null
+                              ? '$freePorts free / ${location.portTotal} ports'
+                              : '${location.portTotal} ports',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.text.labelMedium!.copyWith(
+                            color: freePorts == null
+                                ? AppTheme.brandInkOf(context)
+                                : freePorts == 0
+                                    ? AppTheme.dangerInkOf(context)
+                                    : (freePorts! <= 2
+                                        ? AppTheme.warningInkOf(context)
+                                        : AppTheme.successInkOf(context)),
                           ),
                         ),
                       ),
@@ -162,8 +215,12 @@ class LcpNapCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        'View Details & GPS',
+                        distanceLabel != null
+                            ? '$distanceLabel away · View Details & GPS'
+                            : 'View Details & GPS',
                         style: context.text.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     Icon(

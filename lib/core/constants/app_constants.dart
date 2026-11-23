@@ -12,13 +12,15 @@ class AppConstants {
   static const String appTagline = 'Distributed Fiber Network Management';
 
   // API Config
-  // static const String defaultBaseUrl = 'https://103.249.198.50:8090/api';
   // Gene - Oct 13, 2026: Updated defaultBaseUrl to production domain https://admin.switchfiber.ph/api over standard HTTPS port 443.
   static const String defaultBaseUrl = 'https://admin.switchfiber.ph/api';
   static const int connectTimeout = 30000; // 30s
+  /*
   // GET /JobOrders/status/Activated returns every finished job (~10 MB, a few
   // seconds on the current server, far longer on a poor mobile link). Kept
   // generous until the endpoint can be scoped to one technician.
+  */
+  // Gene - Nov, 23, 2026: Updated note: JobRepository.fetchRemoteJobs now fetches GET /JobOrders/status-assigned scoped per technician; 120s receive timeout is kept generous for slow mobile links.
   static const int receiveTimeout = 120000; // 120s
 
   /// SHA-256 fingerprint of the API server's self-signed certificate.
@@ -36,13 +38,17 @@ class AppConstants {
   // Gene - Nov, 20, 2026: Added local storage keys for tracking read Job Orders and Service Orders across restarts.
   static const String keyReadJobIds = 'read_job_order_ids';
   static const String keyReadServiceOrderIds = 'read_service_order_ids';
+  // Gene - Nov, 23, 2026: Added storage keys for technician navigation app preference and same-day crew partner memory.
+  static const String keyPreferredNavApp = 'preferred_nav_app';
+  static const String keyLastVisitWith = 'last_visit_with';
+  static const String keyLastVisitWithDate = 'last_visit_with_date';
 
   // PowerSync Self-Hosted Server Config
-  static const String defaultPowerSyncEndpoint = 'http://103.249.198.50:8080';
-
-  /// Development shared secret matching service.yaml for local/direct sync.
+  // Gene - Nov, 23, 2026: Moved PowerSync endpoint and dev signing key to compile-time --dart-define environment variables so no server IP or secret is hardcoded in source.
+  static const String defaultPowerSyncEndpoint =
+      String.fromEnvironment('POWERSYNC_ENDPOINT', defaultValue: '');
   static const String devSecretKey =
-      'switchfiber_powersync_dev_secret_key_2026';
+      String.fromEnvironment('POWERSYNC_DEV_KEY', defaultValue: '');
 
   // Optical Power dBm Standards (GPON standard)
   static const double opticalMinOptimal = -24.0;

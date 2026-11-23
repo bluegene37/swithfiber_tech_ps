@@ -33,8 +33,15 @@ void main() async {
   final jobRepository =
       JobRepository(database.jobOrdersDao, errorLog: database.syncErrorLogsDao);
   final lcpNapRepository = LcpNapRepository(database.lcpNapLocationsDao);
+  /*
   final serviceOrdersSignals =
       ServiceOrdersSignals(dao: database.serviceOrdersDao);
+  */
+  // Gene - Nov, 23, 2026: Pass SyncErrorLogsDao into ServiceOrdersSignals so refused repair uploads are logged.
+  final serviceOrdersSignals = ServiceOrdersSignals(
+    dao: database.serviceOrdersDao,
+    errorLog: database.syncErrorLogsDao,
+  );
 
   // 2. Initialize Signals State Layer
   final authSignals = AuthSignals.instance;

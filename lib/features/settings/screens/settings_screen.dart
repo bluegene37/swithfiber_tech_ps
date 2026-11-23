@@ -1,8 +1,12 @@
+import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/database/models/sync_error_log.dart';
 import '../../../core/network/api_client.dart';
+// Gene - Nov, 23, 2026: Added LocationService and MapTiles imports for offline map tile cache management.
+import '../../../core/services/location_service.dart';
 import '../../../core/storage/secure_storage_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
@@ -13,16 +17,24 @@ import '../../auth/signals/auth_signals.dart';
 import '../signals/settings_signals.dart';
 import '../../diagnostics/screens/sync_error_log_screen.dart';
 import '../../jobs/signals/jobs_signals.dart';
+import '../../lcp_nap/services/map_tiles.dart';
+import '../../lcp_nap/signals/lcp_nap_signals.dart';
+import '../../service_orders/signals/service_orders_signals.dart';
 
 /// Settings & Technician Terminal Diagnostics screen.
 class SettingsScreen extends StatefulWidget {
   final AuthSignals authSignals;
   final JobsSignals jobsSignals;
+  // Gene - Nov, 23, 2026: Optional ServiceOrdersSignals and LcpNapSignals for combined queue visibility, Sync Now, per-item retry, and logout safety.
+  final ServiceOrdersSignals? serviceOrdersSignals;
+  final LcpNapSignals? lcpNapSignals;
 
   const SettingsScreen({
     super.key,
     required this.authSignals,
     required this.jobsSignals,
+    this.serviceOrdersSignals,
+    this.lcpNapSignals,
   });
 
   @override
@@ -36,13 +48,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isTestingPing = false;
   int? _lastPingMs;
   bool? _pingSuccess;
+  // Gene - Nov, 23, 2026: Track manual Sync Now execution state and offline map tile cache status.
+  bool _isSyncingAll = false;
+  int _tileCacheBytes = 0;
+  bool _isPrefetchingTiles = false;
+  int _tileDone = 0;
+  int _tileTotal = 0;
 
   @override
   void initState() {
     super.initState();
     _loadUrl();
+    _refreshTileCacheSize();
     // Login returns only name and access level; pull contact details too.
     widget.authSignals.refreshProfile();
+  }
+
+  Future<void> _refreshTileCacheSize() async {
+    final bytes = await MapTiles.getCacheSizeBytes();
+    if (mounted) setState(() => _tileCacheBytes = bytes);
+  }
+
+  Future<void> _handlePrefetchMapTiles() async {
+    if (_isPrefetchingTiles) return;
+    final pos = LocationService.instance.lastKnownPosition;
+    final lat = pos?.latitude ?? LocationService.fallbackLat;
+    final lng = pos?.longitude ?? LocationService.fallbackLng;
+    setState(() {
+      _isPrefetchingTiles = true;
+      _tileDone = 0;
+      _tileTotal = 0;
+    });
+    try {
+      final result = await MapTiles.prefetchArea(
+        centerLat: lat,
+        centerLng: lng,
+        onProgress: (done, total) {
+          if (!mounted) return;
+          setState(() {
+            _tileDone = done;
+            _tileTotal = total;
+          });
+        },
+      );
+      await _refreshTileCacheSize();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Cached ${result.downloaded} of ${result.total} map tiles for offline field work.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isPrefetchingTiles = false);
+    }
+  }
+
+  Future<void> _handleClearTileCache() async {
+    await MapTiles.clearCache();
+    await _refreshTileCacheSize();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Offline map tile cache cleared.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _loadUrl() async {
@@ -95,6 +168,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            /*
             // iOS Grabber Pill
             Center(
               child: Container(
@@ -109,6 +183,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 14),
+            */
+            // Gene - Nov, 23, 2026: Removed manual drag handle pill because AppTheme.bottomSheetTheme sets showDragHandle: true.
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -165,6 +241,91 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtle: AppTheme.dangerSubtle,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // Gene - Nov, 23, 2026: Modal bottom sheet to pick technician's preferred turn-by-turn navigation app.
+  Future<void> _showNavAppPicker(BuildContext context) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final current = SettingsSignals.instance.preferredNavApp.value;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(ctx).height * 0.85,
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(CupertinoIcons.location_fill,
+                        color: AppTheme.primary, size: 24),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Default Navigation App',
+                        style: ctx.text.titleMedium,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Choose which maps app opens when you tap Navigate on a job or repair.',
+                  style: ctx.text.bodySmall,
+                ),
+                const SizedBox(height: 12),
+                for (final option in PreferredNavApp.values)
+                  InkWell(
+                    key: ValueKey('nav_app_option_${option.name}'),
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () async {
+                      await SettingsSignals.instance.setPreferredNavApp(option);
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    },
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              option == current
+                                  ? Icons.radio_button_checked_rounded
+                                  : Icons.radio_button_unchecked_rounded,
+                              size: 20,
+                              color: option == current
+                                  ? AppTheme.primary
+                                  : AppTheme.secondaryInkOf(ctx),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                option.label,
+                                style: ctx.text.titleSmall,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -271,6 +432,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
 
+  /*
   Future<void> _handleLogout() async {
     final confirm = await showConfirmDialog(
       context,
@@ -282,6 +444,146 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (confirm == true) {
       await widget.authSignals.logout();
+    }
+  }
+  */
+  // Gene - Nov, 23, 2026: Combined pending count, manual Sync Now flush, per-item SyncErrorLog retry router, and unsynced sign-out guard.
+  ({int jobs, int repairs, int plant, int total}) _pendingBreakdown() {
+    final jobs = math.max(
+      widget.jobsSignals.unsyncedCount.value,
+      widget.jobsSignals.repository.syncWorker.pendingCount.value,
+    );
+    final repairsStreamCount = widget.serviceOrdersSignals?.allOrders.value
+            .where((o) => !o.isSynced)
+            .length ??
+        0;
+    final repairsWorkerCount =
+        widget.serviceOrdersSignals?.syncWorker?.pendingCount.value ?? 0;
+    final repairs = math.max(repairsStreamCount, repairsWorkerCount);
+    final plant = widget.lcpNapSignals?.unsyncedCount.value ?? 0;
+    return (
+      jobs: jobs,
+      repairs: repairs,
+      plant: plant,
+      total: jobs + repairs + plant,
+    );
+  }
+
+  Future<int> _flushAllQueues() async {
+    if (mounted) setState(() => _isSyncingAll = true);
+    try {
+      await widget.jobsSignals.repository.syncWorker.syncPendingJobs();
+      await widget.serviceOrdersSignals?.syncWorker?.syncPendingOrders();
+      await widget.lcpNapSignals?.syncPending();
+      return _pendingBreakdown().total;
+    } finally {
+      if (mounted) setState(() => _isSyncingAll = false);
+    }
+  }
+
+  Future<void> _handleSyncNow() async {
+    if (_isSyncingAll) return;
+    final remaining = await _flushAllQueues();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          remaining == 0
+              ? 'All offline changes synced.'
+              : '$remaining item(s) still pending. Check Sync Error Log.',
+        ),
+        backgroundColor: remaining == 0 ? AppTheme.success : AppTheme.warning,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<bool> _retrySyncErrorLog(SyncErrorLog log) async {
+    switch (log.entityType) {
+      case 'JOB_ORDER':
+        return widget.jobsSignals.repository.syncWorker
+            .syncSingleJob(log.entityId);
+      case 'SERVICE_ORDER':
+        final worker = widget.serviceOrdersSignals?.syncWorker;
+        if (worker == null) return false;
+        return worker.syncSingleOrder(log.entityId);
+      case 'LCP_NAP':
+        final lcpSignals = widget.lcpNapSignals;
+        if (lcpSignals == null) return false;
+        await lcpSignals.syncPending();
+        return !lcpSignals.allLocations.value
+            .any((loc) => loc.id == log.entityId && !loc.isSynced);
+      default:
+        return false;
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    final counts = _pendingBreakdown();
+    if (counts.total <= 0) {
+      final confirm = await showConfirmDialog(
+        context,
+        title: 'Sign Out',
+        message: 'Are you sure you want to end your field terminal session?',
+        confirmLabel: 'Sign Out',
+        destructive: true,
+      );
+      if (confirm == true) {
+        await widget.authSignals.logout();
+      }
+      return;
+    }
+
+    final choice = await showAdaptiveDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog.adaptive(
+        title: const Text('Unsynced work on phone'),
+        content: Text(
+          '${counts.total} offline update(s) have not synced yet '
+          '(Jobs: ${counts.jobs} · Repairs: ${counts.repairs} · Plant: ${counts.plant}). '
+          'Sync before signing out so no field work is stranded.',
+        ),
+        actions: [
+          adaptiveDialogAction(
+            ctx,
+            label: 'Cancel',
+            isDefault: true,
+            onPressed: () => Navigator.of(ctx).pop('cancel'),
+          ),
+          adaptiveDialogAction(
+            ctx,
+            label: 'Sync & Sign Out',
+            onPressed: () => Navigator.of(ctx).pop('sync'),
+          ),
+          adaptiveDialogAction(
+            ctx,
+            label: 'Sign Out Anyway',
+            isDestructive: true,
+            onPressed: () => Navigator.of(ctx).pop('force'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+    if (choice == 'force') {
+      await widget.authSignals.logout();
+    } else if (choice == 'sync') {
+      final remaining = await _flushAllQueues();
+      if (!mounted) return;
+      if (remaining == 0) {
+        await widget.authSignals.logout();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Still $remaining unsynced item(s). Check Sync Error Log before signing out.',
+            ),
+            backgroundColor: AppTheme.warning,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -317,6 +619,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /*
   Widget _buildIosSettingRow({
     required IconData icon,
     required Color iconBg,
@@ -328,6 +631,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     bool showDivider = true,
   }) {
     return Column(
+  */
+  // Gene - Nov, 23, 2026: Added optional rowKey parameter to _buildIosSettingRow for testable settings rows.
+  Widget _buildIosSettingRow({
+    Key? rowKey,
+    required IconData icon,
+    required Color iconBg,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    VoidCallback? onTap,
+    required bool isDark,
+    bool showDivider = true,
+  }) {
+    return Column(
+      key: rowKey,
       children: [
         InkWell(
           onTap: onTap,
@@ -476,6 +794,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SignalBuilder(
             builder: (context) {
               final dark = SettingsSignals.instance.isDarkMode;
+              // Gene - Nov, 23, 2026: Added Default Navigation App preference row under Appearance & Display.
+              final preferredNav =
+                  SettingsSignals.instance.preferredNavApp.value;
               return _buildIosGroupedCard(
                 isDark: isDark,
                 children: [
@@ -489,11 +810,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ? 'Easier on the eyes in low light'
                         : 'Optimized for high outdoor sunlight',
                     isDark: isDark,
+                    /*
                     showDivider: false,
+                    */
+                    showDivider: true,
                     trailing: Switch.adaptive(
                       value: dark,
                       activeTrackColor: AppTheme.primary,
                       onChanged: (v) => SettingsSignals.instance.setDarkMode(v),
+                    ),
+                  ),
+                  _buildIosSettingRow(
+                    rowKey: const ValueKey('settings_nav_app_row'),
+                    icon: CupertinoIcons.location_fill,
+                    iconBg: AppTheme.primary,
+                    title: 'Default Navigation App',
+                    subtitle: preferredNav.label,
+                    isDark: isDark,
+                    showDivider: false,
+                    onTap: () => _showNavAppPicker(context),
+                    trailing: Icon(
+                      CupertinoIcons.chevron_forward,
+                      size: 24,
+                      color: AppTheme.secondaryInkOf(context),
                     ),
                   ),
                 ],
@@ -542,7 +881,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   if (dao == null) return;
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => SyncErrorLogScreen(dao: dao),
+                      builder: (_) => SyncErrorLogScreen(
+                        dao: dao,
+                        onRetryItem: _retrySyncErrorLog,
+                      ),
                     ),
                   );
                 },
@@ -561,6 +903,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             isDark: isDark,
             padding: const EdgeInsets.all(14),
             children: [
+              /*
               SignalBuilder(
                 builder: (context) {
                   final total = jobs.totalCount.value;
@@ -600,6 +943,141 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             : cloud
                                 ? AppTheme.success
                                 : null,
+                      ),
+                    ],
+                  );
+                },
+              ),
+              */
+              // Gene - Nov, 23, 2026: Show combined Jobs + Repairs + Plant pending queue and manual Sync Now button.
+              SignalBuilder(
+                builder: (context) {
+                  final totalJobs = jobs.totalCount.value;
+                  final counts = _pendingBreakdown();
+                  final isSyncing = _isSyncingAll ||
+                      syncWorker.isSyncing.value ||
+                      (widget.serviceOrdersSignals?.syncWorker?.isSyncing
+                              .value ??
+                          false);
+                  final cloud = PowerSyncService.instance.isConnected;
+
+                  return Column(
+                    children: [
+                      _buildMetricRow(
+                        'Total Cached Job Orders',
+                        '$totalJobs records',
+                        CupertinoIcons.folder,
+                      ),
+                      const SizedBox(height: 8),
+                      _buildMetricRow(
+                        'Pending Sync Queue',
+                        '${counts.total} offline updates',
+                        CupertinoIcons.cloud_upload,
+                        badgeColor: counts.total > 0
+                            ? AppTheme.warning
+                            : AppTheme.success,
+                      ),
+                      if (counts.total > 0 ||
+                          widget.serviceOrdersSignals != null ||
+                          widget.lcpNapSignals != null) ...[
+                        const SizedBox(height: 6),
+                        _buildMetricRow(
+                          'Queue Breakdown',
+                          'Jobs ${counts.jobs} · Repairs ${counts.repairs} · Plant ${counts.plant}',
+                          CupertinoIcons.list_bullet,
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      // Honest about the cloud side: every table is local
+                      // only until the PowerSync service replicates the
+                      // backend, so pushes still go through the REST API.
+                      _buildMetricRow(
+                        'PowerSync Engine Status',
+                        isSyncing
+                            ? 'Pushing to API...'
+                            : cloud
+                                ? 'Cloud sync connected'
+                                : 'Local only',
+                        CupertinoIcons.layers_alt,
+                        badgeColor: isSyncing
+                            ? AppTheme.primary
+                            : cloud
+                                ? AppTheme.success
+                                : null,
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          key: const ValueKey('settings_sync_now_button'),
+                          onPressed: isSyncing ? null : _handleSyncNow,
+                          icon: isSyncing
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.sync_rounded, size: 20),
+                          label: Text(isSyncing ? 'Syncing…' : 'Sync Now'),
+                        ),
+                      ),
+                      // Gene - Nov, 23, 2026: Added Offline Map Tiles cache size display, area prefetch, and cache clear controls.
+                      const SizedBox(height: 14),
+                      Divider(
+                        height: 1,
+                        color:
+                            isDark ? AppTheme.borderDark : AppTheme.borderLight,
+                      ),
+                      const SizedBox(height: 12),
+                      Column(
+                        key: const ValueKey('settings_map_tiles_row'),
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildMetricRow(
+                            'Offline Map Tiles',
+                            _isPrefetchingTiles && _tileTotal > 0
+                                ? '$_tileDone / $_tileTotal tiles'
+                                : '${(_tileCacheBytes / (1024 * 1024)).toStringAsFixed(1)} MB cached',
+                            CupertinoIcons.map_pin_ellipse,
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              OutlinedButton.icon(
+                                key: const ValueKey(
+                                    'settings_download_map_tiles_button'),
+                                onPressed: _isPrefetchingTiles
+                                    ? null
+                                    : _handlePrefetchMapTiles,
+                                icon: _isPrefetchingTiles
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                      )
+                                    : const Icon(
+                                        Icons.download_for_offline_outlined,
+                                        size: 20),
+                                label: const Text('Download Area'),
+                              ),
+                              TextButton.icon(
+                                key: const ValueKey(
+                                    'settings_clear_map_tiles_button'),
+                                onPressed: (_isPrefetchingTiles ||
+                                        _tileCacheBytes == 0)
+                                    ? null
+                                    : _handleClearTileCache,
+                                icon: const Icon(Icons.delete_outline_rounded,
+                                    size: 20),
+                                label: const Text('Clear'),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ],
                   );

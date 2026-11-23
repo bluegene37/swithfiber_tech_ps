@@ -446,8 +446,9 @@ class StatusRailRow extends StatelessWidget {
                                                     style: context
                                                         .text.labelSmall!
                                                         .copyWith(
-                                                      color: AppTheme
-                                                          .brandInkOf(context),
+                                                      color:
+                                                          AppTheme.brandInkOf(
+                                                              context),
                                                       fontWeight:
                                                           FontWeight.w700,
                                                       letterSpacing: 0.6,

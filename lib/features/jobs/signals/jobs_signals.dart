@@ -160,7 +160,8 @@ class JobsSignals {
   late final ReadonlySignal<int> unreadScheduledCount = computed(() {
     final read = readJobIds.value;
     return allJobs.value
-        .where((j) => j.jobStatus == JobStatus.scheduled && !read.contains(j.id))
+        .where(
+            (j) => j.jobStatus == JobStatus.scheduled && !read.contains(j.id))
         .length;
   });
 
@@ -178,7 +179,8 @@ class JobsSignals {
   bool isJobReadPeek(int jobId) => readJobIds.peek().contains(jobId);
 
   bool isJobUnread(JobOrderDto job) =>
-      job.jobStatus == JobStatus.scheduled && !readJobIds.value.contains(job.id);
+      job.jobStatus == JobStatus.scheduled &&
+      !readJobIds.value.contains(job.id);
 
   void markJobAsRead(int jobId) {
     final current = readJobIds.peek();

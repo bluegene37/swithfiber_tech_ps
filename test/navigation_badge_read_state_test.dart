@@ -480,7 +480,8 @@ void main() {
       expect(jobs2.isJobUnread(_makeJob(101, 'Persisted Job')), isFalse);
 
       expect(orders2.unreadCount.value, 1);
-      expect(orders2.isOrderUnread(_makeOrder(202, 'Brand New Repair')), isTrue);
+      expect(
+          orders2.isOrderUnread(_makeOrder(202, 'Brand New Repair')), isTrue);
       expect(
           orders2.isOrderUnread(_makeOrder(201, 'Persisted Repair')), isFalse);
 

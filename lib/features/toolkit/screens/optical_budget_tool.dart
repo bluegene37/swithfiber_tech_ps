@@ -84,6 +84,7 @@ class _OpticalBudgetToolState extends State<OpticalBudgetTool> {
                             style: context.text.labelSmall,
                           ),
                           const SizedBox(height: 4),
+                          /*
                           Text(
                             '${budget.expectedRxPower.toStringAsFixed(2)} dBm',
                             style: context.text.headlineSmall!.copyWith(
@@ -95,6 +96,26 @@ class _OpticalBudgetToolState extends State<OpticalBudgetTool> {
                                 OpticalPowerStatus.faulty =>
                                   AppTheme.dangerInkOf(context),
                               },
+                            ),
+                          ),
+                          */
+                          // Gene - Nov, 23, 2026: Keep hero dBm readout on a single line across narrow viewports & 200% text scale.
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '${budget.expectedRxPower.toStringAsFixed(2)} dBm',
+                              maxLines: 1,
+                              style: context.text.headlineSmall!.copyWith(
+                                color: switch (status) {
+                                  OpticalPowerStatus.optimal =>
+                                    AppTheme.successInkOf(context),
+                                  OpticalPowerStatus.marginal =>
+                                    AppTheme.warningInkOf(context),
+                                  OpticalPowerStatus.faulty =>
+                                    AppTheme.dangerInkOf(context),
+                                },
+                              ),
                             ),
                           ),
                         ],
@@ -223,6 +244,7 @@ class _OpticalBudgetToolState extends State<OpticalBudgetTool> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  /*
                   Row(
                     children: [
                       const Icon(Icons.tune_rounded,
@@ -272,6 +294,45 @@ class _OpticalBudgetToolState extends State<OpticalBudgetTool> {
                               .copyWith(color: AppTheme.brandInkOf(context))),
                     ],
                   ),
+                  */
+                  // Gene - Nov, 23, 2026: Wrapped header title and stacked slider readouts at >=1.3x text scale to prevent 200% overflow.
+                  Row(
+                    children: [
+                      const Icon(Icons.tune_rounded,
+                          size: 18, color: AppTheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Link Parameters',
+                          style: context.text.titleMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // OLT Tx Power Slider
+                  _buildSliderHeader(
+                    context,
+                    label: 'OLT Port Tx Power (Class B+/C+):',
+                    value: '+${_oltTxPower.toStringAsFixed(1)} dBm',
+                  ),
+                  Slider(
+                    value: _oltTxPower,
+                    min: 1.0,
+                    max: 8.0,
+                    divisions: 14,
+                    label: '+${_oltTxPower.toStringAsFixed(1)} dBm',
+                    onChanged: (v) => setState(() => _oltTxPower = v),
+                  ),
+
+                  // Fiber Distance Slider
+                  _buildSliderHeader(
+                    context,
+                    label: 'Fiber Route Distance:',
+                    value:
+                        '${_fiberDistanceKm.toStringAsFixed(1)} km (${(_fiberDistanceKm * 0.35).toStringAsFixed(2)} dB)',
+                  ),
                   Slider(
                     value: _fiberDistanceKm,
                     min: 0.5,
@@ -320,6 +381,7 @@ class _OpticalBudgetToolState extends State<OpticalBudgetTool> {
                   ),
                   const SizedBox(height: 14),
 
+                  /*
                   // Splice & Connector counts
                   Row(
                     children: [
@@ -360,12 +422,79 @@ class _OpticalBudgetToolState extends State<OpticalBudgetTool> {
                       ),
                     ],
                   ),
+                  */
+                  // Gene - Nov, 23, 2026: Stacked Splice & SC/APC dropdowns full-width so labels like "2 pairs (0.6 dB)" never clip (ISSUE-016).
+                  DropdownButtonFormField<int>(
+                    isExpanded: true,
+                    initialValue: _spliceCount,
+                    decoration:
+                        const InputDecoration(labelText: 'Fusion Splices'),
+                    items: List.generate(
+                      10,
+                      (i) => DropdownMenuItem(
+                        value: i,
+                        child: Text(
+                            '$i splices (${(i * 0.05).toStringAsFixed(2)} dB)'),
+                      ),
+                    ),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _spliceCount = v);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    isExpanded: true,
+                    initialValue: _connectorCount,
+                    decoration:
+                        const InputDecoration(labelText: 'SC/APC Pairs'),
+                    items: List.generate(
+                      6,
+                      (i) => DropdownMenuItem(
+                        value: i + 1,
+                        child: Text(
+                            '${i + 1} pairs (${((i + 1) * 0.3).toStringAsFixed(1)} dB)'),
+                      ),
+                    ),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _connectorCount = v);
+                    },
+                  ),
                 ],
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  // Gene - Nov, 23, 2026: Responsive slider header that stacks at >=1.3x text scale to prevent 200% overflow.
+  Widget _buildSliderHeader(
+    BuildContext context, {
+    required String label,
+    required String value,
+  }) {
+    final valueStyle =
+        context.text.titleSmall!.copyWith(color: AppTheme.brandInkOf(context));
+    if (MediaQuery.textScalerOf(context).scale(1) >= 1.3) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: context.text.bodySmall),
+          const SizedBox(height: 2),
+          Text(value, style: valueStyle),
+        ],
+      );
+    }
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(child: Text(label, style: context.text.bodySmall)),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(value, textAlign: TextAlign.end, style: valueStyle),
+        ),
+      ],
     );
   }
 

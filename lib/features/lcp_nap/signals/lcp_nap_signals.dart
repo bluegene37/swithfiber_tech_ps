@@ -124,6 +124,13 @@ class LcpNapSignals {
   late final Computed<int> totalSitesCount =
       computed(() => allLocations.value.length);
 
+  // Gene - Nov, 23, 2026: Distinct cabinet count matching groupedByLcp key normalization (ISSUE-003).
+  late final Computed<int> totalCabinetsCount = computed(() => allLocations
+      .value
+      .map((l) => l.lcp.trim().isNotEmpty ? l.lcp.trim() : 'Unassigned LCP')
+      .toSet()
+      .length);
+
   /// Total plant ports count
   late final Computed<int> totalPortsCount = computed(() {
     return allLocations.value.fold(0, (sum, loc) => sum + loc.portTotal);

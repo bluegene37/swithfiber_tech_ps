@@ -418,6 +418,8 @@ class _TechnicianShellState extends State<TechnicianShell>
         builder: (_) => ServiceOrderDetailScreen(
           orderId: order.id,
           signals: _serviceOrdersSignals,
+          lcpNapSignals: widget.lcpNapSignals,
+          jobsSignals: widget.jobsSignals,
         ),
       ),
     );
@@ -436,6 +438,7 @@ class _TechnicianShellState extends State<TechnicianShell>
         serviceOrdersSignals: _serviceOrdersSignals,
         onSelectJobForReport: _openReportForJob,
       ),
+      /*
       ServiceOrdersScreen(
         signals: _serviceOrdersSignals,
       ),
@@ -444,6 +447,25 @@ class _TechnicianShellState extends State<TechnicianShell>
       SettingsScreen(
         authSignals: auth,
         jobsSignals: jobs,
+      ),
+      */
+      // Gene - Nov, 23, 2026: Wire cross-feature signals into Repairs, Plant, and Me for port occupancy, pole deep links, and combined sync queue.
+      ServiceOrdersScreen(
+        signals: _serviceOrdersSignals,
+        lcpNapSignals: widget.lcpNapSignals,
+        jobsSignals: jobs,
+      ),
+      LcpNapListScreen(
+        signals: widget.lcpNapSignals,
+        jobsSignals: jobs,
+        serviceOrdersSignals: _serviceOrdersSignals,
+      ),
+      const ToolkitScreen(),
+      SettingsScreen(
+        authSignals: auth,
+        jobsSignals: jobs,
+        serviceOrdersSignals: _serviceOrdersSignals,
+        lcpNapSignals: widget.lcpNapSignals,
       ),
     ];
 

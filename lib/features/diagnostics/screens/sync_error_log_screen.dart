@@ -16,8 +16,38 @@ import '../../../core/widgets/adaptive_dialogs.dart';
 /// "needs to sync" can be explained instead of guessed at.
 class SyncErrorLogScreen extends StatefulWidget {
   final SyncErrorLogsDao dao;
+  // Gene - Nov, 23, 2026: Optional per-item retry callback for failed offline pushes.
+  final Future<bool> Function(SyncErrorLog log)? onRetryItem;
 
+  /*
   const SyncErrorLogScreen({super.key, required this.dao});
+  */
+  const SyncErrorLogScreen({
+    super.key,
+    required this.dao,
+    this.onRetryItem,
+  });
+
+  /// Plain-English explanation of why a failed upload was refused or dropped.
+  static String friendlyHintFor(SyncErrorLog log) {
+    final code = log.statusCode;
+    if (code == null) {
+      return 'No internet connection — retries automatically when back online.';
+    }
+    if (code == 401 || code == 403) {
+      return 'Session expired — sign in again to sync.';
+    }
+    if (code == 413) {
+      return 'Photo payload exceeded server size limit.';
+    }
+    if (code == 400 || code == 422) {
+      return 'Server rejected a field value — expand request details to check.';
+    }
+    if (code >= 500) {
+      return 'Server error — tap Retry in a moment.';
+    }
+    return 'Server returned HTTP $code — expand details or tap Retry.';
+  }
 
   @override
   State<SyncErrorLogScreen> createState() => _SyncErrorLogScreenState();
@@ -99,8 +129,11 @@ class _SyncErrorLogScreenState extends State<SyncErrorLogScreen> {
                       16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
                   itemCount: logs.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, i) =>
-                      _LogTile(log: logs[i], isDark: isDark),
+                  itemBuilder: (context, i) => _LogTile(
+                    log: logs[i],
+                    isDark: isDark,
+                    onRetryItem: widget.onRetryItem,
+                  ),
                 ),
               ),
               SafeArea(
@@ -166,8 +199,14 @@ class _SyncErrorLogScreenState extends State<SyncErrorLogScreen> {
 class _LogTile extends StatefulWidget {
   final SyncErrorLog log;
   final bool isDark;
+  // Gene - Nov, 23, 2026: Optional retry callback passed from SyncErrorLogScreen.
+  final Future<bool> Function(SyncErrorLog log)? onRetryItem;
 
-  const _LogTile({required this.log, required this.isDark});
+  const _LogTile({
+    required this.log,
+    required this.isDark,
+    this.onRetryItem,
+  });
 
   @override
   State<_LogTile> createState() => _LogTileState();
@@ -176,6 +215,36 @@ class _LogTile extends StatefulWidget {
 class _LogTileState extends State<_LogTile> {
   /// The request body is long; it opens on demand so the list stays a list.
   bool _showRequest = false;
+  bool _isRetrying = false;
+
+  Future<void> _handleRetry(BuildContext context) async {
+    final retryFn = widget.onRetryItem;
+    if (retryFn == null || _isRetrying) return;
+    setState(() => _isRetrying = true);
+    bool ok = false;
+    try {
+      ok = await retryFn(widget.log);
+    } catch (_) {
+      ok = false;
+    }
+    if (!mounted) return;
+    setState(() => _isRetrying = false);
+    if (!context.mounted) return;
+    final ref = widget.log.reference.isEmpty
+        ? '#${widget.log.entityId}'
+        : widget.log.reference;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'Synced $ref successfully.'
+              : 'Retry failed for $ref. Saved on phone.',
+        ),
+        backgroundColor: ok ? AppTheme.success : AppTheme.warning,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 
   Future<void> _copyRequest(BuildContext context) async {
     await Clipboard.setData(ClipboardData(
@@ -257,7 +326,34 @@ class _LogTileState extends State<_LogTile> {
             ),
           ],
           const SizedBox(height: 8),
+          // Gene - Nov, 23, 2026: Show plain-English failure guidance above raw server message.
+          Text(
+            SyncErrorLogScreen.friendlyHintFor(log),
+            style: context.text.bodySmall!.copyWith(
+              fontWeight: FontWeight.w600,
+              color: accent,
+            ),
+          ),
+          const SizedBox(height: 4),
           SelectableText(log.message, style: mono),
+          if (!log.resolved && widget.onRetryItem != null) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                key: ValueKey('retry_sync_error_${log.id}'),
+                onPressed: _isRetrying ? null : () => _handleRetry(context),
+                icon: _isRetrying
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded, size: 20),
+                label: Text(_isRetrying ? 'Retrying…' : 'Retry'),
+              ),
+            ),
+          ],
           if (hasRequest) ...[
             const SizedBox(height: 8),
             Wrap(

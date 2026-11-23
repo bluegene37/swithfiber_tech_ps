@@ -1,20 +1,34 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+// Gene - Nov, 23, 2026: Added flutter_map TileProvider and Repairs map/detail imports for Repairs Map toggle.
+import 'package:flutter_map/flutter_map.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_search_field.dart';
 import '../../../core/widgets/loading_states.dart';
+import '../../jobs/signals/jobs_signals.dart';
+import '../../lcp_nap/signals/lcp_nap_signals.dart';
+import '../models/service_order_model.dart';
+import '../screens/service_order_detail_screen.dart';
 import '../signals/service_orders_signals.dart';
 import '../widgets/service_order_card.dart';
+import '../widgets/service_orders_map_view.dart';
 
 /// Dedicated screen for Service Orders (Repairs, Equipment Swaps, Maintenance).
 class ServiceOrdersScreen extends StatefulWidget {
   final ServiceOrdersSignals signals;
+  // Gene - Nov, 23, 2026: Optional LcpNapSignals and JobsSignals forwarded to repair cards & detail screens, plus injectable mapTileProvider for tests.
+  final LcpNapSignals? lcpNapSignals;
+  final JobsSignals? jobsSignals;
+  final TileProvider? mapTileProvider;
 
   const ServiceOrdersScreen({
     super.key,
     required this.signals,
+    this.lcpNapSignals,
+    this.jobsSignals,
+    this.mapTileProvider,
   });
 
   @override
@@ -23,6 +37,22 @@ class ServiceOrdersScreen extends StatefulWidget {
 
 class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
   final TextEditingController _searchController = TextEditingController();
+  // Gene - Nov, 23, 2026: List vs Map view state and open-ticket navigation helper.
+  bool _showMap = false;
+
+  void _openOrderDetail(ServiceOrderDto order) {
+    widget.signals.markOrderAsRead(order.id);
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ServiceOrderDetailScreen(
+          orderId: order.id,
+          signals: widget.signals,
+          lcpNapSignals: widget.lcpNapSignals,
+          jobsSignals: widget.jobsSignals,
+        ),
+      ),
+    );
+  }
 
   static const List<String> _priorities = ['All', 'Urgent', 'High', 'Normal'];
 /*
@@ -77,6 +107,16 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
         // Titled after its tab so the bar says what was tapped.
         title: const Text('Repairs'),
         actions: [
+          // Gene - Nov, 23, 2026: Toggle between Repairs List and Map view.
+          IconButton(
+            key: const ValueKey('repairs_view_toggle_button'),
+            tooltip: _showMap ? 'List View' : 'Map View',
+            onPressed: () => setState(() => _showMap = !_showMap),
+            icon: Icon(
+              _showMap ? Icons.view_list_rounded : Icons.map_outlined,
+              size: 24,
+            ),
+          ),
           SignalBuilder(
             builder: (context) {
               final syncing = signals.isSyncing.value;
@@ -231,13 +271,60 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                     );
                   },
                 ),
+                const SizedBox(height: 8),
+
+                // Gene - Nov, 23, 2026: Wrap-safe Priority / Nearest sort toggle.
+                SignalBuilder(
+                  builder: (context) {
+                    final mode = signals.sortMode.value;
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        key: const ValueKey('repairs_sort_toggle'),
+                        spacing: 8,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            'Sort:',
+                            style: context.text.labelMedium!.copyWith(
+                              color: AppTheme.secondaryInkOf(context),
+                            ),
+                          ),
+                          for (final option in const [
+                            (
+                              mode: ServiceOrderSort.priority,
+                              label: 'Priority'
+                            ),
+                            (mode: ServiceOrderSort.nearest, label: 'Nearest'),
+                          ])
+                            ChoiceChip(
+                              key: ValueKey('repairs_sort_${option.mode.name}'),
+                              label: Text(option.label),
+                              selected: mode == option.mode,
+                              onSelected: (_) =>
+                                  signals.setSortMode(option.mode),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
                 const SizedBox(height: 10),
 
                 // Status Banner
                 SignalBuilder(
                   builder: (context) {
                     final total = signals.totalCount.value;
+                    final baseTotal = signals.baseOrdersCount.value;
                     final urgent = signals.urgentCount.value;
+                    final hasActiveFilter =
+                        signals.searchQuery.value.trim().isNotEmpty ||
+                            signals.priorityFilter.value != 'All' ||
+                            signals.concernFilter.value != 'All';
+                    final bannerLabel = hasActiveFilter
+                        ? '$total of $baseTotal repair ticket${baseTotal == 1 ? '' : 's'}'
+                        : '$total active repair ticket${total == 1 ? '' : 's'}';
 
                     return Container(
                       padding: const EdgeInsets.symmetric(
@@ -256,13 +343,17 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                         children: [
                           Icon(
                             CupertinoIcons.wrench_fill,
-                            size: 18,
+                            size: 20,
                             color: AppTheme.brandInkOf(context),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
+                              /*
                               '$total active repair ticket${total == 1 ? '' : 's'}',
+                              */
+                              // Gene - Nov, 23, 2026: Reflect filtered vs total count in banner when filters or search are active.
+                              bannerLabel,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: context.text.labelMedium!.copyWith(
@@ -297,7 +388,7 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
             ),
           ),
 
-          // 2. Orders List Body
+          // 2. Orders List or Map Body
           Expanded(
             child: SignalBuilder(
               builder: (context) {
@@ -309,6 +400,15 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                     title: 'Loading Service Orders',
                     subtitle:
                         'Fetching maintenance tickets and equipment pullouts...',
+                  );
+                }
+
+                // Gene - Nov, 23, 2026: Show Repairs interactive Map View when toggled in AppBar.
+                if (_showMap) {
+                  return ServiceOrdersMapView(
+                    signals: signals,
+                    tileProvider: widget.mapTileProvider,
+                    onOpenTicket: _openOrderDetail,
                   );
                 }
 
@@ -420,7 +520,12 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                     itemCount: orders.length,
                     itemBuilder: (context, index) {
                       final order = orders[index];
-                      return ServiceOrderCard(order: order, signals: signals);
+                      return ServiceOrderCard(
+                        order: order,
+                        signals: signals,
+                        lcpNapSignals: widget.lcpNapSignals,
+                        jobsSignals: widget.jobsSignals,
+                      );
                     },
                   ),
                 );

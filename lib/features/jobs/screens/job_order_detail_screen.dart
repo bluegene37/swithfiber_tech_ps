@@ -44,7 +44,9 @@ import '../../../core/utils/data_url.dart';
 import '../../reports/widgets/photo_capture_tile.dart' show showPhotoViewer;
 // Gene - Oct 13, 2026: Added flutter_map and MapTiles imports to render map location in Job Order details.
 import 'package:flutter_map/flutter_map.dart';
+import '../../lcp_nap/screens/lcp_nap_detail_screen.dart';
 import '../../lcp_nap/services/map_tiles.dart';
+import '../../lcp_nap/services/nap_port_occupancy.dart';
 
 /// Comprehensive details screen for a Job Order with full Dark Mode support
 /// and responsive flex layouts.
@@ -141,6 +143,18 @@ class JobOrderDetailScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              // Gene - Nov, 23, 2026: Allow re-opening a filed completion report from AppBar before finalizing.
+              if (!readOnly &&
+                  job.hasCompletedReport &&
+                  job.canActivate &&
+                  !job.isRescheduled &&
+                  job.siteException != SiteException.reschedule)
+                IconButton(
+                  key: const ValueKey('appbar_edit_report_button'),
+                  icon: const Icon(Icons.edit_note_rounded, size: 24),
+                  tooltip: 'Edit Completion Report',
+                  onPressed: () => _handleOpenReport(context, job),
+                ),
               // Copy Ticket Summary Button
               IconButton(
                 icon: const Icon(Icons.share_outlined, size: 24),
@@ -418,6 +432,54 @@ class JobOrderDetailScreen extends StatelessWidget {
                   ),
               ],
             ),
+            // Gene - Nov, 23, 2026: One-tap deep link from assigned NAP to its Plant pole details.
+            if (lcpNapSignals != null)
+              Builder(
+                builder: (context) {
+                  final matched = findMatchingNapLocation(
+                    lcpNapSignals!.allLocations.value,
+                    napId: job.napId,
+                    napName: job.nap,
+                    lcpId: job.lcpId,
+                  );
+                  if (matched == null) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        key: const ValueKey('open_nap_pole_button'),
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => LcpNapDetailScreen(
+                                locationId: matched.id,
+                                signals: lcpNapSignals!,
+                                jobsSignals: jobsSignals,
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.hub_outlined, size: 20),
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                'Open ${matched.lcpNap} pole',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.chevron_right_rounded, size: 20),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       ),
@@ -619,7 +681,7 @@ class JobOrderDetailScreen extends StatelessWidget {
               if (!job.hasCompletedReport)
                 _buildReportRequiredNote(context, isDark)
               else
-                _buildReportReadyNote(context, isDark),
+                _buildReportReadyNote(context, job, isDark),
             ] else
               _buildActivatedNote(context, job, isDark),
           ],
@@ -2317,6 +2379,7 @@ class JobOrderDetailScreen extends StatelessWidget {
     );
   }
 
+  /*
   /// Informs the technician that the report is complete and ready to finalize.
   Widget _buildReportReadyNote(BuildContext context, bool isDark) {
     return Container(
@@ -2348,6 +2411,60 @@ class JobOrderDetailScreen extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+  */
+  // Gene - Nov, 23, 2026: Aligned CTA label copy ("Complete job") and added Edit completion report button when report is already filed.
+  Widget _buildReportReadyNote(
+      BuildContext context, JobOrderDto job, bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppTheme.success.withValues(alpha: 0.15)
+            : AppTheme.successSubtle,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark
+              ? AppTheme.success.withValues(alpha: 0.3)
+              : const Color(0xFFBBF7D0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.check_circle_outline_rounded,
+                  size: 20, color: AppTheme.successInkOf(context)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Step 2 of 2: Completion report filed. Tap "Complete job" '
+                  'below to finalize and sync order.',
+                  style: context.text.bodySmall!.copyWith(
+                    color: AppTheme.successInkOf(context),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (!readOnly && job.canActivate && !job.isRescheduled) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                key: const ValueKey('edit_completion_report_button'),
+                onPressed: () => _handleOpenReport(context, job),
+                icon: const Icon(Icons.edit_outlined, size: 20),
+                label: const Text('Edit completion report'),
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -289,6 +289,7 @@ class JobCard extends StatelessWidget {
                     behavior: HitTestBehavior.opaque,
                     onTap: () async {
                       final latLng = job.latLng;
+                      /*
                       if (latLng != null) {
                         await MapNavigationService.navigateToCoordinates(
                           latitude: latLng.latitude,
@@ -299,6 +300,23 @@ class JobCard extends StatelessWidget {
                         final fullAddr =
                             '${job.address}${job.barangay != null ? ", ${job.barangay}" : ""}${job.city != null ? ", ${job.city}" : ""}, Philippines';
                         await MapNavigationService.navigateToAddress(fullAddr);
+                      }
+                      */
+                      // Gene - Nov, 23, 2026: Pass BuildContext so PreferredNavApp.ask can open the chooser sheet.
+                      if (latLng != null) {
+                        await MapNavigationService.navigateToCoordinates(
+                          latitude: latLng.latitude,
+                          longitude: latLng.longitude,
+                          destinationLabel: job.customerName,
+                          context: context,
+                        );
+                      } else {
+                        final fullAddr =
+                            '${job.address}${job.barangay != null ? ", ${job.barangay}" : ""}${job.city != null ? ", ${job.city}" : ""}, Philippines';
+                        await MapNavigationService.navigateToAddress(
+                          fullAddr,
+                          context: context,
+                        );
                       }
                     },
                     child: ConstrainedBox(

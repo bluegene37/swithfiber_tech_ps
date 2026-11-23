@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/map_navigation_service.dart';
 import '../models/job_order_model.dart';
@@ -5,13 +6,14 @@ import '../models/job_order_model.dart';
 /// Opens turn-by-turn navigation to a job: by coordinates when the order has
 /// a GPS fix, otherwise by its street address. Shared by the Today home and
 /// the job card so both "Navigate" buttons behave the same.
-Future<bool> navigateToJob(JobOrderDto job) {
+Future<bool> navigateToJob(JobOrderDto job, {BuildContext? context}) {
   final latLng = job.latLng;
   if (latLng != null) {
     return MapNavigationService.navigateToCoordinates(
       latitude: latLng.latitude,
       longitude: latLng.longitude,
       destinationLabel: job.customerName,
+      context: context,
     );
   }
   final address = [

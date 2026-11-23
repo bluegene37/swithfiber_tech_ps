@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/drop_cable_estimator_model.dart';
+// Gene - Nov, 23, 2026: Imported BomHandoffService for staging calculated BOM directly into Job or Repair reports.
+import '../services/bom_handoff_service.dart';
 
 /// Interactive Drop Cable & Bill of Materials (BOM) Estimator for Field Installations.
 class DropCableTool extends StatefulWidget {
@@ -327,6 +329,39 @@ class _DropCableToolState extends State<DropCableTool> {
                         ),
                       );
                     },
+                  ),
+                  // Gene - Nov, 23, 2026: Added 1-tap Send BOM to Report button to stage calculated estimator materials.
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: FilledButton.icon(
+                      key: const ValueKey('send_bom_to_report_button'),
+                      onPressed: () {
+                        BomHandoffService.instance.stageBom(
+                          {
+                            'Drop Cable (m)': totalMeters.ceil(),
+                            'SC/APC Fast Connector': 2,
+                            'S-Clamp': _poleSpans + 1,
+                            'Fiber Wall Plate': 1,
+                            'Patch Cord': 1,
+                          },
+                          summary:
+                              '${totalMeters.ceil()}m drop ($_poleSpans spans)',
+                        );
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'BOM staged — open any Job or Repair report to import.',
+                            ),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.send_rounded, size: 20),
+                      label: const Text('Send BOM to Report'),
+                    ),
                   ),
                 ],
               ),

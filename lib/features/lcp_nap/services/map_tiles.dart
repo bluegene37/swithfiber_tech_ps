@@ -1,9 +1,17 @@
+import 'dart:io';
+import 'dart:math' as math;
+
 import 'package:dio/dio.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cache/flutter_map_cache.dart';
 import 'package:http_cache_file_store/http_cache_file_store.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+
+import '../../../core/network/api_client.dart';
+
+// Gene - Nov, 23, 2026: Coordinates of a single slippy-map tile for offline prefetch calculations.
+typedef TileCoord = ({int z, int x, int y});
 
 /// Tile source and on-disk cache for the plant and job maps.
 ///
@@ -69,7 +77,11 @@ class MapTiles {
   /// How long a cached tile stays usable offline before it is refetched.
   static const Duration _cacheDuration = Duration(days: 30);
 
+  /*
   static TileProvider? _provider;
+  */
+  // Gene - Nov, 23, 2026: Retained CachedTileProvider subtype so offline prefetch shares the same DioCacheInterceptor store.
+  static CachedTileProvider? _provider;
 
   /// Build the caching tile provider. Safe to call repeatedly; the underlying
   /// store is created once.
@@ -81,14 +93,12 @@ class MapTiles {
     final existing = _provider;
     if (existing != null) return existing;
 
-    // Tiles are plain files on disk; the app's database is PowerSync's and
-    // is not shared with the tile cache.
-    final dir = await getApplicationCacheDirectory();
-    /*
-    final store = FileCacheStore(p.join(dir.path, 'map_tiles'));
-    */
+    final dir = await cacheDirectory();
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
     // Gene - Nov, 11, 2026: Bumped tile cache directory to map_tiles_v2 so any previously cached Esri "Map data not yet available" placeholder tiles are bypassed.
-    final store = FileCacheStore(p.join(dir.path, 'map_tiles_v2'));
+    final store = FileCacheStore(dir.path);
 
     final created = CachedTileProvider(
       store: store,
@@ -97,5 +107,156 @@ class MapTiles {
     );
     _provider = created;
     return created;
+  }
+
+  // Gene - Nov, 23, 2026: Offline tile cache management (directory, byte size, clear, radius slippy-tile math, and bounded area prefetch).
+  static Future<Directory> cacheDirectory() async {
+    final dir = await getApplicationCacheDirectory();
+    return Directory(p.join(dir.path, 'map_tiles_v2'));
+  }
+
+  static Future<int> getCacheSizeBytes() async {
+    try {
+      final dir = await cacheDirectory();
+      if (!await dir.exists()) return 0;
+      var total = 0;
+      await for (final entity
+          in dir.list(recursive: true, followLinks: false)) {
+        if (entity is File) {
+          final stat = await entity.stat();
+          total += stat.size;
+        }
+      }
+      return total;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static Future<void> clearCache() async {
+    _provider = null;
+    try {
+      final dir = await cacheDirectory();
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+      }
+    } catch (_) {}
+  }
+
+  static List<TileCoord> tilesForRadius({
+    required double centerLat,
+    required double centerLng,
+    double radiusKm = 1.5,
+    List<int> zooms = const [15, 16, 17, 18],
+    int maxTiles = 200,
+  }) {
+    if (maxTiles <= 0 || radiusKm <= 0) return const [];
+    final latDelta = radiusKm / 111.32;
+    final cosLat = math.cos(centerLat * math.pi / 180.0).abs().clamp(0.1, 1.0);
+    final lngDelta = radiusKm / (111.32 * cosLat);
+
+    final minLat = (centerLat - latDelta).clamp(-85.0511, 85.0511);
+    final maxLat = (centerLat + latDelta).clamp(-85.0511, 85.0511);
+    final minLng = (centerLng - lngDelta).clamp(-180.0, 180.0);
+    final maxLng = (centerLng + lngDelta).clamp(-180.0, 180.0);
+
+    int latToY(double lat, int n) {
+      final rad = lat * math.pi / 180.0;
+      final raw =
+          ((1.0 - math.log(math.tan(rad) + 1.0 / math.cos(rad)) / math.pi) /
+                  2.0 *
+                  n)
+              .floor();
+      return raw.clamp(0, n - 1);
+    }
+
+    int lngToX(double lng, int n) {
+      final raw = ((lng + 180.0) / 360.0 * n).floor();
+      return raw.clamp(0, n - 1);
+    }
+
+    final coords = <TileCoord>[];
+    for (final z in zooms) {
+      final n = 1 << z;
+      final xMin = lngToX(minLng, n);
+      final xMax = lngToX(maxLng, n);
+      // Higher latitude -> smaller tile Y index in Web Mercator.
+      final yMin = latToY(maxLat, n);
+      final yMax = latToY(minLat, n);
+
+      for (var x = xMin; x <= xMax; x++) {
+        for (var y = yMin; y <= yMax; y++) {
+          coords.add((z: z, x: x, y: y));
+          if (coords.length >= maxTiles) return coords;
+        }
+      }
+    }
+    return coords;
+  }
+
+  static Future<({int downloaded, int total})> prefetchArea({
+    required double centerLat,
+    required double centerLng,
+    double radiusKm = 1.5,
+    List<int> zooms = const [15, 16, 17, 18],
+    int maxTiles = 200,
+    bool satellite = false,
+    Dio? dio,
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final tiles = tilesForRadius(
+      centerLat: centerLat,
+      centerLng: centerLng,
+      radiusKm: radiusKm,
+      zooms: zooms,
+      maxTiles: maxTiles,
+    );
+    if (tiles.isEmpty) return (downloaded: 0, total: 0);
+    // Gene - Nov, 23, 2026: Use public ApiClient.isNetworkBlocked getter to respect visibleForTesting annotation.
+    /*
+    if (dio == null && ApiClient.blockNetworkForTesting) {
+    */
+    if (dio == null && ApiClient.isNetworkBlocked) {
+      return (downloaded: 0, total: tiles.length);
+    }
+
+    final Dio client;
+    try {
+      client = dio ?? ((await provider()) as CachedTileProvider).dio;
+    } catch (_) {
+      return (downloaded: 0, total: tiles.length);
+    }
+
+    final template = satellite ? satelliteUrl : streetUrl;
+    var downloaded = 0;
+    var processed = 0;
+
+    for (var i = 0; i < tiles.length; i += 4) {
+      final batch = tiles.sublist(i, math.min(i + 4, tiles.length));
+      await Future.wait(batch.map((t) async {
+        final url = template
+            .replaceAll('{z}', '${t.z}')
+            .replaceAll('{x}', '${t.x}')
+            .replaceAll('{y}', '${t.y}');
+        try {
+          final resp = await client.get<List<int>>(
+            url,
+            options: Options(
+              responseType: ResponseType.bytes,
+              headers: const {'User-Agent': userAgentPackageName},
+            ),
+          );
+          if (resp.statusCode == 200) {
+            downloaded++;
+          }
+        } catch (_) {
+          // Best-effort offline cache: ignore individual tile errors cleanly.
+        }
+      }));
+      processed += batch.length;
+      onProgress?.call(processed, tiles.length);
+    }
+
+    return (downloaded: downloaded, total: tiles.length);
   }
 }

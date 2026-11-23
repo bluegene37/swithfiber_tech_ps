@@ -95,6 +95,38 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
   LatLng? _userLocation;
   bool _isLocating = false;
   LatLng? _pendingUserMove;
+  // Gene - Nov, 23, 2026: Track offline tile prefetch state for the Plant map Cache area control.
+  bool _isPrefetchingTiles = false;
+
+  Future<void> _prefetchVisibleArea() async {
+    if (_isPrefetchingTiles) return;
+    LatLng center = _fallbackCentre;
+    try {
+      center = _mapController.camera.center;
+    } catch (_) {
+      center = _fallbackCentre;
+    }
+    setState(() => _isPrefetchingTiles = true);
+    try {
+      final result = await MapTiles.prefetchArea(
+        centerLat: center.latitude,
+        centerLng: center.longitude,
+        satellite: _satellite,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Cached ${result.downloaded} of ${result.total} map tiles for offline viewing',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isPrefetchingTiles = false);
+    }
+  }
 
   @override
   void initState() {
@@ -691,6 +723,32 @@ class _LcpNapMapViewState extends State<LcpNapMapView> {
                     ),
                     const SizedBox(height: 8),
                   ],
+                  // Gene - Nov, 23, 2026: Prefetch visible 1.5 km tile radius for offline field work.
+                  FloatingActionButton.small(
+                    key: const ValueKey('plant_cache_area_button'),
+                    heroTag: 'lcpNapCacheArea',
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
+                    backgroundColor:
+                        Theme.of(context).cardTheme.color ?? Colors.white,
+                    foregroundColor: AppTheme.primary,
+                    tooltip: 'Cache area',
+                    onPressed:
+                        _isPrefetchingTiles ? null : _prefetchVisibleArea,
+                    child: _isPrefetchingTiles
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.primary,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.download_for_offline_outlined,
+                            size: 20,
+                          ),
+                  ),
+                  const SizedBox(height: 8),
                   // Gene - Nov, 21, 2026: Add My Location auto-locate button to center the Plant map on technician GPS coordinates.
                   FloatingActionButton.small(
                     key: const ValueKey('btnLcpNapMapMyLocation'),

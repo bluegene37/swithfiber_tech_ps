@@ -20,6 +20,7 @@ class SerialScannerSheet extends StatefulWidget {
     );
   }
 
+  /*
   @override
   State<SerialScannerSheet> createState() => _SerialScannerSheetState();
 }
@@ -28,6 +29,17 @@ class _SerialScannerSheetState extends State<SerialScannerSheet> {
   late final MobileScannerController _controller;
   bool _hasDetected = false;
   bool _torchOn = false;
+  */
+  // Gene - Nov, 23, 2026: Exposed SerialScannerSheetState & multi-barcode candidate picker with reticle scanWindow.
+  @override
+  State<SerialScannerSheet> createState() => SerialScannerSheetState();
+}
+
+class SerialScannerSheetState extends State<SerialScannerSheet> {
+  late final MobileScannerController _controller;
+  bool _hasDetected = false;
+  bool _torchOn = false;
+  List<String> _detectedCandidates = const [];
 
   @override
   void initState() {
@@ -56,6 +68,7 @@ class _SerialScannerSheetState extends State<SerialScannerSheet> {
     super.dispose();
   }
 
+  /*
   void _onDetect(BarcodeCapture capture) {
     if (_hasDetected || !mounted) return;
 
@@ -68,6 +81,48 @@ class _SerialScannerSheetState extends State<SerialScannerSheet> {
         break;
       }
     }
+  }
+  */
+  // Gene - Nov, 23, 2026: Deduplicate barcodes; pop single hit immediately or present 48dp candidate picker when 2+ codes appear in frame.
+  void _onDetect(BarcodeCapture capture) {
+    final values = capture.barcodes
+        .map((b) => b.rawValue?.trim() ?? b.displayValue?.trim() ?? '')
+        .toList();
+    processDetectedValues(values);
+  }
+
+  @visibleForTesting
+  void processDetectedValues(List<String> rawValues) {
+    if (_hasDetected || !mounted) return;
+    final unique = <String>[];
+    final seen = <String>{};
+    for (final raw in rawValues) {
+      final clean = raw.trim();
+      if (clean.isNotEmpty && seen.add(clean)) {
+        unique.add(clean);
+      }
+    }
+    if (unique.isEmpty) return;
+
+    if (unique.length == 1) {
+      _hasDetected = true;
+      HapticFeedback.mediumImpact();
+      Navigator.of(context).pop(unique.first);
+      return;
+    }
+
+    HapticFeedback.selectionClick();
+    setState(() {
+      _hasDetected = true;
+      _detectedCandidates = unique;
+    });
+  }
+
+  void _resetScanCandidates() {
+    setState(() {
+      _hasDetected = false;
+      _detectedCandidates = const [];
+    });
   }
 
   @override
@@ -155,6 +210,7 @@ class _SerialScannerSheetState extends State<SerialScannerSheet> {
                 color: Colors.black,
                 borderRadius: BorderRadius.circular(16),
               ),
+              /*
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -199,6 +255,142 @@ class _SerialScannerSheetState extends State<SerialScannerSheet> {
                   // Targeting Reticle Overlay
                   const _ScannerTargetReticle(),
                 ],
+              ),
+              */
+              // Gene - Nov, 23, 2026: Constrained MobileScanner detection to centered reticle scanWindow and added multi-barcode candidate overlay.
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final Rect? scanRect = (constraints.hasBoundedWidth &&
+                          constraints.hasBoundedHeight &&
+                          constraints.maxWidth > 20 &&
+                          constraints.maxHeight > 20)
+                      ? Rect.fromCenter(
+                          center: Offset(constraints.maxWidth / 2,
+                              constraints.maxHeight / 2),
+                          width: (constraints.maxWidth * 0.82)
+                              .clamp(1.0, constraints.maxWidth),
+                          height: ((constraints.maxWidth * 0.82) * 0.58)
+                              .clamp(1.0, constraints.maxHeight),
+                        )
+                      : null;
+
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      MobileScanner(
+                        controller: _controller,
+                        scanWindow: scanRect,
+                        onDetect: _onDetect,
+                        errorBuilder: (context, error) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.videocam_off_rounded,
+                                    color: Colors.white70,
+                                    size: 44,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'Camera Unavailable',
+                                    style: context.text.titleSmall?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Please check camera permissions in Settings or enter serial manually.',
+                                    textAlign: TextAlign.center,
+                                    style: context.text.bodySmall?.copyWith(
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
+                      // Targeting Reticle Overlay
+                      const _ScannerTargetReticle(),
+
+                      if (_detectedCandidates.isNotEmpty)
+                        Positioned(
+                          left: 12,
+                          right: 12,
+                          top: 12,
+                          bottom: 12,
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? AppTheme.darkCard.withValues(alpha: 0.96)
+                                    : Colors.white.withValues(alpha: 0.96),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color:
+                                      AppTheme.primary.withValues(alpha: 0.45),
+                                ),
+                              ),
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Text(
+                                      'Multiple barcodes detected — tap the ONT serial:',
+                                      style: context.text.titleSmall,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    for (int i = 0;
+                                        i < _detectedCandidates.length;
+                                        i++) ...[
+                                      OutlinedButton(
+                                        key: ValueKey('barcode_candidate_$i'),
+                                        onPressed: () {
+                                          HapticFeedback.mediumImpact();
+                                          Navigator.of(context)
+                                              .pop(_detectedCandidates[i]);
+                                        },
+                                        style: OutlinedButton.styleFrom(
+                                          minimumSize: const Size(0, 48),
+                                          alignment: Alignment.centerLeft,
+                                        ),
+                                        child: Text(
+                                          _detectedCandidates[i],
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                    ],
+                                    TextButton.icon(
+                                      key: const ValueKey(
+                                          'barcode_rescan_button'),
+                                      onPressed: _resetScanCandidates,
+                                      icon: const Icon(Icons.refresh_rounded,
+                                          size: 20),
+                                      label: const Text('Rescan'),
+                                      style: TextButton.styleFrom(
+                                        minimumSize: const Size(0, 48),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
             ),
           ),

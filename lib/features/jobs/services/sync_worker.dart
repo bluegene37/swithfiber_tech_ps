@@ -60,6 +60,7 @@ class SyncWorker {
             success: true, syncedCount: 0, message: 'All jobs are up to date.');
       }
 
+      /*
       for (final dto in unsynced) {
         // Measured before the request so a refusal can be read against the
         // size that caused it: a completion inlines every photo as Base64
@@ -115,6 +116,19 @@ class SyncWorker {
           // Keep isSynced = false so it will retry on next sync cycle
         }
       }
+      */
+      // Gene - Nov, 23, 2026: Extracted _pushJob helper so syncPendingJobs and syncSingleJob share the exact push/error-logging path.
+      for (final dto in unsynced) {
+        final outcome = await _pushJob(dto, failures: failures);
+        switch (outcome) {
+          case _JobPushOutcome.synced:
+            syncedSuccess++;
+          case _JobPushOutcome.removed:
+            removed++;
+          case _JobPushOutcome.failed:
+            syncedFailed++;
+        }
+      }
 
       final remaining = await _dao.countUnsynced();
       pendingCount.value = remaining;
@@ -142,6 +156,74 @@ class SyncWorker {
       return SyncResult(success: false, message: 'Sync failed: $e');
     } finally {
       isSyncing.value = false;
+    }
+  }
+
+  // Gene - Nov, 23, 2026: Sync a single unsynced job order by ID for SyncErrorLogScreen per-item Retry.
+  Future<bool> syncSingleJob(int jobId) async {
+    if (isSyncing.value) return false;
+    isSyncing.value = true;
+    syncError.value = null;
+    try {
+      final dto = await _dao.getJobById(jobId);
+      if (dto == null) {
+        await refreshPendingCount();
+        return false;
+      }
+      final failures = <String>[];
+      final outcome = await _pushJob(dto, failures: failures);
+      await refreshPendingCount();
+      lastSyncTime.value = DateTime.now();
+      if (failures.isNotEmpty) {
+        syncError.value = failures.join('\n');
+      }
+      return outcome == _JobPushOutcome.synced ||
+          outcome == _JobPushOutcome.removed;
+    } catch (e) {
+      syncError.value = e.toString();
+      return false;
+    } finally {
+      isSyncing.value = false;
+    }
+  }
+
+  Future<_JobPushOutcome> _pushJob(
+    JobOrderDto dto, {
+    required List<String> failures,
+  }) async {
+    var payloadBytes = 0;
+    Map<String, dynamic>? body;
+    try {
+      if (dto.hasCapturedPhotos) {
+        final formData = await dto.toMultipartFormData();
+        payloadBytes = formData.length;
+        await _api.updateMultipart(dto.id, formData);
+      } else {
+        body = await dto.toApiJsonAsync();
+        payloadBytes = utf8.encode(json.encode(body)).length;
+        await _api.update(dto.id, body);
+      }
+      await _replaceWithServerCopy(dto.id);
+      await _errorLog?.markResolved('JOB_ORDER', dto.id);
+      return _JobPushOutcome.synced;
+    } on ApiException catch (err) {
+      if (err.statusCode == 404) {
+        await _dao.deleteJob(dto.id);
+        await _errorLog?.markResolved('JOB_ORDER', dto.id);
+        return _JobPushOutcome.removed;
+      }
+      failures.add('${dto.ticketNumber}: '
+          'HTTP ${err.statusCode ?? "?"} ${err.message}');
+      await _record(dto, err.statusCode, err.message, payloadBytes,
+          body: body,
+          method: err.requestMethod,
+          url: err.requestUrl,
+          response: err.details);
+      return _JobPushOutcome.failed;
+    } catch (e) {
+      failures.add('${dto.ticketNumber}: $e');
+      await _record(dto, null, e.toString(), payloadBytes, body: body);
+      return _JobPushOutcome.failed;
     }
   }
 
@@ -220,3 +302,5 @@ class SyncResult {
     this.failures = const [],
   });
 }
+
+enum _JobPushOutcome { synced, removed, failed }

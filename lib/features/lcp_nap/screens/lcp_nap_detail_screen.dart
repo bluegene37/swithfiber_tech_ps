@@ -47,6 +47,10 @@ import '../widgets/map_search_bar.dart' show PlaceLookup;
 // Gene - Nov, 21, 2026: Imported latlong2 and AuthSignals to support tapping the detail mini-map to open LcpNapMapPickerScreen and persist updated GPS coordinates directly.
 import 'package:latlong2/latlong.dart';
 import '../../auth/signals/auth_signals.dart';
+// Gene - Nov, 23, 2026: Added JobsSignals, ServiceOrdersSignals, and nap_port_occupancy imports for live NAP port occupancy tracking.
+import '../../jobs/signals/jobs_signals.dart';
+import '../../service_orders/signals/service_orders_signals.dart';
+import '../services/nap_port_occupancy.dart';
 
 /// Screen displaying comprehensive details and status controls for an LCP NAP site with full Dark Mode support.
 class LcpNapDetailScreen extends StatefulWidget {
@@ -62,18 +66,11 @@ class LcpNapDetailScreen extends StatefulWidget {
   final PlaceLookup? placeLookupForTesting;
   final Future<List<geo.Placemark>> Function(double lat, double lng)?
       reverseGeocodeForTesting;
+  // Gene - Nov, 23, 2026: Optional JobsSignals and ServiceOrdersSignals for cross-referencing live NAP port occupancy.
+  final JobsSignals? jobsSignals;
+  final ServiceOrdersSignals? serviceOrdersSignals;
 
   /*
-  // Gene - Oct 29, 2026: Added pickImageForTesting parameter.
-  const LcpNapDetailScreen({
-    super.key,
-    required this.locationId,
-    required this.signals,
-    this.tileProvider,
-    this.initialImagesForTesting,
-    this.pickImageForTesting,
-  });
-  */
   // Gene - Oct 31, 2026: Added locationServiceForTesting, placeLookupForTesting, and reverseGeocodeForTesting parameters.
   const LcpNapDetailScreen({
     super.key,
@@ -85,6 +82,20 @@ class LcpNapDetailScreen extends StatefulWidget {
     this.locationServiceForTesting,
     this.placeLookupForTesting,
     this.reverseGeocodeForTesting,
+  });
+  */
+  const LcpNapDetailScreen({
+    super.key,
+    required this.locationId,
+    required this.signals,
+    this.tileProvider,
+    this.initialImagesForTesting,
+    this.pickImageForTesting,
+    this.locationServiceForTesting,
+    this.placeLookupForTesting,
+    this.reverseGeocodeForTesting,
+    this.jobsSignals,
+    this.serviceOrdersSignals,
   });
 
   @override
@@ -1253,6 +1264,7 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
     );
   }
 
+  /*
   // Gene - Nov, 12, 2026: Responsive Port Matrix & Capacity card using JetBrains Mono port numbers and 2-col fallback at large text scales.
   Widget _buildPortMatrixCard(BuildContext context, LcpNapDto location) {
     final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
@@ -1367,6 +1379,267 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
           ],
         ),
       ),
+    );
+  }
+  */
+  // Gene - Nov, 23, 2026: Show live free vs. occupied NAP ports from cached jobs & service orders, with tap-to-inspect subscriber info.
+  void _showOccupiedPortSheet(BuildContext context, OccupiedPortInfo info) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          12,
+          20,
+          24 + MediaQuery.of(ctx).padding.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  info.isServiceOrder
+                      ? Icons.build_circle_outlined
+                      : Icons.person_pin_circle_outlined,
+                  size: 24,
+                  color: AppTheme.brandInkOf(ctx),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Port ${info.portNumber} (${info.portLabel})',
+                    style: ctx.text.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  icon: const Icon(Icons.close_rounded, size: 24),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              info.subscriberName.isNotEmpty
+                  ? info.subscriberName
+                  : 'Assigned subscriber',
+              style: ctx.text.titleSmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${info.reference}  ·  ${info.status}',
+              style: ctx.text.bodySmall!.copyWith(
+                fontFamily: 'JetBrains Mono',
+                color: AppTheme.secondaryInkOf(ctx),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPortMatrixCard(BuildContext context, LcpNapDto location) {
+    final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+    final hairline = AppTheme.hairlineOf(context);
+    final hasOccupancyData =
+        widget.jobsSignals != null || widget.serviceOrdersSignals != null;
+
+    return SignalBuilder(
+      builder: (context) {
+        final jobs = widget.jobsSignals?.allJobs.value ?? const [];
+        final serviceOrders =
+            widget.serviceOrdersSignals?.allOrders.value ?? const [];
+        final occupancy = computeNapPortOccupancy(
+          location: location,
+          jobs: jobs,
+          serviceOrders: serviceOrders,
+        );
+        final usedCount = occupancy.length;
+        final freeCount =
+            (location.portTotal - usedCount).clamp(0, location.portTotal);
+
+        final Color badgeColor = !hasOccupancyData
+            ? AppTheme.brandInkOf(context)
+            : freeCount == 0
+                ? AppTheme.dangerInkOf(context)
+                : (freeCount <= 2
+                    ? AppTheme.warningInkOf(context)
+                    : AppTheme.successInkOf(context));
+
+        final totalBadge = Text(
+          hasOccupancyData
+              ? '$freeCount free · $usedCount used / ${location.portTotal}'
+              : '${location.portTotal} ports total',
+          style: context.text.labelLarge!.copyWith(
+            color: badgeColor,
+          ),
+        );
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (scale > 1.5)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.hub_outlined,
+                              size: 20, color: AppTheme.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Port Matrix & Capacity',
+                              style: context.text.titleMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      totalBadge,
+                    ],
+                  )
+                else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            const Icon(Icons.hub_outlined,
+                                size: 20, color: AppTheme.primary),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Port Matrix & Capacity',
+                                style: context.text.titleMedium,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          hasOccupancyData
+                              ? '$freeCount free · $usedCount used / ${location.portTotal}'
+                              : '${location.portTotal} ports total',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.text.labelLarge!.copyWith(
+                            color: badgeColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                const SizedBox(height: 14),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: scale > 1.3 ? 2 : 4,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                    childAspectRatio: scale > 1.3 ? 2.1 : 1.7,
+                  ),
+                  itemCount: location.portTotal,
+                  itemBuilder: (context, index) {
+                    final portNumber = index + 1;
+                    final info = occupancy[portNumber];
+                    final isOccupied = info != null;
+
+                    final tileChild = ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      child: Container(
+                        key: ValueKey('nap_port_tile_$portNumber'),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        decoration: BoxDecoration(
+                          color: isOccupied
+                              ? AppTheme.primarySubtleBgOf(context)
+                              : AppTheme.fillOf(context),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isOccupied
+                                ? AppTheme.brandInkOf(context)
+                                    .withValues(alpha: 0.45)
+                                : hairline,
+                          ),
+                        ),
+                        child: Center(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isOccupied
+                                    ? Icons.circle
+                                    : Icons.circle_outlined,
+                                size: 20,
+                                color: isOccupied
+                                    ? AppTheme.brandInkOf(context)
+                                    : (hasOccupancyData
+                                        ? AppTheme.successInkOf(context)
+                                        : AppTheme.secondaryInkOf(context)),
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  'P$portNumber',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: context.text.bodyLarge!.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    decoration: isOccupied
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                    color: isOccupied
+                                        ? AppTheme.brandInkOf(context)
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+
+                    if (!isOccupied) return tileChild;
+
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => _showOccupiedPortSheet(context, info),
+                        child: tileChild,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  hasOccupancyData
+                      ? (freeCount == 0
+                          ? 'NAP full — all ${location.portTotal} ports occupied. Tap any occupied port to see subscriber details.'
+                          : '$freeCount of ${location.portTotal} ports available for drop cable splicing.${usedCount > 0 ? ' Tap occupied ports to inspect.' : ''}')
+                      : 'Standard NAP distribution box. Ready for drop cable splicing.',
+                  style: context.text.labelSmall,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

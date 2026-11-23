@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_text.dart';
 // Gene - Nov, 11, 2026: Imported AppTheme to style RefreshIndicator on CabinetNapsScreen for manual pull-to-refresh parity.
 import '../../../core/theme/app_theme.dart';
+import '../../jobs/signals/jobs_signals.dart';
+import '../../service_orders/signals/service_orders_signals.dart';
 import '../models/lcp_nap_model.dart';
+import '../services/nap_port_occupancy.dart';
 import '../signals/lcp_nap_signals.dart';
 import '../widgets/lcp_nap_card.dart';
 // Gene - Nov, 11, 2026: Imported LcpNapLocationPickerSheet to allow adding a new NAP directly inside a cabinet view.
@@ -17,11 +21,23 @@ import 'lcp_nap_detail_screen.dart';
 class CabinetNapsScreen extends StatelessWidget {
   final String cabinet;
   final LcpNapSignals signals;
+  // Gene - Nov, 23, 2026: Optional JobsSignals and ServiceOrdersSignals for live NAP free-port counts.
+  final JobsSignals? jobsSignals;
+  final ServiceOrdersSignals? serviceOrdersSignals;
 
+  /*
   const CabinetNapsScreen({
     super.key,
     required this.cabinet,
     required this.signals,
+  });
+  */
+  const CabinetNapsScreen({
+    super.key,
+    required this.cabinet,
+    required this.signals,
+    this.jobsSignals,
+    this.serviceOrdersSignals,
   });
 
   void _openDetails(BuildContext context, LcpNapDto location) {
@@ -31,6 +47,8 @@ class CabinetNapsScreen extends StatelessWidget {
         builder: (_) => LcpNapDetailScreen(
           locationId: location.id,
           signals: signals,
+          jobsSignals: jobsSignals,
+          serviceOrdersSignals: serviceOrdersSignals,
         ),
       ),
     );
@@ -206,8 +224,34 @@ class CabinetNapsScreen extends StatelessWidget {
                         );
                       }
                       final nap = naps[index - 1];
+                      final hasOccupancy =
+                          jobsSignals != null || serviceOrdersSignals != null;
+                      final free = hasOccupancy
+                          ? countFreePorts(
+                              nap,
+                              jobs: jobsSignals?.allJobs.value ?? const [],
+                              serviceOrders:
+                                  serviceOrdersSignals?.allOrders.value ??
+                                      const [],
+                            )
+                          : null;
+                      final myPos = LocationService.instance.lastKnownPosition;
+                      final napPos = nap.latLng;
+                      String? dist;
+                      if (myPos != null && napPos != null) {
+                        dist = LocationService.instance.formatDistance(
+                          LocationService.instance.distanceBetween(
+                            startLat: myPos.latitude,
+                            startLng: myPos.longitude,
+                            endLat: napPos.latitude,
+                            endLng: napPos.longitude,
+                          ),
+                        );
+                      }
                       return LcpNapCard(
                         location: nap,
+                        freePorts: free,
+                        distanceLabel: dist,
                         onTap: () => _openDetails(context, nap),
                       );
                     },

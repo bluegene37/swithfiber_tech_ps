@@ -59,7 +59,13 @@ class PowerSyncService {
   Future<void> connectIfConfigured({SecureStorageService? storage}) async {
     final database = _db;
     final connector = _connector;
-    if (database == null || connector == null || database.connected) return;
+    // Gene - Nov, 23, 2026: Stay cleanly in local-only mode when POWERSYNC_ENDPOINT is not configured.
+    if (database == null ||
+        connector == null ||
+        !connector.hasEndpoint ||
+        database.connected) {
+      return;
+    }
     try {
       await database.connect(connector: connector);
     } catch (_) {
@@ -71,7 +77,7 @@ class PowerSyncService {
   Future<void> reconnect() async {
     final database = _db;
     final connector = _connector;
-    if (database == null || connector == null) return;
+    if (database == null || connector == null || !connector.hasEndpoint) return;
     try {
       if (database.connected) {
         await database.disconnect();

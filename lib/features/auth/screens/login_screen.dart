@@ -109,6 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              /*
               // iOS Grabber Pill
               Center(
                 child: Container(
@@ -123,6 +124,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 14),
+              */
+              // Gene - Nov, 23, 2026: Removed manual grabber pill because AppTheme.bottomSheetTheme sets showDragHandle: true (ISSUE-001).
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [

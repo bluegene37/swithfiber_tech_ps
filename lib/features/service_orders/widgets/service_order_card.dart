@@ -8,6 +8,8 @@ import '../../../core/services/map_navigation_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/status_rail_row.dart';
+import '../../jobs/signals/jobs_signals.dart';
+import '../../lcp_nap/signals/lcp_nap_signals.dart';
 import '../models/service_order_model.dart';
 import '../screens/service_order_detail_screen.dart';
 import '../signals/service_orders_signals.dart';
@@ -16,11 +18,16 @@ import '../signals/service_orders_signals.dart';
 class ServiceOrderCard extends StatelessWidget {
   final ServiceOrderDto order;
   final ServiceOrdersSignals signals;
+  // Gene - Nov, 23, 2026: Optional plant & jobs signals forwarded to ServiceOrderDetailScreen for NAP pole deep link.
+  final LcpNapSignals? lcpNapSignals;
+  final JobsSignals? jobsSignals;
 
   const ServiceOrderCard({
     super.key,
     required this.order,
     required this.signals,
+    this.lcpNapSignals,
+    this.jobsSignals,
   });
 
   @override
@@ -82,6 +89,8 @@ class ServiceOrderCard extends StatelessWidget {
                     builder: (_) => ServiceOrderDetailScreen(
                       orderId: order.id,
                       signals: signals,
+                      lcpNapSignals: lcpNapSignals,
+                      jobsSignals: jobsSignals,
                     ),
                   ),
                 );
@@ -307,7 +316,11 @@ class ServiceOrderCard extends StatelessWidget {
                                       ],
                                     ),
                                   ),
+                                  /*
                                   if (!isUrgent && distanceStr != null)
+                                  */
+                                  // Gene - Nov, 23, 2026: Show distance badge on Urgent repair tickets as well as High/Normal.
+                                  if (distanceStr != null)
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
@@ -545,12 +558,15 @@ class ServiceOrderCard extends StatelessWidget {
                           await MapNavigationService.navigateTo(
                             latLng,
                             label: order.fullName,
+                            context: context,
                           );
                         } else {
                           final fullAddr =
                               '${order.address}${order.barangay != null ? ", ${order.barangay}" : ""}${order.city != null ? ", ${order.city}" : ""}, Philippines';
                           await MapNavigationService.navigateToAddress(
-                              fullAddr);
+                            fullAddr,
+                            context: context,
+                          );
                         }
                       },
                     ),
@@ -581,6 +597,33 @@ class ServiceOrderCard extends StatelessWidget {
                               if (await canLaunchUrl(uri)) {
                                 await launchUrl(uri);
                               }
+                            },
+                    ),
+                  ),
+                  // Gene - Nov, 23, 2026: Added 3rd SMS action button matching Today job cards.
+                  Container(width: 1, color: AppTheme.hairlineOf(context)),
+                  Expanded(
+                    child: StatusRailAction(
+                      icon: Icons.sms_rounded,
+                      label: 'SMS',
+                      onTap: order.contactNumber.trim().isEmpty
+                          ? null
+                          : () async {
+                              signals.markOrderAsRead(order.id);
+                              final raw = order.contactNumber.trim();
+                              final clean =
+                                  raw.replaceAll(RegExp(r'[^0-9+]'), '');
+                              final body =
+                                  'Good day ${order.fullName}, Switch Fiber Technician is arriving shortly for repair ticket SO-${order.id.toString().padLeft(4, '0')}.';
+                              final uri = Uri(
+                                scheme: 'sms',
+                                path: clean.isNotEmpty ? clean : raw,
+                                queryParameters: {'body': body},
+                              );
+                              try {
+                                await launchUrl(uri,
+                                    mode: LaunchMode.externalApplication);
+                              } catch (_) {}
                             },
                     ),
                   ),

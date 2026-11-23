@@ -10,6 +10,8 @@ import 'package:swithfiber_tech_ps/features/auth/signals/auth_signals.dart';
 class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
   final SecureStorageService _storage;
   final String _endpoint;
+  // Gene - Nov, 23, 2026: Accept configurable devSecretKey and expose hasEndpoint for clean local-only fallback.
+  final String _devSecretKey;
 
   /// Optional upload handler callback for intercepting or forwarding CRUD transactions.
   Future<void> Function(CrudTransaction transaction)? onUpload;
@@ -17,6 +19,7 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
   /// Optional per-entry upload handler callback for individual CRUD mutations.
   Future<void> Function(CrudEntry entry)? onEntryUpload;
 
+  /*
   SwitchFiberBackendConnector({
     SecureStorageService? storage,
     String? endpoint,
@@ -24,9 +27,24 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
     this.onEntryUpload,
   })  : _storage = storage ?? SecureStorageService(),
         _endpoint = endpoint ?? AppConstants.defaultPowerSyncEndpoint;
+  */
+  SwitchFiberBackendConnector({
+    SecureStorageService? storage,
+    String? endpoint,
+    String? devSecretKey,
+    this.onUpload,
+    this.onEntryUpload,
+  })  : _storage = storage ?? SecureStorageService(),
+        _endpoint = endpoint ?? AppConstants.defaultPowerSyncEndpoint,
+        _devSecretKey = devSecretKey ?? AppConstants.devSecretKey;
+
+  bool get hasEndpoint => _endpoint.trim().isNotEmpty;
 
   @override
   Future<PowerSyncCredentials?> fetchCredentials() async {
+    if (!hasEndpoint) {
+      return null;
+    }
     // 0. Determine current logged-in technician identity from session or auth state
     String currentUserId = 'technician@switchfiber.ph';
     try {
@@ -71,7 +89,10 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
       );
     }
 
-    // 2. Direct Development Mode: Generate a fresh valid JWT with valid lifetime (< 86400s)
+    // 2. Direct Development Mode: Generate a fresh valid JWT only when devSecretKey is configured.
+    if (_devSecretKey.trim().isEmpty) {
+      return null;
+    }
     final now = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
     // PowerSync requires token lifetime <= 86400 seconds (24 hours). We set 23 hours.
     final exp = now + 82800;
@@ -91,7 +112,11 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
     final p = b64Url(payload);
     final signingInput = '$h.$p';
 
+    /*
     final hmacSha256 = Hmac(sha256, utf8.encode(AppConstants.devSecretKey));
+    */
+    // Gene - Nov, 23, 2026: Sign with injected _devSecretKey instead of static hardcoded key.
+    final hmacSha256 = Hmac(sha256, utf8.encode(_devSecretKey));
     final digest = hmacSha256.convert(utf8.encode(signingInput));
     final s = base64Url.encode(digest.bytes).replaceAll('=', '');
 

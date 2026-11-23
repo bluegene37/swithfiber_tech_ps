@@ -1339,7 +1339,11 @@ class _JobRowState extends State<_JobRow> {
           label: 'Navigate',
           onTap: () {
             widget.onMarkRead?.call();
+            /*
             navigateToJob(job);
+            */
+            // Gene - Nov, 23, 2026: Pass BuildContext so Always Ask navigation preference can present app chooser sheet.
+            navigateToJob(job, context: context);
           },
         ),
         StatusRailAction(

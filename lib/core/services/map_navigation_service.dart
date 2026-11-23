@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../features/settings/signals/settings_signals.dart';
 import '../theme/app_text.dart';
 import '../theme/app_theme.dart';
 
@@ -27,6 +28,7 @@ class MapNavigationService {
 
   static bool get _isIOS => defaultTargetPlatform == TargetPlatform.iOS;
 
+  /*
   /// Launch turn-by-turn navigation to a coordinates object (such as LatLng).
   static Future<bool> navigateTo(
     dynamic coordinates, {
@@ -82,6 +84,125 @@ class MapNavigationService {
             Uri.parse('https://www.google.com/maps/dir/?api=1'
                 '&destination=$q&travelmode=driving'),
           ]);
+  }
+  */
+  // Gene - Nov, 23, 2026: Honor SettingsSignals.preferredNavApp (Google / Waze / Apple / Always ask) with Google-first default.
+  static Future<bool> navigateTo(
+    dynamic coordinates, {
+    String? label,
+    BuildContext? context,
+  }) async {
+    final double lat = (coordinates.latitude as num).toDouble();
+    final double lng = (coordinates.longitude as num).toDouble();
+    return navigateToCoordinates(
+      latitude: lat,
+      longitude: lng,
+      destinationLabel: label,
+      context: context,
+    );
+  }
+
+  /// Directions from the technician's position to [latitude],[longitude].
+  static Future<bool> navigateToCoordinates({
+    required double latitude,
+    required double longitude,
+    String? destinationLabel,
+    BuildContext? context,
+  }) {
+    final preferred = SettingsSignals.instance.preferredNavApp.value;
+    if (preferred == PreferredNavApp.ask && context != null) {
+      showNavigationChooser(
+        context: context,
+        latitude: latitude,
+        longitude: longitude,
+        title: destinationLabel?.trim().isNotEmpty == true
+            ? destinationLabel!.trim()
+            : 'Destination',
+      );
+      return Future.value(true);
+    }
+
+    final point = '$latitude,$longitude';
+    final label = destinationLabel == null || destinationLabel.trim().isEmpty
+        ? ''
+        : '(${Uri.encodeComponent(destinationLabel.trim())})';
+
+    final googleDefault = _isIOS
+        ? [
+            Uri.parse('comgooglemaps://?daddr=$point&directionsmode=driving'),
+            Uri.parse('maps://?daddr=$point&dirflg=d'),
+            Uri.parse('https://maps.apple.com/?daddr=$point&dirflg=d'),
+          ]
+        : [
+            Uri.parse('google.navigation:q=$point&mode=d'),
+            Uri.parse('geo:$point?q=$point$label'),
+            Uri.parse('https://www.google.com/maps/dir/?api=1'
+                '&destination=$point&travelmode=driving'),
+          ];
+
+    switch (preferred) {
+      case PreferredNavApp.waze:
+        return _launchFirst([
+          Uri.parse('waze://?ll=$point&navigate=yes'),
+          ...googleDefault,
+        ]);
+      case PreferredNavApp.apple:
+        return _launchFirst(_isIOS
+            ? [
+                Uri.parse('maps://?daddr=$point&dirflg=d'),
+                Uri.parse('https://maps.apple.com/?daddr=$point&dirflg=d'),
+                Uri.parse(
+                    'comgooglemaps://?daddr=$point&directionsmode=driving'),
+              ]
+            : googleDefault);
+      case PreferredNavApp.google:
+      case PreferredNavApp.ask:
+        return _launchFirst(googleDefault);
+    }
+  }
+
+  /// Directions to a street [address] when the record carries no
+  /// coordinates. The map app geocodes it.
+  /*
+  static Future<bool> navigateToAddress(String address) {
+  */
+  // Gene - Nov, 23, 2026: Accepted optional BuildContext for uniform signature with navigateToCoordinates.
+  static Future<bool> navigateToAddress(String address,
+      {BuildContext? context}) {
+    final q = Uri.encodeComponent(address.trim());
+    if (q.isEmpty) return Future.value(false);
+
+    final googleDefault = _isIOS
+        ? [
+            Uri.parse('comgooglemaps://?daddr=$q&directionsmode=driving'),
+            Uri.parse('maps://?daddr=$q&dirflg=d'),
+            Uri.parse('https://maps.apple.com/?daddr=$q&dirflg=d'),
+          ]
+        : [
+            Uri.parse('google.navigation:q=$q&mode=d'),
+            Uri.parse('geo:0,0?q=$q'),
+            Uri.parse('https://www.google.com/maps/dir/?api=1'
+                '&destination=$q&travelmode=driving'),
+          ];
+
+    switch (SettingsSignals.instance.preferredNavApp.value) {
+      case PreferredNavApp.waze:
+        return _launchFirst([
+          Uri.parse('waze://?q=$q&navigate=yes'),
+          ...googleDefault,
+        ]);
+      case PreferredNavApp.apple:
+        return _launchFirst(_isIOS
+            ? [
+                Uri.parse('maps://?daddr=$q&dirflg=d'),
+                Uri.parse('https://maps.apple.com/?daddr=$q&dirflg=d'),
+                Uri.parse('comgooglemaps://?daddr=$q&directionsmode=driving'),
+              ]
+            : googleDefault);
+      case PreferredNavApp.google:
+      case PreferredNavApp.ask:
+        return _launchFirst(googleDefault);
+    }
   }
 
   /// Launch one particular navigation app. Its own URL scheme comes first
@@ -143,144 +264,177 @@ class MapNavigationService {
     String? subtitle,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Gene - Nov, 23, 2026: Allow technicians to remember their chosen navigation app directly from the chooser sheet.
+    var rememberChoice = false;
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => Padding(
-        // Clear the system navigation bar, which otherwise covers the last
-        // row of the sheet.
-        padding: EdgeInsets.fromLTRB(
-            20, 16, 20, 24 + MediaQuery.of(ctx).padding.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(ctx).height * 0.85,
+          ),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+                20, 16, 20, 24 + MediaQuery.of(ctx).padding.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primarySubtleBg,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.navigation_rounded,
-                          color: AppTheme.primary, size: 20),
-                    ),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    Row(
                       children: [
-                        Text(
-                          'Start Navigation',
-                          style: ctx.text.titleSmall,
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primarySubtleBg,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.navigation_rounded,
+                              color: AppTheme.primary, size: 20),
                         ),
-                        Text(
-                          title,
-                          style: ctx.text.bodySmall,
+                        const SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Start Navigation',
+                              style: ctx.text.titleSmall,
+                            ),
+                            Text(
+                              title,
+                              style: ctx.text.bodySmall,
+                            ),
+                          ],
                         ),
                       ],
                     ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
                   ],
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 20),
-                  onPressed: () => Navigator.pop(ctx),
+                const SizedBox(height: 12),
+                if (subtitle != null && subtitle.isNotEmpty) ...[
+                  Text(
+                    subtitle,
+                    style: ctx.text.bodySmall,
+                  ),
+                  const SizedBox(height: 14),
+                ],
+
+                // 1. Google Maps Navigation Option
+                _buildAppTile(
+                  context: ctx,
+                  title: 'Google Maps (Turn-by-Turn Navigation)',
+                  subtitle:
+                      'Opens the Google Maps app with live driving directions',
+                  icon: Icons.map_rounded,
+                  iconColor: const Color(0xFF1A73E8),
+                  onTap: () async {
+                    if (rememberChoice) {
+                      await SettingsSignals.instance
+                          .setPreferredNavApp(PreferredNavApp.google);
+                    }
+                    if (!ctx.mounted) return;
+                    Navigator.pop(ctx);
+                    final launched = await launchSpecificMap(
+                      appType: 'google',
+                      latitude: latitude,
+                      longitude: longitude,
+                      label: title,
+                    );
+                    if (!launched && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content:
+                              Text('Could not launch Google Maps navigation.'),
+                          behavior: SnackBarBehavior.floating,
+                          backgroundColor: AppTheme.darkSlate,
+                        ),
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(height: 8),
+
+                // 2. Waze Navigation Option
+                _buildAppTile(
+                  context: ctx,
+                  title: 'Waze Navigation',
+                  subtitle: 'Live traffic, road alerts, and fastest routes',
+                  icon: Icons.directions_car_rounded,
+                  iconColor: const Color(0xFF33CCFF),
+                  onTap: () async {
+                    if (rememberChoice) {
+                      await SettingsSignals.instance
+                          .setPreferredNavApp(PreferredNavApp.waze);
+                    }
+                    if (!ctx.mounted) return;
+                    Navigator.pop(ctx);
+                    final launched = await launchSpecificMap(
+                      appType: 'waze',
+                      latitude: latitude,
+                      longitude: longitude,
+                      label: title,
+                    );
+                    if (!launched && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Could not launch Waze navigation.'),
+                          behavior: SnackBarBehavior.floating,
+                          backgroundColor: AppTheme.darkSlate,
+                        ),
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(height: 8),
+
+                // 3. Copy Coordinates Option
+                _buildAppTile(
+                  context: ctx,
+                  title: 'Copy GPS Coordinates ($latitude, $longitude)',
+                  subtitle: 'Copy exact WGS84 location to clipboard',
+                  icon: Icons.copy_rounded,
+                  iconColor: AppTheme.primary,
+                  onTap: () {
+                    Clipboard.setData(
+                        ClipboardData(text: '$latitude, $longitude'));
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content:
+                            Text('Coordinates copied: $latitude, $longitude'),
+                        behavior: SnackBarBehavior.floating,
+                        backgroundColor: AppTheme.darkSlate,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 6),
+                CheckboxListTile(
+                  value: rememberChoice,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Text(
+                    'Remember as default navigation app',
+                    style: ctx.text.bodySmall,
+                  ),
+                  onChanged: (val) =>
+                      setSheetState(() => rememberChoice = val ?? false),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            if (subtitle != null && subtitle.isNotEmpty) ...[
-              Text(
-                subtitle,
-                style: ctx.text.bodySmall,
-              ),
-              const SizedBox(height: 14),
-            ],
-
-            // 1. Google Maps Navigation Option
-            _buildAppTile(
-              context: ctx,
-              title: 'Google Maps (Turn-by-Turn Navigation)',
-              subtitle:
-                  'Opens the Google Maps app with live driving directions',
-              icon: Icons.map_rounded,
-              iconColor: const Color(0xFF1A73E8),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final launched = await launchSpecificMap(
-                  appType: 'google',
-                  latitude: latitude,
-                  longitude: longitude,
-                  label: title,
-                );
-                if (!launched && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Could not launch Google Maps navigation.'),
-                      behavior: SnackBarBehavior.floating,
-                      backgroundColor: AppTheme.darkSlate,
-                    ),
-                  );
-                }
-              },
-            ),
-            const SizedBox(height: 8),
-
-            // 2. Waze Navigation Option
-            _buildAppTile(
-              context: ctx,
-              title: 'Waze Navigation',
-              subtitle: 'Live traffic, road alerts, and fastest routes',
-              icon: Icons.directions_car_rounded,
-              iconColor: const Color(0xFF33CCFF),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final launched = await launchSpecificMap(
-                  appType: 'waze',
-                  latitude: latitude,
-                  longitude: longitude,
-                  label: title,
-                );
-                if (!launched && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Could not launch Waze navigation.'),
-                      behavior: SnackBarBehavior.floating,
-                      backgroundColor: AppTheme.darkSlate,
-                    ),
-                  );
-                }
-              },
-            ),
-            const SizedBox(height: 8),
-
-            // 3. Copy Coordinates Option
-            _buildAppTile(
-              context: ctx,
-              title: 'Copy GPS Coordinates ($latitude, $longitude)',
-              subtitle: 'Copy exact WGS84 location to clipboard',
-              icon: Icons.copy_rounded,
-              iconColor: AppTheme.primary,
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: '$latitude, $longitude'));
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Coordinates copied: $latitude, $longitude'),
-                    behavior: SnackBarBehavior.floating,
-                    backgroundColor: AppTheme.darkSlate,
-                  ),
-                );
-              },
-            ),
-          ],
+          ),
         ),
       ),
     );

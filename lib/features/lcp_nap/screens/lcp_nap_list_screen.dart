@@ -1,11 +1,15 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_search_field.dart';
 import '../../../core/widgets/loading_states.dart';
+import '../../jobs/signals/jobs_signals.dart';
+import '../../service_orders/signals/service_orders_signals.dart';
 import '../models/lcp_nap_model.dart';
+import '../services/nap_port_occupancy.dart';
 import '../signals/lcp_nap_signals.dart';
 import '../widgets/lcp_nap_card.dart';
 // Gene - Nov, 11, 2026: Imported LcpNapLocationPickerSheet to allow creating new LCP NAP locations directly from the Plant screen.
@@ -21,10 +25,21 @@ import 'lcp_nap_detail_screen.dart';
 /// searchable cabinet filter, area groupings, and map views for large scale networks.
 class LcpNapListScreen extends StatefulWidget {
   final LcpNapSignals signals;
+  // Gene - Nov, 23, 2026: Optional JobsSignals and ServiceOrdersSignals for free-port filtering and occupancy display.
+  final JobsSignals? jobsSignals;
+  final ServiceOrdersSignals? serviceOrdersSignals;
 
+  /*
   const LcpNapListScreen({
     super.key,
     required this.signals,
+  });
+  */
+  const LcpNapListScreen({
+    super.key,
+    required this.signals,
+    this.jobsSignals,
+    this.serviceOrdersSignals,
   });
 
   @override
@@ -36,6 +51,8 @@ enum _LcpNapView { list, map }
 class _LcpNapListScreenState extends State<LcpNapListScreen> {
   final TextEditingController _searchController = TextEditingController();
   _LcpNapView _view = _LcpNapView.list;
+  // Gene - Nov, 23, 2026: Nearby free-ports filter state for Plant list view.
+  bool _onlyNearbyFreePorts = false;
 
   @override
   void dispose() {
@@ -50,6 +67,8 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
         builder: (_) => LcpNapDetailScreen(
           locationId: location.id,
           signals: widget.signals,
+          jobsSignals: widget.jobsSignals,
+          serviceOrdersSignals: widget.serviceOrdersSignals,
         ),
       ),
     );
@@ -62,6 +81,8 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
         builder: (_) => CabinetNapsScreen(
           cabinet: cabinet,
           signals: widget.signals,
+          jobsSignals: widget.jobsSignals,
+          serviceOrdersSignals: widget.serviceOrdersSignals,
         ),
       ),
     );
@@ -187,7 +208,11 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
                 const SizedBox(height: 8),
                 SignalBuilder(
                   builder: (context) {
+                    /*
                     final cabinets = signals.lcpCabinetList.value.length - 1;
+                    */
+                    // Gene - Nov, 23, 2026: Use totalCabinetsCount matching groupedByLcp normalization (ISSUE-003).
+                    final cabinets = signals.totalCabinetsCount.value;
                     final sites = signals.totalSitesCount.value;
                     final ports = signals.totalPortsCount.value;
                     return _PlantSummaryLine(
@@ -213,6 +238,20 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
                   ),
                   filterButton: _buildCabinetFilterButton(signals, isDark),
                 ),
+                // Gene - Nov, 23, 2026: Added "Nearby free ports" filter chip to find available NAP poles sorted by distance.
+                if (_view == _LcpNapView.list) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilterChip(
+                      key: const ValueKey('plant_nearby_free_ports_chip'),
+                      label: const Text('Nearby free ports'),
+                      selected: _onlyNearbyFreePorts,
+                      onSelected: (selected) =>
+                          setState(() => _onlyNearbyFreePorts = selected),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -296,6 +335,115 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
 
         final searching = signals.searchQuery.value.trim().isNotEmpty;
         final filtered = signals.selectedLcpFilter.value != 'All';
+        final jobs = widget.jobsSignals?.allJobs.value ?? const [];
+        final serviceOrders =
+            widget.serviceOrdersSignals?.allOrders.value ?? const [];
+        final hasOccupancy =
+            widget.jobsSignals != null || widget.serviceOrdersSignals != null;
+        final myPos = LocationService.instance.lastKnownPosition;
+
+        double? metersTo(LcpNapDto nap) {
+          final p = nap.latLng;
+          if (myPos == null || p == null) return null;
+          return LocationService.instance.distanceBetween(
+            startLat: myPos.latitude,
+            startLng: myPos.longitude,
+            endLat: p.latitude,
+            endLng: p.longitude,
+          );
+        }
+
+        // Gene - Nov, 23, 2026: Support "Nearby free ports" flat nearest-first list when enabled.
+        if (_onlyNearbyFreePorts) {
+          final freeSites = [
+            for (final loc in locations)
+              if (countFreePorts(loc,
+                      jobs: jobs, serviceOrders: serviceOrders) >
+                  0)
+                loc,
+          ]..sort((a, b) {
+              final da = metersTo(a);
+              final db = metersTo(b);
+              if (da == null && db == null) {
+                return a.lcpNap.compareTo(b.lcpNap);
+              }
+              if (da == null) return 1;
+              if (db == null) return -1;
+              return da.compareTo(db);
+            });
+
+          if (freeSites.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.hub_outlined,
+                      size: 48,
+                      color: AppTheme.secondaryInkOf(context),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No NAPs with free ports found',
+                      style: context.text.titleSmall,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'All matching NAP distribution boxes are currently full.',
+                      style: context.text.bodySmall,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 14),
+                    OutlinedButton(
+                      onPressed: () =>
+                          setState(() => _onlyNearbyFreePorts = false),
+                      child: const Text('Show all cabinets'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: signals.fetchRemote,
+            color: AppTheme.primary,
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+              itemCount: freeSites.length + 1,
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      '${freeSites.length} ${freeSites.length == 1 ? 'NAP' : 'NAPs'} with free ports'
+                      '${myPos != null ? ' · nearest first' : ''}',
+                      style: context.text.bodySmall,
+                    ),
+                  );
+                }
+                final nap = freeSites[index - 1];
+                final meters = metersTo(nap);
+                final free = countFreePorts(
+                  nap,
+                  jobs: jobs,
+                  serviceOrders: serviceOrders,
+                );
+                return LcpNapCard(
+                  location: nap,
+                  freePorts: free,
+                  distanceLabel: meters == null
+                      ? null
+                      : LocationService.instance.formatDistance(meters),
+                  onTap: () => _openDetails(nap),
+                );
+              },
+            ),
+          );
+        }
 
         // A search or a cabinet filter answers with the NAPs themselves.
         if (searching || filtered) {
@@ -320,8 +468,19 @@ class _LcpNapListScreenState extends State<LcpNapListScreen> {
                   );
                 }
                 final nap = locations[index - 1];
+                final meters = metersTo(nap);
                 return LcpNapCard(
                   location: nap,
+                  freePorts: hasOccupancy
+                      ? countFreePorts(
+                          nap,
+                          jobs: jobs,
+                          serviceOrders: serviceOrders,
+                        )
+                      : null,
+                  distanceLabel: meters == null
+                      ? null
+                      : LocationService.instance.formatDistance(meters),
                   onTap: () => _openDetails(nap),
                 );
               },
@@ -689,6 +848,10 @@ class _CabinetRow extends StatelessWidget {
     ].join(', ');
     final ports = naps.fold<int>(0, (sum, n) => sum + n.portTotal);
     final secondary = AppTheme.secondaryInkOf(context);
+    // Gene - Nov, 23, 2026: Spell out NAPs & ports with 200%-text-scale stacking on narrow phones (ISSUE-006).
+    final countsLabel =
+        '${naps.length} NAP${naps.length == 1 ? '' : 's'} · $ports port${ports == 1 ? '' : 's'}';
+    final stackCounts = MediaQuery.textScalerOf(context).scale(16) / 16 > 1.3;
 
     return Material(
       color: AppTheme.cardOf(context),
@@ -718,15 +881,37 @@ class _CabinetRow extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis),
                       ],
+                      if (stackCounts) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          countsLabel,
+                          style: context.text.bodyMedium!
+                              .copyWith(color: secondary),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
+                if (!stackCounts) ...[
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      countsLabel,
+                      textAlign: TextAlign.end,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          context.text.bodyMedium!.copyWith(color: secondary),
+                    ),
+                  ),
+                ],
+                /*
                 Text(
                   '${naps.length} · $ports',
                   style: context.text.bodyLarge!.copyWith(color: secondary),
                   semanticsLabel: '${naps.length} NAPs, $ports ports',
                 ),
+                */
                 const SizedBox(width: 4),
                 Icon(CupertinoIcons.chevron_forward,
                     size: 20, color: secondary),

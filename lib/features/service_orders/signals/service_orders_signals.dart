@@ -4,13 +4,19 @@ import 'dart:async';
 import 'package:signals_flutter/signals_flutter.dart';
 // Gene - Nov, 20, 2026: Added app_constants and secure_storage_service imports for persisting read service order IDs.
 import '../../../core/constants/app_constants.dart';
+// Gene - Nov, 23, 2026: Added LocationService for Nearest-first repair sorting.
+import '../../../core/services/location_service.dart';
 import '../../../core/services/sound_service.dart';
 import '../../../core/database/daos/service_orders_dao.dart';
+import '../../../core/database/daos/sync_error_logs_dao.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/storage/secure_storage_service.dart';
 import '../models/service_order_model.dart';
 import '../services/service_orders_api.dart';
 import '../services/service_orders_sync_worker.dart';
+
+// Gene - Nov, 23, 2026: Added sort mode for Repairs queue (Priority vs Nearest GPS).
+enum ServiceOrderSort { priority, nearest }
 
 /// Signals state container for Service Orders (repairs, maintenance, swaps).
 /// Connects reactive local persistence and the background sync worker.
@@ -68,6 +74,7 @@ class ServiceOrdersSignals {
     }
   }
   */
+  /*
   // Gene - Nov, 20, 2026: Added optional storage parameter to constructor for read/unread badge persistence and testing.
   ServiceOrdersSignals({
     ServiceOrdersApi? api,
@@ -78,6 +85,27 @@ class ServiceOrdersSignals {
         _storage = storage ?? SecureStorageService.instance {
     if (dao != null) {
       syncWorker = ServiceOrdersSyncWorker(dao!, api: this.api);
+      _initDriftStream();
+    } else {
+      syncWorker = null;
+    }
+  }
+  */
+  // Gene - Nov, 23, 2026: Added optional errorLog parameter passed into ServiceOrdersSyncWorker.
+  ServiceOrdersSignals({
+    ServiceOrdersApi? api,
+    this.dao,
+    this.onNewOrderAlert,
+    SecureStorageService? storage,
+    SyncErrorLogsDao? errorLog,
+  })  : api = api ?? ServiceOrdersApi(),
+        _storage = storage ?? SecureStorageService.instance {
+    if (dao != null) {
+      syncWorker = ServiceOrdersSyncWorker(
+        dao!,
+        api: this.api,
+        errorLog: errorLog,
+      );
       _initDriftStream();
     } else {
       syncWorker = null;
@@ -257,6 +285,20 @@ class ServiceOrdersSignals {
   /// Logged-in technician email for matching
   final technicianEmail = signal<String?>(null);
 
+  // Gene - Nov, 23, 2026: Sort mode signal (Priority vs Nearest) and base count before filters.
+  final sortMode = signal<ServiceOrderSort>(ServiceOrderSort.priority);
+
+  void setSortMode(ServiceOrderSort mode) => sortMode.value = mode;
+
+  late final ReadonlySignal<int> baseOrdersCount = computed(() {
+    final onlyMe = onlyAssignedToMe.value;
+    final email = technicianEmail.value?.trim();
+    if (!onlyMe || email == null || email.isEmpty) {
+      return allOrders.value.length;
+    }
+    return allOrders.value.where((o) => o.isAssignedTo(email)).length;
+  });
+
   /// Total count of service orders visible to technician
   late final ReadonlySignal<int> totalCount =
       computed(() => filteredOrders.value.length);
@@ -330,6 +372,7 @@ class ServiceOrdersSignals {
       computed(() => filteredOrders.value.where((o) => o.isUrgent).length);
 
   /// Filtered and sorted service orders
+  /*
   late final ReadonlySignal<List<ServiceOrderDto>> filteredOrders =
       computed(() {
     final query = searchQuery.value.trim().toLowerCase();
@@ -372,6 +415,82 @@ class ServiceOrdersSignals {
       return true;
     }).toList()
       ..sort((a, b) {
+        // Urgent first, then by ID descending
+        if (a.isUrgent && !b.isUrgent) return -1;
+        if (!a.isUrgent && b.isUrgent) return 1;
+        return b.id.compareTo(a.id);
+      });
+  });
+  */
+  // Gene - Nov, 23, 2026: Support Nearest-first GPS sorting alongside Priority sorting in filteredOrders.
+  late final ReadonlySignal<List<ServiceOrderDto>> filteredOrders =
+      computed(() {
+    final query = searchQuery.value.trim().toLowerCase();
+    final priority = priorityFilter.value.trim().toLowerCase();
+    final concern = concernFilter.value.trim().toLowerCase();
+    final onlyMe = onlyAssignedToMe.value;
+    final email = technicianEmail.value?.trim();
+    final mode = sortMode.value;
+    final myPos = LocationService.instance.lastKnownPosition;
+
+    return allOrders.value.where((order) {
+      if (onlyMe &&
+          (email != null && email.isNotEmpty) &&
+          !order.isAssignedTo(email)) {
+        return false;
+      }
+
+      if (priority != 'all') {
+        final orderPriority = (order.priorityLevel ?? '').toLowerCase();
+        if (!orderPriority.contains(priority)) {
+          return false;
+        }
+      }
+
+      if (concern != 'all') {
+        final orderConcern = order.concern.toLowerCase();
+        if (!orderConcern.contains(concern)) {
+          return false;
+        }
+      }
+
+      if (query.isNotEmpty) {
+        final matchAccount = order.accountNumber.toLowerCase().contains(query);
+        final matchName = order.fullName.toLowerCase().contains(query);
+        final matchAddress = order.address.toLowerCase().contains(query);
+        final matchConcern = order.concern.toLowerCase().contains(query);
+        if (!matchAccount && !matchName && !matchAddress && !matchConcern) {
+          return false;
+        }
+      }
+
+      return true;
+    }).toList()
+      ..sort((a, b) {
+        if (mode == ServiceOrderSort.nearest && myPos != null) {
+          final aPos = a.latLng;
+          final bPos = b.latLng;
+          if (aPos != null && bPos != null) {
+            final dA = LocationService.instance.distanceBetween(
+              startLat: myPos.latitude,
+              startLng: myPos.longitude,
+              endLat: aPos.latitude,
+              endLng: aPos.longitude,
+            );
+            final dB = LocationService.instance.distanceBetween(
+              startLat: myPos.latitude,
+              startLng: myPos.longitude,
+              endLat: bPos.latitude,
+              endLng: bPos.longitude,
+            );
+            final cmp = dA.compareTo(dB);
+            if (cmp != 0) return cmp;
+          } else if (aPos != null) {
+            return -1;
+          } else if (bPos != null) {
+            return 1;
+          }
+        }
         // Urgent first, then by ID descending
         if (a.isUrgent && !b.isUrgent) return -1;
         if (!a.isUrgent && b.isUrgent) return 1;

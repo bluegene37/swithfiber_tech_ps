@@ -13,11 +13,11 @@ void main() {
   });
 
   group('PowerSync Client Setup Tests', () {
-    test('PowerSync default endpoint is correctly configured', () {
-      expect(
-        AppConstants.defaultPowerSyncEndpoint,
-        'http://103.249.198.50:8080',
-      );
+    test(
+        'PowerSync endpoint and dev key default to empty without --dart-define',
+        () {
+      expect(AppConstants.defaultPowerSyncEndpoint, isEmpty);
+      expect(AppConstants.devSecretKey, isEmpty);
     });
 
     test('PowerSync schema defines core tables and valid structure', () {
@@ -41,15 +41,26 @@ void main() {
     });
 
     test(
-        'SwitchFiberBackendConnector returns dev token fallback when no token exists',
+        'SwitchFiberBackendConnector returns null when endpoint/key are unconfigured',
         () async {
       final connector = SwitchFiberBackendConnector();
+      expect(connector.hasEndpoint, isFalse);
+      expect(await connector.fetchCredentials(), isNull);
+    });
+
+    test(
+        'SwitchFiberBackendConnector returns dev token fallback when no token exists',
+        () async {
+      final connector = SwitchFiberBackendConnector(
+        endpoint: 'https://powersync.example.com',
+        devSecretKey: 'test-dev-secret-key',
+      );
       final creds = await connector.fetchCredentials();
       expect(creds, isNotNull);
       expect(creds!.token.startsWith('eyJ'), isTrue);
       expect(creds.userId, 'technician@switchfiber.ph');
       expect(creds.expiresAt, isNotNull);
-      expect(creds.endpoint, AppConstants.defaultPowerSyncEndpoint);
+      expect(creds.endpoint, 'https://powersync.example.com');
     });
 
     test('SwitchFiberBackendConnector returns credentials when token exists',
@@ -58,11 +69,13 @@ void main() {
         AppConstants.keyPowerSyncToken: 'test-jwt-token-123',
       });
 
-      final connector = SwitchFiberBackendConnector();
+      final connector = SwitchFiberBackendConnector(
+        endpoint: 'https://powersync.example.com',
+      );
       final creds = await connector.fetchCredentials();
       expect(creds, isNotNull);
       expect(creds!.token, 'test-jwt-token-123');
-      expect(creds.endpoint, AppConstants.defaultPowerSyncEndpoint);
+      expect(creds.endpoint, 'https://powersync.example.com');
     });
 
     test(
@@ -73,7 +86,10 @@ void main() {
             '{"id":42,"username":"tech_juan","email":"juan.delacruz@switchfiber.ph"}',
       });
 
-      final connector = SwitchFiberBackendConnector();
+      final connector = SwitchFiberBackendConnector(
+        endpoint: 'https://powersync.example.com',
+        devSecretKey: 'test-dev-secret-key',
+      );
       final creds = await connector.fetchCredentials();
       expect(creds, isNotNull);
       expect(creds!.userId, 'juan.delacruz@switchfiber.ph');
