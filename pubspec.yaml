@@ -21,7 +21,9 @@ publish_to: 'none'
 # Gene - Nov, 13, 2026: Bumped build number to 54 (above Release run #14 build 53) for the next Android Closed Testing and Apple TestFlight release.
 # version: 1.0.3+54
 # Gene - Nov, 22, 2026: Bumped build number to 71 (above published store build 70 from Release run #16) for the next Android Closed Testing and Apple TestFlight release.
-version: 1.0.3+71
+# version: 1.0.3+71
+# Gene - Nov, 23, 2026: Bumped build number to 72 for Apple TestFlight and Google Play Closed Testing release (Release run #18).
+version: 1.0.3+72
 
 environment:
   sdk: ^3.5.0
