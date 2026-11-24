@@ -14,17 +14,29 @@ class ServiceOrdersSyncWorker {
   final ServiceOrdersApi _api;
   // Gene - Nov, 23, 2026: Added optional SyncErrorLogsDao to record refused repair pushes with payload metrics.
   final SyncErrorLogsDao? _errorLog;
+  // Gene - Nov, 25, 2026: Optional callback to invalidate cached ServiceOrderImagesDto after a successful push.
+  final void Function(int orderId)? _onOrderSynced;
 
   /*
   ServiceOrdersSyncWorker(this._dao, {ServiceOrdersApi? api})
       : _api = api ?? ServiceOrdersApi();
   */
+  /*
   ServiceOrdersSyncWorker(
     this._dao, {
     ServiceOrdersApi? api,
     SyncErrorLogsDao? errorLog,
   })  : _api = api ?? ServiceOrdersApi(),
         _errorLog = errorLog;
+  */
+  ServiceOrdersSyncWorker(
+    this._dao, {
+    ServiceOrdersApi? api,
+    SyncErrorLogsDao? errorLog,
+    void Function(int orderId)? onOrderSynced,
+  })  : _api = api ?? ServiceOrdersApi(),
+        _errorLog = errorLog,
+        _onOrderSynced = onOrderSynced;
 
   // Reactive state
   final isSyncing = signal<bool>(false);
@@ -205,7 +217,14 @@ class ServiceOrdersSyncWorker {
       payloadBytes = utf8.encode(json.encode(payload)).length;
       final ok = await _api.updateServiceOrder(dto.id, payload);
       if (ok) {
+        /*
         await _dao.markAsSynced(dto.id);
+        await _errorLog?.markResolved('SERVICE_ORDER', dto.id);
+        return _OrderPushOutcome.synced;
+        */
+        // Gene - Nov, 25, 2026: Refresh local row from server copy after successful push (falling back to markAsSynced) and notify image cache.
+        await _replaceWithServerCopy(dto.id);
+        _onOrderSynced?.call(dto.id);
         await _errorLog?.markResolved('SERVICE_ORDER', dto.id);
         return _OrderPushOutcome.synced;
       }
@@ -296,6 +315,18 @@ class ServiceOrdersSyncWorker {
         responseBody: RequestSnapshot.response(response),
       );
     } catch (_) {}
+  }
+
+  // Gene - Nov, 25, 2026: Swap local row with server copy after push, falling back to markAsSynced if offline/unavailable.
+  Future<void> _replaceWithServerCopy(int id) async {
+    try {
+      final fresh = await _api.fetchServiceOrderById(id);
+      if (fresh != null) {
+        await _dao.insertOrUpdateOrder(fresh, synced: true);
+        return;
+      }
+    } catch (_) {}
+    await _dao.markAsSynced(id);
   }
 }
 

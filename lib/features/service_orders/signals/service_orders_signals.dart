@@ -11,6 +11,7 @@ import '../../../core/database/daos/service_orders_dao.dart';
 import '../../../core/database/daos/sync_error_logs_dao.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/storage/secure_storage_service.dart';
+import '../models/service_order_images_model.dart';
 import '../models/service_order_model.dart';
 import '../services/service_orders_api.dart';
 import '../services/service_orders_sync_worker.dart';
@@ -101,15 +102,60 @@ class ServiceOrdersSignals {
   })  : api = api ?? ServiceOrdersApi(),
         _storage = storage ?? SecureStorageService.instance {
     if (dao != null) {
+      /*
       syncWorker = ServiceOrdersSyncWorker(
         dao!,
         api: this.api,
         errorLog: errorLog,
       );
+      */
+      // Gene - Nov, 25, 2026: Pass clearImagesCache callback so synced repairs invalidate stale cached photos.
+      syncWorker = ServiceOrdersSyncWorker(
+        dao!,
+        api: this.api,
+        errorLog: errorLog,
+        onOrderSynced: clearImagesCache,
+      );
       _initDriftStream();
     } else {
       syncWorker = null;
     }
+  }
+
+  // Gene - Nov, 25, 2026: In-memory cache and fetch helper for GET /api/ServiceOrders/{id}/GetServiceOrderImage.
+  final Map<int, ServiceOrderImagesDto> _imagesCache = {};
+
+  /// Clear in-memory service order photos cache (for tests, sync, or manual refresh).
+  void clearImagesCache([int? id]) {
+    if (id != null) {
+      _imagesCache.remove(id);
+    } else {
+      _imagesCache.clear();
+    }
+  }
+
+  /// Fetches photo proofs and signature for a Service Order from GET /api/ServiceOrders/{id}/GetServiceOrderImage.
+  Future<ServiceOrderImagesDto?> getServiceOrderImages(
+    int orderId, {
+    bool forceRefresh = false,
+  }) async {
+    if (forceRefresh) {
+      _imagesCache.remove(orderId);
+    } else if (_imagesCache.containsKey(orderId)) {
+      return _imagesCache[orderId];
+    }
+
+    try {
+      final data = await api.fetchServiceOrderImages(orderId);
+      if (data != null) {
+        final dto = ServiceOrderImagesDto.fromJson(data);
+        _imagesCache[orderId] = dto;
+        return dto;
+      }
+    } catch (_) {
+      // Offline fallback or test mock
+    }
+    return _imagesCache[orderId];
   }
 
   /// Surfaced when a new open Service Order is synced or assigned to the technician.
@@ -555,6 +601,8 @@ class ServiceOrdersSignals {
         */
         // Gene - Nov, 13, 2026: Always prune synced service orders absent from verified remote list responses (even when keep is empty).
         await dao!.deleteSyncedOrdersNotIn(keep);
+        // Gene - Nov, 25, 2026: Evict stale photo cache for refreshed/deleted service orders.
+        _imagesCache.removeWhere((id, _) => !pending.contains(id));
       } else {
         allOrders.value = scopedList;
       }
@@ -607,6 +655,8 @@ class ServiceOrdersSignals {
       isSynced: false,
       updatedAt: DateTime.now(),
     );
+    // Gene - Nov, 25, 2026: Invalidate cached remote photos for this order so UI reflects local edits/clears immediately.
+    _imagesCache.remove(updated.id);
 
     if (dao != null) {
       // Optimistic local persist; the sync worker pushes it to the API.
