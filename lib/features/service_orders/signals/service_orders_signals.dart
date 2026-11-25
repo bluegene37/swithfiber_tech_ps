@@ -9,6 +9,9 @@ import '../../../core/services/location_service.dart';
 import '../../../core/services/sound_service.dart';
 import '../../../core/database/daos/service_orders_dao.dart';
 import '../../../core/database/daos/sync_error_logs_dao.dart';
+// Gene - Nov, 26, 2026: Added WorkTimingHistoryDao and WorkTimingEntry imports for logging Service Order Start/Stop sessions.
+import '../../../core/database/daos/work_timing_history_dao.dart';
+import '../../../core/database/models/work_timing_entry.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/storage/secure_storage_service.dart';
 // Gene - Nov, 25, 2026: Added shared work timing helpers and AuthSignals for Start/Finish timing tracking.
@@ -96,12 +99,26 @@ class ServiceOrdersSignals {
   }
   */
   // Gene - Nov, 23, 2026: Added optional errorLog parameter passed into ServiceOrdersSyncWorker.
+  // Gene - Nov, 26, 2026: Added optional timingHistory parameter for recording Start/Stop sessions.
+  final WorkTimingHistoryDao? timingHistory;
+
+  /*
   ServiceOrdersSignals({
     ServiceOrdersApi? api,
     this.dao,
     this.onNewOrderAlert,
     SecureStorageService? storage,
     SyncErrorLogsDao? errorLog,
+  })  : api = api ?? ServiceOrdersApi(),
+        _storage = storage ?? SecureStorageService.instance {
+  */
+  ServiceOrdersSignals({
+    ServiceOrdersApi? api,
+    this.dao,
+    this.onNewOrderAlert,
+    SecureStorageService? storage,
+    SyncErrorLogsDao? errorLog,
+    this.timingHistory,
   })  : api = api ?? ServiceOrdersApi(),
         _storage = storage ?? SecureStorageService.instance {
     if (dao != null) {
@@ -593,6 +610,7 @@ class ServiceOrdersSignals {
           if (pending.contains(dto.id)) continue;
           final existing = existingMap[dto.id];
           if (existing != null) {
+            /*
             final mergedStart = normalizeTimingTimestamp(dto.startTimestamp) ??
                 normalizeTimingTimestamp(existing.startTimestamp);
             final serverStop = normalizeTimingTimestamp(dto.stopTimestamp);
@@ -606,6 +624,14 @@ class ServiceOrdersSignals {
                         localStop.isAfter(mergedStart))
                     ? localStop
                     : (serverStop ?? localStop);
+            */
+            // Gene - Nov, 26, 2026: Use mergeWorkTimingTimestamps so a restarted local session is never reverted by an older server session.
+            final (mergedStart, mergedStop) = mergeWorkTimingTimestamps(
+              serverStart: dto.startTimestamp,
+              serverEnd: dto.stopTimestamp,
+              localStart: existing.startTimestamp,
+              localEnd: existing.stopTimestamp,
+            );
             fresh.add(dto.copyWith(
               startTimestamp: mergedStart,
               stopTimestamp: mergedStop,
@@ -739,6 +765,7 @@ class ServiceOrdersSignals {
     return null;
   });
 
+  /*
   String _resolveTechId([String? override]) {
     final explicit = override?.trim();
     if (explicit != null && explicit.isNotEmpty) return explicit;
@@ -751,6 +778,12 @@ class ServiceOrdersSignals {
     if (email != null && email.isNotEmpty) return email;
     return '0';
   }
+  */
+  // Gene - Nov, 26, 2026: Use shared resolveTimingUserId so Service Order timing and history share the exact same userId.
+  String _resolveTechId([String? override]) => resolveTimingUserId(
+        override: override,
+        fallbackEmail: technicianEmail.value,
+      );
 
   // Gene - Nov, 26, 2026: Helpers to resolve technician identity/email metadata for Service Order audit fields.
   String? _resolveModifiedBy(ServiceOrderDto order) {
@@ -855,7 +888,7 @@ class ServiceOrdersSignals {
     }
   }
   */
-  // Gene - Nov, 26, 2026: Enforce single active order guard in startOrder and stamp Service Order audit metadata on Start/Finish.
+  // Gene - Nov, 26, 2026: Enforce single active order guard in startOrder, support restarting stopped orders (resetting stopTimestamp = now), and record Start/Stop history.
   Future<String?> startOrder(
     ServiceOrderDto order, {
     String? techId,
@@ -868,10 +901,20 @@ class ServiceOrdersSignals {
       return 'Finish the active order before starting another.';
     }
     busyTimingOrderIds.value = {...busyTimingOrderIds.value, order.id};
-    final now = DateTime.now().toUtc();
+    var now = DateTime.now().toUtc();
+    final prevStart = normalizeTimingTimestamp(order.startTimestamp);
+    final prevStop = normalizeTimingTimestamp(order.stopTimestamp);
+    for (final prev in [prevStart, prevStop]) {
+      if (prev != null && !now.isAfter(prev)) {
+        now = prev.add(const Duration(seconds: 1));
+      }
+    }
+    final resolvedTechId = _resolveTechId(techId);
+    final resolvedUserName = _resolveModifiedBy(order);
     final updated = order.copyWith(
       startTimestamp: now,
-      modifiedBy: _resolveModifiedBy(order),
+      stopTimestamp: now,
+      modifiedBy: resolvedUserName,
       modifiedDate: now,
       techModifiedDate: now,
       userEmail: _resolveUserEmail(order),
@@ -881,13 +924,26 @@ class ServiceOrdersSignals {
     if (dao != null) {
       await dao!.insertOrUpdateOrder(updated, synced: true);
     }
+    final entryId = await timingHistory?.recordStart(
+      orderType: WorkTimingEntry.orderTypeServiceOrder,
+      orderId: order.id,
+      orderReference: 'SO-${order.id.toString().padLeft(4, '0')}',
+      customerName: order.fullName,
+      userId: resolvedTechId,
+      userName: resolvedUserName,
+      startTime: now,
+      isSynced: false,
+    );
     try {
       await api.createTiming(
         joId: order.id,
-        techId: _resolveTechId(techId),
+        techId: resolvedTechId,
         startTime: now,
         endTime: now,
       );
+      if (entryId != null) {
+        await timingHistory?.markSynced(entryId, isSynced: true);
+      }
       return null;
     } catch (e) {
       final unsynced = updated.copyWith(isSynced: false);
@@ -912,10 +968,12 @@ class ServiceOrdersSignals {
     if (!end.isAfter(start)) {
       end = start.add(const Duration(seconds: 1));
     }
+    final resolvedTechId = _resolveTechId(techId);
+    final resolvedUserName = _resolveModifiedBy(order);
     final updated = order.copyWith(
       startTimestamp: start,
       stopTimestamp: end,
-      modifiedBy: _resolveModifiedBy(order),
+      modifiedBy: resolvedUserName,
       modifiedDate: end,
       techModifiedDate: end,
       userEmail: _resolveUserEmail(order),
@@ -925,13 +983,27 @@ class ServiceOrdersSignals {
     if (dao != null) {
       await dao!.insertOrUpdateOrder(updated, synced: true);
     }
+    final entryId = await timingHistory?.recordFinish(
+      orderType: WorkTimingEntry.orderTypeServiceOrder,
+      orderId: order.id,
+      orderReference: 'SO-${order.id.toString().padLeft(4, '0')}',
+      customerName: order.fullName,
+      userId: resolvedTechId,
+      userName: resolvedUserName,
+      startTime: start,
+      endTime: end,
+      isSynced: false,
+    );
     try {
       await api.updateTiming(
         joId: order.id,
-        techId: _resolveTechId(techId),
+        techId: resolvedTechId,
         startTime: start,
         endTime: end,
       );
+      if (entryId != null) {
+        await timingHistory?.markSynced(entryId, isSynced: true);
+      }
       return null;
     } catch (e) {
       final unsynced = updated.copyWith(isSynced: false);

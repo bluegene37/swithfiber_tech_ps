@@ -13,12 +13,31 @@ class TodayGlancePanel extends StatelessWidget {
   /// Injectable for tests; defaults to the current time.
   final DateTime? now;
 
+  // Gene - Nov, 26, 2026: Optional labels, type badge, and count color so ServiceOrdersScreen shares the same Glance header with distinct branding.
+  final String singularLabel;
+  final String pluralLabel;
+  final Widget? typeBadge;
+  final Color? countColor;
+
+  /*
   const TodayGlancePanel({
     super.key,
     required this.jobCount,
     required this.summary,
     this.actions = const [],
     this.now,
+  });
+  */
+  const TodayGlancePanel({
+    super.key,
+    required this.jobCount,
+    required this.summary,
+    this.actions = const [],
+    this.now,
+    this.singularLabel = 'job today',
+    this.pluralLabel = 'jobs today',
+    this.typeBadge,
+    this.countColor,
   });
 
   static const _weekdays = [
@@ -54,10 +73,15 @@ class TodayGlancePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final date = dateLabel(now ?? DateTime.now());
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 8, 12),
+      padding: EdgeInsets.fromLTRB(16, 8, 8, typeBadge != null ? 8 : 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Gene - Nov, 26, 2026: Render typeBadge at full panel width above the date/actions row so badges never squeeze or overflow at 200% text scale.
+          if (typeBadge != null) ...[
+            typeBadge!,
+            const SizedBox(height: 4),
+          ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -78,13 +102,23 @@ class TodayGlancePanel extends StatelessWidget {
                       children: [
                         Text(
                           '$jobCount',
+                          /*
                           style: context.text.displaySmall,
                           semanticsLabel: '$jobCount jobs today',
+                          */
+                          style: context.text.displaySmall!.copyWith(
+                            color: countColor,
+                          ),
+                          semanticsLabel:
+                              '$jobCount ${jobCount == 1 ? singularLabel : pluralLabel}',
                         ),
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
+                            /*
                             jobCount == 1 ? 'job today' : 'jobs today',
+                            */
+                            jobCount == 1 ? singularLabel : pluralLabel,
                             style: context.text.titleMedium!.copyWith(
                               color: AppTheme.secondaryInkOf(context),
                             ),

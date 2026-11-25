@@ -405,7 +405,8 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 120));
       });
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Repair One'));
+      // Gene - Nov, 26, 2026: ServiceOrderCard now matches JobOrderCard (body tap expands/collapses; Details action opens ServiceOrderDetailScreen).
+      await tester.tap(find.byKey(const ValueKey('so_action_details_11')));
       await tester.pumpAndSettle();
       expect(find.byType(ServiceOrderDetailScreen), findsOneWidget);
 
@@ -435,7 +436,8 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 120));
       });
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Repair Two'));
+      // Gene - Nov, 26, 2026: ServiceOrderCard now matches JobOrderCard (Details action opens ServiceOrderDetailScreen).
+      await tester.tap(find.byKey(const ValueKey('so_action_details_12')));
       await tester.pumpAndSettle();
       expect(find.byType(ServiceOrderDetailScreen), findsOneWidget);
 

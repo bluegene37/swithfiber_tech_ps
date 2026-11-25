@@ -4,11 +4,15 @@ import 'dart:async';
 import 'package:signals_flutter/signals_flutter.dart';
 // Gene - Nov, 20, 2026: Added app_constants and secure_storage_service imports for persisting read job IDs.
 import '../../../core/constants/app_constants.dart';
+// Gene - Nov, 26, 2026: Added WorkTimingHistoryDao and work_timing_bar imports for timing history and user resolution.
+import '../../../core/database/daos/work_timing_history_dao.dart';
 import '../../../core/services/sound_service.dart';
 import '../../../core/storage/secure_storage_service.dart';
 import '../../../core/widgets/loading_states.dart';
+import '../../../core/widgets/work_timing_bar.dart';
 // Gene - Nov, 25, 2026: Added AuthSignals import to resolve technician ID for Start/Finish timing calls.
-import '../../auth/signals/auth_signals.dart';
+// Gene - Nov, 26, 2026: Commented out unused AuthSignals import after delegating user ID/name resolution to work_timing_bar.dart.
+// import '../../auth/signals/auth_signals.dart';
 import '../models/job_order_images_model.dart';
 import '../models/job_order_model.dart';
 import '../repositories/job_repository.dart';
@@ -504,6 +508,10 @@ class JobsSignals {
   }
 
   // Gene - Nov, 25, 2026: Start/Finish work timing actions on Job Orders; returns null when synced or a short warning when saved locally offline.
+  // Gene - Nov, 26, 2026: Expose timingHistory DAO and resolve technician ID/name via shared helpers.
+  WorkTimingHistoryDao? get timingHistory => repository.timingHistory;
+
+  /*
   String _resolveTechId([String? override]) {
     final explicit = override?.trim();
     if (explicit != null && explicit.isNotEmpty) return explicit;
@@ -516,6 +524,14 @@ class JobsSignals {
     if (email != null && email.isNotEmpty) return email;
     return '0';
   }
+  */
+  String _resolveTechId([String? override]) => resolveTimingUserId(
+        override: override,
+        fallbackEmail: technicianEmail.value,
+      );
+
+  String? _resolveTechName() =>
+      resolveTimingUserName(fallbackEmail: technicianEmail.value);
 
   /*
   Future<String?> startJob(JobOrderDto job, {String? techId}) async {
@@ -545,7 +561,15 @@ class JobsSignals {
     }
     busyTimingJobIds.value = {...busyTimingJobIds.value, job.id};
     try {
+      /*
       await repository.startJobTiming(job.id, techId: _resolveTechId(techId));
+      */
+      // Gene - Nov, 26, 2026: Forward userName to startJobTiming for timing history attribution.
+      await repository.startJobTiming(
+        job.id,
+        techId: _resolveTechId(techId),
+        userName: _resolveTechName(),
+      );
       return null;
     } catch (e) {
       return 'Started locally · sync pending ($e)';
@@ -558,7 +582,15 @@ class JobsSignals {
     if (busyTimingJobIds.value.contains(job.id)) return null;
     busyTimingJobIds.value = {...busyTimingJobIds.value, job.id};
     try {
+      /*
       await repository.finishJobTiming(job, techId: _resolveTechId(techId));
+      */
+      // Gene - Nov, 26, 2026: Forward userName to finishJobTiming for timing history attribution.
+      await repository.finishJobTiming(
+        job,
+        techId: _resolveTechId(techId),
+        userName: _resolveTechName(),
+      );
       return null;
     } catch (e) {
       return 'Finished locally · sync pending ($e)';

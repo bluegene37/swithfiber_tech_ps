@@ -11,6 +11,9 @@ import '../../../core/widgets/loading_states.dart';
 import '../../../core/widgets/status_rail_row.dart';
 // Gene - Nov, 25, 2026: Added WorkTimingBar for Start/Finish controls on Job Order list rows.
 import '../../../core/widgets/work_timing_bar.dart';
+// Gene - Nov, 26, 2026: Added WorkTimingEntry and WorkTimingHistoryScreen imports for Start/Finish history access.
+import '../../../core/database/models/work_timing_entry.dart';
+import '../../diagnostics/screens/work_timing_history_screen.dart';
 import '../../auth/signals/auth_signals.dart';
 import '../../lcp_nap/signals/lcp_nap_signals.dart';
 import '../../service_orders/signals/service_orders_signals.dart';
@@ -388,6 +391,23 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
                   icon: Icon(_showMap
                       ? CupertinoIcons.list_bullet
                       : CupertinoIcons.map),
+                ),
+                // Gene - Nov, 26, 2026: Added Timing History button in TodayGlancePanel actions.
+                IconButton(
+                  key: const ValueKey('jobs_timing_history_button'),
+                  tooltip: 'Timing history',
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => WorkTimingHistoryScreen(
+                          dao: signals.timingHistory ??
+                              widget.serviceOrdersSignals?.timingHistory,
+                          initialOrderType: WorkTimingEntry.orderTypeJobOrder,
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.history_rounded),
                 ),
                 IconButton(
                   tooltip: 'Sync & refresh queue',

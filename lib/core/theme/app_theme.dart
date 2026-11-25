@@ -64,6 +64,13 @@ class AppTheme {
   static const Color dangerSubtle = Color(0xFFFBEAE8);
   static const Color infoSubtle = Color(0xFFE8EEFB);
 
+  // Gene - Nov, 26, 2026: Distinct Violet accent tokens for Service Orders (Repairs) so they match Job Order layout while staying visually distinguishable.
+  static const Color serviceOrderAccent = Color(0xFF6D28D9);
+  static const Color serviceOrderSubtleBg = Color(0xFFF3EEFF);
+  static const Color serviceOrderSubtleBorder = Color(0xFFD8C8FA);
+  static const Color serviceOrderSubtleBgDark = Color(0xFF241B35);
+  static const Color serviceOrderSubtleBorderDark = Color(0xFF4C3575);
+
   // Ink tokens: the only colours allowed on TEXT. Each passes WCAG 4.5:1 on
   // both surfaces of its theme (verified by test/app_theme_contrast_test.dart).
   static const Color secondaryInk = Color(0xFF5C574D); // 6.4:1 page, 7.2:1 card
@@ -104,6 +111,12 @@ class AppTheme {
       _isDark(c) ? primarySubtleBgDark : primarySubtleBg;
   static Color primarySubtleBorderOf(BuildContext c) =>
       _isDark(c) ? primarySubtleBorderDark : primarySubtleBorder;
+  // Gene - Nov, 26, 2026: Theme-aware surface and ink helpers for Service Order violet distinction.
+  static Color serviceOrderSubtleBgOf(BuildContext c) =>
+      _isDark(c) ? serviceOrderSubtleBgDark : serviceOrderSubtleBg;
+  static Color serviceOrderSubtleBorderOf(BuildContext c) =>
+      _isDark(c) ? serviceOrderSubtleBorderDark : serviceOrderSubtleBorder;
+  static Color serviceOrderInkOf(BuildContext c) => violetInkOf(c);
   static Color fillOf(BuildContext c) => _isDark(c) ? fillDark : fillLight;
 
   /// Primary text ("ink") and page surface for the active theme.

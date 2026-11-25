@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
+import 'package:swithfiber_tech_ps/core/database/models/work_timing_entry.dart';
 import 'package:swithfiber_tech_ps/core/network/api_client.dart';
 import 'package:swithfiber_tech_ps/core/services/draft_storage_service.dart';
 import 'package:swithfiber_tech_ps/core/theme/app_theme.dart';
@@ -15,6 +16,7 @@ import 'package:swithfiber_tech_ps/core/widgets/sticky_action_bar.dart';
 import 'package:swithfiber_tech_ps/core/widgets/work_timing_bar.dart';
 import 'package:swithfiber_tech_ps/features/auth/models/user_model.dart';
 import 'package:swithfiber_tech_ps/features/auth/signals/auth_signals.dart';
+import 'package:swithfiber_tech_ps/features/diagnostics/screens/work_timing_history_screen.dart';
 import 'package:swithfiber_tech_ps/features/jobs/models/job_order_model.dart';
 import 'package:swithfiber_tech_ps/features/jobs/repositories/job_repository.dart';
 import 'package:swithfiber_tech_ps/features/jobs/screens/job_order_detail_screen.dart';
@@ -440,17 +442,17 @@ void main() {
       });
       await tester.pumpAndSettle();
 
-      // 3. Finished: updatetiming called with endTime > startTime, disabled Finished button shown, re-locked.
+      // 3. Finished: updatetiming called with endTime > startTime, Start Again button shown, re-locked.
       expect(api.updated.length, 1);
       final updStart = api.updated.first['startTime'] as DateTime;
       final updEnd = api.updated.first['endTime'] as DateTime;
       expect(updEnd.isAfter(updStart), isTrue);
 
-      final finishedFinder =
-          find.byKey(const ValueKey('job_finished_button_101'));
-      expect(finishedFinder, findsOneWidget);
-      final finishedBtn = tester.widget<OutlinedButton>(finishedFinder);
-      expect(finishedBtn.onPressed, isNull);
+      final restartFinder = find.byKey(const ValueKey('job_start_button_101'));
+      expect(restartFinder, findsOneWidget);
+      expect(find.text('Start Again'), findsOneWidget);
+      final restartBtn = tester.widget<FilledButton>(restartFinder);
+      expect(restartBtn.onPressed, isNotNull);
       expect(tester.widget<InkWell>(shortcutFinder).onTap, isNull);
     });
 
@@ -598,10 +600,12 @@ void main() {
         ),
       ));
       await tester.pump();
-      final finishedFinder =
-          find.byKey(const ValueKey('service_order_finished_button_201'));
-      expect(finishedFinder, findsOneWidget);
-      expect(tester.widget<OutlinedButton>(finishedFinder).onPressed, isNull);
+      // Gene - Nov, 26, 2026: Stop transitions Service Order to Start Again and re-locks detail controls.
+      final restartSoFinder =
+          find.byKey(const ValueKey('service_order_start_button_201'));
+      expect(restartSoFinder, findsOneWidget);
+      expect(find.text('Start Again'), findsOneWidget);
+      expect(tester.widget<FilledButton>(restartSoFinder).onPressed, isNotNull);
 
       // Detail screen re-locked after Finish.
       await tester.pumpWidget(MaterialApp(
@@ -667,8 +671,8 @@ void main() {
         'job_action_sms_101',
         'job_action_details_101',
       ]) {
-        final action = tester
-            .widget<StatusRailAction>(find.byKey(ValueKey(keyName)));
+        final action =
+            tester.widget<StatusRailAction>(find.byKey(ValueKey(keyName)));
         expect(action.onTap, isNull, reason: '$keyName locked before Start');
       }
       expect(
@@ -698,8 +702,8 @@ void main() {
         'job_action_sms_101',
         'job_action_details_101',
       ]) {
-        final action = tester
-            .widget<StatusRailAction>(find.byKey(ValueKey(keyName)));
+        final action =
+            tester.widget<StatusRailAction>(find.byKey(ValueKey(keyName)));
         expect(action.onTap, isNotNull,
             reason: '$keyName unlocked after Start');
       }
@@ -727,8 +731,8 @@ void main() {
         'job_action_sms_101',
         'job_action_details_101',
       ]) {
-        final action = tester
-            .widget<StatusRailAction>(find.byKey(ValueKey(keyName)));
+        final action =
+            tester.widget<StatusRailAction>(find.byKey(ValueKey(keyName)));
         expect(action.onTap, isNull, reason: '$keyName re-locked after Finish');
       }
       expect(
@@ -788,9 +792,7 @@ void main() {
         'so_action_sms_201',
       ]) {
         expect(
-          tester
-              .widget<StatusRailAction>(find.byKey(ValueKey(keyName)))
-              .onTap,
+          tester.widget<StatusRailAction>(find.byKey(ValueKey(keyName))).onTap,
           isNull,
           reason: '$keyName locked before Start',
         );
@@ -822,9 +824,7 @@ void main() {
         'so_action_sms_201',
       ]) {
         expect(
-          tester
-              .widget<StatusRailAction>(find.byKey(ValueKey(keyName)))
-              .onTap,
+          tester.widget<StatusRailAction>(find.byKey(ValueKey(keyName))).onTap,
           isNotNull,
           reason: '$keyName unlocked after Start',
         );
@@ -856,9 +856,7 @@ void main() {
         'so_action_sms_201',
       ]) {
         expect(
-          tester
-              .widget<StatusRailAction>(find.byKey(ValueKey(keyName)))
-              .onTap,
+          tester.widget<StatusRailAction>(find.byKey(ValueKey(keyName))).onTap,
           isNull,
           reason: '$keyName re-locked after Finish',
         );
@@ -873,7 +871,8 @@ void main() {
       final db = AppDatabase.forTesting();
       final jobApi = _TimingRecordingJobApi();
       final soApi = _TimingRecordingServiceOrdersApi();
-      final jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao, api: jobApi));
+      final jobsSignals =
+          JobsSignals(JobRepository(db.jobOrdersDao, api: jobApi));
       final soSignals = ServiceOrdersSignals(api: soApi);
       jobsSignals.setTechnicianEmail('tech@example.com');
       soSignals.setTechnicianEmail('tech@example.com');
@@ -961,8 +960,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // Initially JO 101 and 102 both show Start.
-      expect(find.byKey(const ValueKey('job_start_button_101')), findsOneWidget);
-      expect(find.byKey(const ValueKey('job_start_button_102')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('job_start_button_101')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('job_start_button_102')), findsOneWidget);
 
       // Start JO 101 -> JO 101 shows Finish, JO 102 Start is hidden.
       await tester.runAsync(() async {
@@ -970,12 +971,13 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 150));
       });
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('job_finish_button_101')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('job_finish_button_101')), findsOneWidget);
       expect(find.byKey(const ValueKey('job_start_button_102')), findsNothing);
 
       // Switch to Service Orders tab -> SO 201 and 202 Start buttons are hidden.
-      final tabController = DefaultTabController.of(
-          tester.element(find.byType(TabBarView)));
+      final tabController =
+          DefaultTabController.of(tester.element(find.byType(TabBarView)));
       tabController.animateTo(1);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('service_order_start_button_201')),
@@ -991,9 +993,11 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 150));
       });
       await tester.pumpAndSettle();
+      // Finish JO 101 -> JO 101 shows Start Again and JO 102 Start reappears.
       expect(
-          find.byKey(const ValueKey('job_finished_button_101')), findsOneWidget);
-      expect(find.byKey(const ValueKey('job_start_button_102')), findsOneWidget);
+          find.byKey(const ValueKey('job_start_button_101')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('job_start_button_102')), findsOneWidget);
 
       // Switch to Service Orders tab -> SO 201 and 202 Start buttons reappeared.
       tabController.animateTo(1);
@@ -1022,14 +1026,16 @@ void main() {
       await tester
           .tap(find.byKey(const ValueKey('service_order_finish_button_201')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('service_order_finished_button_201')),
+      // Stop SO 201 -> SO 201 shows Start Again and SO 202 Start reappears.
+      expect(find.byKey(const ValueKey('service_order_start_button_201')),
           findsOneWidget);
       expect(find.byKey(const ValueKey('service_order_start_button_202')),
           findsOneWidget);
 
       tabController.animateTo(0);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('job_start_button_102')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('job_start_button_102')), findsOneWidget);
     });
 
     // Gene - Nov, 26, 2026: Verify techId (user ID), computed duration, and Service Order audit fields are populated on Start/Finish.
@@ -1050,8 +1056,10 @@ void main() {
       final db = AppDatabase.forTesting();
       final jobApi = _TimingRecordingJobApi();
       final soApi = _TimingRecordingServiceOrdersApi();
-      final jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao, api: jobApi));
-      final soSignals = ServiceOrdersSignals(api: soApi, dao: db.serviceOrdersDao);
+      final jobsSignals =
+          JobsSignals(JobRepository(db.jobOrdersDao, api: jobApi));
+      final soSignals =
+          ServiceOrdersSignals(api: soApi, dao: db.serviceOrdersDao);
       jobsSignals.setTechnicianEmail('tech42@example.com');
       soSignals.setTechnicianEmail('tech42@example.com');
       addTearDown(() async {
@@ -1125,7 +1133,8 @@ void main() {
         (tester) async {
       final db = AppDatabase.forTesting();
       final jobApi = _TimingRecordingJobApi();
-      final jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao, api: jobApi));
+      final jobsSignals =
+          JobsSignals(JobRepository(db.jobOrdersDao, api: jobApi));
       addTearDown(() async {
         await jobsSignals.dispose();
         await db.close();
@@ -1237,6 +1246,272 @@ void main() {
         ),
       ));
       await tester.pump();
+      expect(overflows, isEmpty, reason: overflows.join('\n'));
+    });
+
+    // Gene - Nov, 26, 2026: Verify date+time formatting, timing merge, restartable Start Again sessions, WorkTimingHistoryDao/Screen filtering by userId & date, and ServiceOrderCard Job Order parity.
+    test(
+        'Date+time helpers and mergeWorkTimingTimestamps preserve newer restarted sessions',
+        () {
+      final s1 = DateTime(2026, 11, 26, 8, 5);
+      final e1 = DateTime(2026, 11, 26, 9, 15);
+      final s2 = DateTime(2026, 11, 26, 10, 0);
+
+      expect(formatTimingDateKey(s1), '2026-11-26');
+      expect(formatTimingDateTime(s1), contains('Nov 26'));
+      expect(formatTimingDateTime(s1), contains('8:05 AM'));
+      expect(formatTimingRange(s1, e1), contains('Nov 26'));
+      expect(formatTimingRange(s1, e1), contains('8:05 AM'));
+      expect(formatTimingRange(s1, e1), contains('9:15 AM'));
+
+      // Newer local restart (s2, s2) must beat older finished server session (s1, e1).
+      final (mergedStart, mergedEnd) = mergeWorkTimingTimestamps(
+        serverStart: s1,
+        serverEnd: e1,
+        localStart: s2,
+        localEnd: s2,
+      );
+      expect(mergedStart, equals(s2));
+      expect(mergedEnd, equals(s2));
+      expect(resolveWorkTimingStatus(mergedStart, mergedEnd),
+          WorkTimingStatus.inProgress);
+    });
+
+    testWidgets(
+        'Restarting Job Order and Service Order records multiple sessions in WorkTimingHistoryDao and renders in WorkTimingHistoryScreen filtered by userId & date',
+        (tester) async {
+      final prevUser = AuthSignals.instance.currentUser.value;
+      addTearDown(() => AuthSignals.instance.currentUser.value = prevUser);
+
+      AuthSignals.instance.currentUser.value = UserModel(
+        id: 77,
+        username: 'tech77',
+        fname: 'Alex',
+        lname: 'Rivera',
+        email: 'alex77@example.com',
+      );
+
+      final db = AppDatabase.forTesting();
+      final jobApi = _TimingRecordingJobApi();
+      final soApi = _TimingRecordingServiceOrdersApi();
+      final jobsSignals = JobsSignals(
+        JobRepository(
+          db.jobOrdersDao,
+          api: jobApi,
+          timingHistory: db.workTimingHistoryDao,
+        ),
+      );
+      final soSignals = ServiceOrdersSignals(
+        api: soApi,
+        dao: db.serviceOrdersDao,
+        timingHistory: db.workTimingHistoryDao,
+      );
+      jobsSignals.setTechnicianEmail('alex77@example.com');
+      soSignals.setTechnicianEmail('alex77@example.com');
+      addTearDown(() async {
+        await jobsSignals.dispose();
+        soSignals.dispose();
+        await db.close();
+      });
+
+      final job = JobOrderDto(
+        id: 701,
+        ticketNumber: 'SF-701',
+        customerName: 'Job Customer 701',
+        address: '701 Fiber Rd',
+        status: 'Scheduled',
+        assignedEmail: 'alex77@example.com',
+      );
+      const order = ServiceOrderDto(
+        id: 801,
+        accountNumber: 'ACC-801',
+        fullName: 'Repair Customer 801',
+        contactNumber: '09170000801',
+        emailAddress: 'r801@example.com',
+        address: '801 Repair Ln',
+        concern: 'No Connection',
+        supportStatus: 'Open',
+        assignedEmail: 'alex77@example.com',
+      );
+
+      await tester.runAsync(() async {
+        await db.jobOrdersDao.insertOrUpdateJob(job, synced: true);
+        await db.serviceOrdersDao.insertOrUpdateOrder(order, synced: true);
+
+        // Session 1 on Job 701: Start -> Finish
+        await jobsSignals.startJob(job);
+        final jStarted1 = (await db.jobOrdersDao.getJobById(701))!;
+        await jobsSignals.finishJob(jStarted1);
+        final jFinished1 = (await db.jobOrdersDao.getJobById(701))!;
+        expect(jFinished1.workTimingStatus, WorkTimingStatus.finished);
+
+        // Session 2 on Job 701: Start Again -> Finish
+        await jobsSignals.startJob(jFinished1);
+        final jStarted2 = (await db.jobOrdersDao.getJobById(701))!;
+        expect(jStarted2.workTimingStatus, WorkTimingStatus.inProgress);
+        await jobsSignals.finishJob(jStarted2);
+
+        // Session 1 on Service Order 801: Start -> Stop
+        await soSignals.startOrder(order);
+        final oStarted = (await db.serviceOrdersDao.getOrderById(801))!;
+        expect(oStarted.workTimingStatus, WorkTimingStatus.inProgress);
+        await soSignals.finishOrder(oStarted);
+
+        // Also seed a session from another userId and another date to verify strict userId + date filtering.
+        await db.workTimingHistoryDao.recordStart(
+          orderType: WorkTimingEntry.orderTypeJobOrder,
+          orderId: 999,
+          orderReference: 'SF-999',
+          customerName: 'Other User Job',
+          userId: '88',
+          startTime: DateTime.now().toUtc(),
+          isSynced: true,
+        );
+        await db.workTimingHistoryDao.recordStart(
+          orderType: WorkTimingEntry.orderTypeServiceOrder,
+          orderId: 998,
+          orderReference: 'SO-0998',
+          customerName: 'Yesterday Repair',
+          userId: '77',
+          startTime: DateTime.now().toUtc().subtract(const Duration(days: 2)),
+          isSynced: true,
+        );
+      });
+
+      expect(jobApi.created.length, 2);
+      expect(jobApi.updated.length, 2);
+      expect(soApi.created.length, 1);
+      expect(soApi.updated.length, 1);
+
+      final todayKey = formatTimingDateKey(DateTime.now());
+      final todayForUser77 = await tester.runAsync(() => db.workTimingHistoryDao
+          .getByUserAndDate(userId: '77', workDate: todayKey));
+      expect(todayForUser77!.length, 3);
+      expect(todayForUser77.any((e) => e.orderReference == 'SF-999'), isFalse);
+      expect(todayForUser77.any((e) => e.orderReference == 'SO-0998'), isFalse);
+
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(402, 950);
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: WorkTimingHistoryScreen(dao: db.workTimingHistoryDao),
+      ));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 120)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('User ID: 77 · Alex Rivera'), findsOneWidget);
+      expect(find.text('SF-701'), findsNWidgets(2));
+      expect(find.text('SO-0801'), findsOneWidget);
+      expect(find.text('Other User Job'), findsNothing);
+      expect(find.text('Yesterday Repair'), findsNothing);
+
+      // Filter to Service Orders only.
+      await tester
+          .tap(find.byKey(const ValueKey('timing_history_type_service')));
+      await tester.pumpAndSettle();
+      expect(find.text('SO-0801'), findsOneWidget);
+      expect(find.text('SF-701'), findsNothing);
+
+      // Switch to All Dates -> Yesterday Repair appears for User ID 77 (Other User Job stays hidden).
+      await tester
+          .tap(find.byKey(const ValueKey('timing_history_filter_all_dates')));
+      await tester.pumpAndSettle();
+      expect(find.text('SO-0801'), findsOneWidget);
+      expect(find.text('SO-0998'), findsOneWidget);
+      expect(find.text('Other User Job'), findsNothing);
+    });
+
+    testWidgets(
+        'ServiceOrderCard shares Job Order StatusRailRow anatomy, expands/collapses, uses Stop label, and renders cleanly at 200% text scale',
+        (tester) async {
+      final api = _TimingRecordingServiceOrdersApi();
+      final signals = ServiceOrdersSignals(api: api);
+      signals.setTechnicianEmail('tech@example.com');
+      addTearDown(signals.dispose);
+
+      const order = ServiceOrderDto(
+        id: 305,
+        accountNumber: 'ACC-305',
+        fullName: 'Carlos Mendoza',
+        contactNumber: '09173053050',
+        emailAddress: 'carlos@example.com',
+        address: '305 Rizal Blvd',
+        lcp: 'LCP-10',
+        nap: 'NAP-04',
+        port: 'Port 2',
+        concern: 'High Loss',
+        priorityLevel: 'Normal',
+        supportStatus: 'Open',
+        assignedEmail: 'tech@example.com',
+      );
+      signals.allOrders.value = [order];
+
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(402, 950);
+      addTearDown(tester.view.reset);
+
+      final overflows = <String>[];
+      final origOnError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        final msg = details.exceptionAsString();
+        if (msg.contains('overflowed')) {
+          overflows.add(msg);
+        } else {
+          origOnError?.call(details);
+        }
+      };
+      addTearDown(() => FlutterError.onError = origOnError);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2.0)),
+          child: Scaffold(
+            body: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                ServiceOrderCard(order: order, signals: signals),
+              ],
+            ),
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      // Uses StatusRailRow with 4 actions and collapsed secondary details.
+      expect(find.byType(StatusRailRow), findsOneWidget);
+      expect(find.text('SO-0305 (ACC-305)'), findsOneWidget);
+      expect(find.text('305 Rizal Blvd'), findsNothing);
+      expect(find.text('NAVIGATE'), findsOneWidget);
+      expect(find.text('CALL'), findsOneWidget);
+      expect(find.text('SMS'), findsOneWidget);
+      expect(find.text('DETAILS'), findsOneWidget);
+
+      // Expand chevron reveals address & plant specs.
+      await tester
+          .tap(find.byKey(const ValueKey('service_order_expand_toggle_305')));
+      await tester.pumpAndSettle();
+      expect(find.text('305 Rizal Blvd'), findsOneWidget);
+      expect(
+          find.text('LCP LCP-10 · NAP NAP-04 · PORT Port 2'), findsOneWidget);
+
+      // Start -> shows Stop label; Stop -> shows Start Again label.
+      final soStartBtn =
+          find.byKey(const ValueKey('service_order_start_button_305'));
+      await tester.ensureVisible(soStartBtn);
+      await tester.tap(soStartBtn);
+      await tester.pumpAndSettle();
+      expect(find.text('Stop'), findsOneWidget);
+
+      final soStopBtn =
+          find.byKey(const ValueKey('service_order_finish_button_305'));
+      await tester.ensureVisible(soStopBtn);
+      await tester.tap(soStopBtn);
+      await tester.pumpAndSettle();
+      expect(find.text('Start Again'), findsOneWidget);
       expect(overflows, isEmpty, reason: overflows.join('\n'));
     });
   });

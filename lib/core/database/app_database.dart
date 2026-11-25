@@ -11,6 +11,8 @@ import 'daos/job_orders_dao.dart';
 import 'daos/lcp_nap_dao.dart';
 import 'daos/service_orders_dao.dart';
 import 'daos/sync_error_logs_dao.dart';
+// Gene - Nov, 26, 2026: Added WorkTimingHistoryDao import and getter on AppDatabase.
+import 'daos/work_timing_history_dao.dart';
 
 /// The app's local database: a [PowerSyncDatabase] opened on
 /// [powerSyncSchema], with one DAO per table.
@@ -51,6 +53,9 @@ class AppDatabase {
   late final ServiceOrdersDao serviceOrdersDao = ServiceOrdersDao(this);
   late final LcpNapLocationsDao lcpNapLocationsDao = LcpNapLocationsDao(this);
   late final SyncErrorLogsDao syncErrorLogsDao = SyncErrorLogsDao(this);
+  // Gene - Nov, 26, 2026: Expose workTimingHistoryDao on AppDatabase.
+  late final WorkTimingHistoryDao workTimingHistoryDao =
+      WorkTimingHistoryDao(this);
 
   // Every query goes through these so nothing runs before PowerSync has
   // finished applying the schema. Writes and reads await that on their own

@@ -19,11 +19,21 @@ import 'package:powersync/powersync.dart';
 /// stored as their decimal string. Dates are ISO-8601 text, booleans are
 /// 0/1 integers, and `raw_json` keeps the untouched API record so an update
 /// can replay every field the app does not model.
+/*
 const Schema powerSyncSchema = Schema([
   jobOrdersTable,
   serviceOrdersTable,
   lcpNapLocationsTable,
   syncErrorLogsTable,
+]);
+*/
+// Gene - Nov, 26, 2026: Added workTimingHistoryTable to store every Start/Finish/Stop session per user ID and date.
+const Schema powerSyncSchema = Schema([
+  jobOrdersTable,
+  serviceOrdersTable,
+  lcpNapLocationsTable,
+  syncErrorLogsTable,
+  workTimingHistoryTable,
 ]);
 
 /// Installations: Scheduled, Rescheduled, Activated, Completed.
@@ -247,4 +257,25 @@ const Table syncErrorLogsTable = Table.localOnly('sync_error_logs', [
 ], indexes: [
   Index('sync_error_seq_idx', [IndexedColumn('seq')]),
   Index('sync_error_resolved_idx', [IndexedColumn('resolved')]),
+]);
+
+// Gene - Nov, 26, 2026: Local-only table recording every technician Start and Finish/Stop session indexed by user_id and work_date.
+const Table workTimingHistoryTable = Table.localOnly('work_timing_history', [
+  Column.text('order_type'),
+  Column.integer('order_id'),
+  Column.text('order_reference'),
+  Column.text('customer_name'),
+  Column.text('user_id'),
+  Column.text('user_name'),
+  Column.text('work_date'),
+  Column.text('start_time'),
+  Column.text('end_time'),
+  Column.integer('duration_minutes'),
+  Column.integer('is_synced'),
+  Column.text('created_at'),
+], indexes: [
+  Index('wth_user_date_idx',
+      [IndexedColumn('user_id'), IndexedColumn('work_date')]),
+  Index('wth_order_idx',
+      [IndexedColumn('order_type'), IndexedColumn('order_id')]),
 ]);

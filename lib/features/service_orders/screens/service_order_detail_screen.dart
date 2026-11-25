@@ -21,6 +21,9 @@ import '../../../core/widgets/status_stamp.dart';
 import '../../../core/widgets/sticky_action_bar.dart';
 // Gene - Nov, 25, 2026: Added WorkTimingLockBanner to communicate Start/Finish lock state on Service Order details.
 import '../../../core/widgets/work_timing_bar.dart';
+// Gene - Nov, 26, 2026: Added WorkTimingEntry and OrderTimingHistoryCard for Service Order session history.
+import '../../../core/database/models/work_timing_entry.dart';
+import '../../diagnostics/screens/work_timing_history_screen.dart';
 import '../../auth/signals/auth_signals.dart';
 import '../../catalogs/models/catalog_model.dart';
 import '../../catalogs/services/catalog_service.dart';
@@ -1043,6 +1046,7 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
                           : WorkTimingStatus.finished,
                       startTime: order.startTimestamp,
                       endTime: order.stopTimestamp,
+                      finishLabel: 'Stop',
                     ),
                   // 1. Concern & Subscriber Card
                   _buildSubscriberCard(order, isDark),
@@ -1124,6 +1128,18 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
                       child: _buildSignatureCard(isDark),
                     ),
                   ),
+                  if ((widget.signals.timingHistory ??
+                          widget.jobsSignals?.timingHistory) !=
+                      null) ...[
+                    const SizedBox(height: 16),
+                    OrderTimingHistoryCard(
+                      dao: widget.signals.timingHistory ??
+                          widget.jobsSignals?.timingHistory,
+                      orderType: WorkTimingEntry.orderTypeServiceOrder,
+                      orderId: order.id,
+                      finishLabel: 'Stop',
+                    ),
+                  ],
                 ],
               ),
             ),

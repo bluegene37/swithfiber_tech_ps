@@ -1495,6 +1495,7 @@ class JobOrderDto {
           : assignedEmail,
       modifiedDate: server.modifiedDate ?? modifiedDate,
       // Gene - Nov, 25, 2026: Preserve non-sentinel Start/Finish timestamps when merging server rows.
+      /*
       startTimeStamp: normalizeTimingTimestamp(server.startTimeStamp) ??
           normalizeTimingTimestamp(startTimeStamp),
       endTimeStamp: () {
@@ -1510,6 +1511,20 @@ class JobOrderDto {
         }
         return sEnd ?? lEnd;
       }(),
+      */
+      // Gene - Nov, 26, 2026: Use mergeWorkTimingTimestamps so a locally restarted session is never overwritten by an older server session.
+      startTimeStamp: mergeWorkTimingTimestamps(
+        serverStart: server.startTimeStamp,
+        serverEnd: server.endTimeStamp,
+        localStart: startTimeStamp,
+        localEnd: endTimeStamp,
+      ).$1,
+      endTimeStamp: mergeWorkTimingTimestamps(
+        serverStart: server.startTimeStamp,
+        serverEnd: server.endTimeStamp,
+        localStart: startTimeStamp,
+        localEnd: endTimeStamp,
+      ).$2,
       isSynced: true,
       updatedAt: DateTime.now(),
     );
@@ -1764,8 +1779,7 @@ class JobOrderDto {
       if (startTimeStamp != null &&
           endTimeStamp != null &&
           endTimeStamp!.isAfter(startTimeStamp!))
-        'duration':
-            formatTimingDurationMinutes(startTimeStamp!, endTimeStamp!),
+        'duration': formatTimingDurationMinutes(startTimeStamp!, endTimeStamp!),
     };
 
     if (materialsUsed.isNotEmpty) {

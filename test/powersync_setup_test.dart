@@ -21,21 +21,29 @@ void main() {
     });
 
     test('PowerSync schema defines core tables and valid structure', () {
+      /*
       expect(powerSyncSchema.tables.length, 4);
+      */
+      // Gene - Nov, 26, 2026: Updated expected table count to 5 to include work_timing_history.
+      expect(powerSyncSchema.tables.length, 5);
 
       final tableNames = powerSyncSchema.tables.map((t) => t.name).toList();
       expect(tableNames, contains('job_orders'));
       expect(tableNames, contains('service_orders'));
       expect(tableNames, contains('lcp_nap_locations'));
       expect(tableNames, contains('sync_error_logs'));
+      expect(tableNames, contains('work_timing_history'));
 
       // Local-only tables while the Switch Fiber REST API handles transport
       final jobOrders =
           powerSyncSchema.tables.firstWhere((t) => t.name == 'job_orders');
       final serviceOrders =
           powerSyncSchema.tables.firstWhere((t) => t.name == 'service_orders');
+      final timingHistory = powerSyncSchema.tables
+          .firstWhere((t) => t.name == 'work_timing_history');
       expect(jobOrders.localOnly, isTrue);
       expect(serviceOrders.localOnly, isTrue);
+      expect(timingHistory.localOnly, isTrue);
 
       expect(() => powerSyncSchema.validate(), returnsNormally);
     });

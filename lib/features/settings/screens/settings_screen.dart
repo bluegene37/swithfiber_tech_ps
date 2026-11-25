@@ -16,6 +16,8 @@ import '../../../core/sync/powersync_service.dart';
 import '../../auth/signals/auth_signals.dart';
 import '../signals/settings_signals.dart';
 import '../../diagnostics/screens/sync_error_log_screen.dart';
+// Gene - Nov, 26, 2026: Added WorkTimingHistoryScreen import for Start/Finish/Stop timing history access in Settings.
+import '../../diagnostics/screens/work_timing_history_screen.dart';
 import '../../jobs/signals/jobs_signals.dart';
 import '../../lcp_nap/services/map_tiles.dart';
 import '../../lcp_nap/signals/lcp_nap_signals.dart';
@@ -869,6 +871,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildIosGroupedCard(
             isDark: isDark,
             children: [
+              // Gene - Nov, 26, 2026: Added Work Timing History entry row showing Start/Finish/Stop sessions by userId and date.
+              _buildIosSettingRow(
+                rowKey: const ValueKey('settings_timing_history_row'),
+                icon: Icons.history_rounded,
+                iconBg: AppTheme.serviceOrderAccent,
+                title: 'Work Timing History',
+                subtitle: 'Start & finish/stop sessions by user and date',
+                isDark: isDark,
+                showDivider: true,
+                onTap: () {
+                  final dao = widget.jobsSignals.timingHistory ??
+                      widget.serviceOrdersSignals?.timingHistory;
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => WorkTimingHistoryScreen(dao: dao),
+                    ),
+                  );
+                },
+                trailing: Icon(
+                  CupertinoIcons.chevron_forward,
+                  size: 24,
+                  color: AppTheme.secondaryInkOf(context),
+                ),
+              ),
               _buildIosSettingRow(
                 icon: CupertinoIcons.exclamationmark_triangle,
                 iconBg: AppTheme.warning,

@@ -19,6 +19,9 @@ import '../../../core/widgets/status_stamp.dart';
 import '../../../core/widgets/sticky_action_bar.dart';
 // Gene - Nov, 25, 2026: Added WorkTimingLockBanner to show Start/Finish lock state on Job Order details.
 import '../../../core/widgets/work_timing_bar.dart';
+// Gene - Nov, 26, 2026: Added WorkTimingEntry and OrderTimingHistoryCard for Job Order session history.
+import '../../../core/database/models/work_timing_entry.dart';
+import '../../diagnostics/screens/work_timing_history_screen.dart';
 import '../widgets/job_contact.dart';
 import '../widgets/job_navigation.dart';
 import '../../diagnostics/widgets/radius_connection_card.dart';
@@ -305,6 +308,15 @@ class JobOrderDetailScreen extends StatelessWidget {
 
               // History and workflow notes last.
               _buildWorkflowCard(context, job, isDark),
+              if (jobsSignals.timingHistory != null) ...[
+                const SizedBox(height: 14),
+                OrderTimingHistoryCard(
+                  dao: jobsSignals.timingHistory,
+                  orderType: WorkTimingEntry.orderTypeJobOrder,
+                  orderId: job.id,
+                  finishLabel: 'Finish',
+                ),
+              ],
             ],
           ),
         );

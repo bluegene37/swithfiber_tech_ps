@@ -17,6 +17,7 @@ import '../screens/service_order_detail_screen.dart';
 import '../signals/service_orders_signals.dart';
 
 /// Inset Grouped iOS card displaying a Service Order (repair, pullout, trouble ticket).
+/*
 class ServiceOrderCard extends StatelessWidget {
   final ServiceOrderDto order;
   final ServiceOrdersSignals signals;
@@ -84,33 +85,6 @@ class ServiceOrderCard extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               key: ValueKey('service_order_card_tap_${order.id}'),
-              /*
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ServiceOrderDetailScreen(
-                      orderId: order.id,
-                      signals: signals,
-                    ),
-                  ),
-                );
-              },
-              */
-              // Gene - Nov, 20, 2026: Mark service order as read when card is tapped before opening details.
-              // onTap: () {
-              //   signals.markOrderAsRead(order.id);
-              //   Navigator.of(context).push(
-              //     MaterialPageRoute(
-              //       builder: (_) => ServiceOrderDetailScreen(
-              //         orderId: order.id,
-              //         signals: signals,
-              //         lcpNapSignals: lcpNapSignals,
-              //         jobsSignals: jobsSignals,
-              //       ),
-              //     ),
-              //   );
-              // },
-              // Gene - Nov, 26, 2026: Disable opening Service Order details until technician taps Start (and re-lock after Finish).
               onTap: isTimingLocked
                   ? null
                   : () {
@@ -131,120 +105,6 @@ class ServiceOrderCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Top Row: Monospace Ticket HUD, Concern Pill & Urgent / Distance
-                    /*
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Wrap(
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            spacing: 8,
-                            runSpacing: 4,
-                            children: [
-                              Text(
-                                'SO-${order.id.toString().padLeft(4, '0')}',
-                                style: context.text.labelMedium!.copyWith(
-                                  fontFamily: 'JetBrains Mono',
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.5,
-                                  color: AppTheme.brandInkOf(context),
-                                ),
-                              ),
-                              if (!order.isSynced)
-                                const Icon(
-                                  CupertinoIcons.cloud_upload,
-                                  size: 18,
-                                  color: AppTheme.warning,
-                                ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: isDark
-                                      ? AppTheme.primarySubtleBgDark
-                                      : AppTheme.primarySubtleBg,
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: isDark
-                                        ? AppTheme.primarySubtleBorderDark
-                                        : AppTheme.primarySubtleBorder,
-                                    width: 0.5,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      order.concern
-                                              .toLowerCase()
-                                              .contains('pullout')
-                                          ? CupertinoIcons
-                                              .arrow_right_arrow_left
-                                          : CupertinoIcons.wrench_fill,
-                                      size: 20,
-                                      color: AppTheme.primary,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Flexible(
-                                      child: Text(
-                                        order.concern,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style:
-                                            context.text.labelSmall!.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                          color: AppTheme.brandInkOf(context),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              if (!isUrgent && distanceStr != null)
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      CupertinoIcons.location_solid,
-                                      size: 20,
-                                      color: AppTheme.secondaryInkOf(context),
-                                    ),
-                                    const SizedBox(width: 3),
-                                    Text(
-                                      distanceStr,
-                                      style: context.text.labelSmall!.copyWith(
-                                        color: AppTheme.secondaryInkOf(context),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                            ],
-                          ),
-                        ),
-                        if (isUrgent) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: AppTheme.danger,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              'URGENT',
-                              style: context.text.labelSmall!.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    */
                     // Gene - Nov, 20, 2026: Wrap top header row in SignalBuilder to display NEW tag on unread open service orders and clear it immediately when read.
                     SignalBuilder(
                       builder: (context) {
@@ -347,9 +207,6 @@ class ServiceOrderCard extends StatelessWidget {
                                       ],
                                     ),
                                   ),
-                                  /*
-                                  if (!isUrgent && distanceStr != null)
-                                  */
                                   // Gene - Nov, 23, 2026: Show distance badge on Urgent repair tickets as well as High/Normal.
                                   if (distanceStr != null)
                                     Row(
@@ -558,42 +415,6 @@ class ServiceOrderCard extends StatelessWidget {
             Watch((context) {
               final isBusy =
                   signals.busyTimingOrderIds.value.contains(order.id);
-              // return WorkTimingBar(
-              //   status: order.workTimingStatus,
-              //   startTime: order.startTimestamp,
-              //   endTime: order.stopTimestamp,
-              //   isBusy: isBusy,
-              //   startButtonKey:
-              //       ValueKey('service_order_start_button_${order.id}'),
-              //   finishButtonKey:
-              //       ValueKey('service_order_finish_button_${order.id}'),
-              //   finishedButtonKey:
-              //       ValueKey('service_order_finished_button_${order.id}'),
-              //   onStart: () async {
-              //     signals.markOrderAsRead(order.id);
-              //     final warning = await signals.startOrder(order);
-              //     if (warning != null && context.mounted) {
-              //       ScaffoldMessenger.of(context).showSnackBar(
-              //         SnackBar(
-              //           content: Text(warning),
-              //           behavior: SnackBarBehavior.floating,
-              //         ),
-              //       );
-              //     }
-              //   },
-              //   onFinish: () async {
-              //     signals.markOrderAsRead(order.id);
-              //     final warning = await signals.finishOrder(order);
-              //     if (warning != null && context.mounted) {
-              //       ScaffoldMessenger.of(context).showSnackBar(
-              //         SnackBar(
-              //           content: Text(warning),
-              //           behavior: SnackBarBehavior.floating,
-              //         ),
-              //       );
-              //     }
-              //   },
-              // );
               // Gene - Nov, 26, 2026: Hide Start when another Job Order or Service Order is already active.
               final activeOrder = signals.activeStartedOrder.value;
               final activeJob = jobsSignals?.activeStartedJob.value;
@@ -657,41 +478,6 @@ class ServiceOrderCard extends StatelessWidget {
                       key: ValueKey('so_action_navigate_${order.id}'),
                       icon: Icons.navigation_rounded,
                       label: 'Navigate',
-                      /*
-                      onTap: () async {
-                        final latLng = order.latLng;
-                        if (latLng != null) {
-                          await MapNavigationService.navigateTo(
-                            latLng,
-                            label: order.fullName,
-                          );
-                        } else {
-                          final fullAddr =
-                              '${order.address}${order.barangay != null ? ", ${order.barangay}" : ""}${order.city != null ? ", ${order.city}" : ""}, Philippines';
-                          await MapNavigationService.navigateToAddress(
-                              fullAddr);
-                        }
-                      },
-                      */
-                      // Gene - Nov, 20, 2026: Mark service order as read when Navigate action is tapped.
-                      // onTap: () async {
-                      //   signals.markOrderAsRead(order.id);
-                      //   final latLng = order.latLng;
-                      //   if (latLng != null) {
-                      //     await MapNavigationService.navigateTo(
-                      //       latLng,
-                      //       label: order.fullName,
-                      //       context: context,
-                      //     );
-                      //   } else {
-                      //     final fullAddr =
-                      //         '${order.address}${order.barangay != null ? ", ${order.barangay}" : ""}${order.city != null ? ", ${order.city}" : ""}, Philippines';
-                      //     await MapNavigationService.navigateToAddress(
-                      //       fullAddr,
-                      //       context: context,
-                      //     );
-                      //   }
-                      // },
                       // Gene - Nov, 26, 2026: Disable Navigate action until Service Order is started.
                       onTap: isTimingLocked
                           ? null
@@ -721,28 +507,6 @@ class ServiceOrderCard extends StatelessWidget {
                       key: ValueKey('so_action_call_${order.id}'),
                       icon: Icons.call_rounded,
                       label: 'Call',
-                      /*
-                      onTap: order.contactNumber.isEmpty
-                          ? null
-                          : () async {
-                              final uri =
-                                  Uri.parse('tel:${order.contactNumber}');
-                              if (await canLaunchUrl(uri)) {
-                                await launchUrl(uri);
-                              }
-                            },
-                      */
-                      // Gene - Nov, 20, 2026: Mark service order as read when Call action is tapped.
-                      // onTap: order.contactNumber.isEmpty
-                      //     ? null
-                      //     : () async {
-                      //         signals.markOrderAsRead(order.id);
-                      //         final uri =
-                      //             Uri.parse('tel:${order.contactNumber}');
-                      //         if (await canLaunchUrl(uri)) {
-                      //           await launchUrl(uri);
-                      //         }
-                      //       },
                       // Gene - Nov, 26, 2026: Disable Call action until Service Order is started.
                       onTap: (isTimingLocked || order.contactNumber.isEmpty)
                           ? null
@@ -763,25 +527,6 @@ class ServiceOrderCard extends StatelessWidget {
                       key: ValueKey('so_action_sms_${order.id}'),
                       icon: Icons.sms_rounded,
                       label: 'SMS',
-                      // onTap: order.contactNumber.trim().isEmpty
-                      //     ? null
-                      //     : () async {
-                      //         signals.markOrderAsRead(order.id);
-                      //         final raw = order.contactNumber.trim();
-                      //         final clean =
-                      //             raw.replaceAll(RegExp(r'[^0-9+]'), '');
-                      //         final body =
-                      //             'Good day ${order.fullName}, Switch Fiber Technician is arriving shortly for repair ticket SO-${order.id.toString().padLeft(4, '0')}.';
-                      //         final uri = Uri(
-                      //           scheme: 'sms',
-                      //           path: clean.isNotEmpty ? clean : raw,
-                      //           queryParameters: {'body': body},
-                      //         );
-                      //         try {
-                      //           await launchUrl(uri,
-                      //               mode: LaunchMode.externalApplication);
-                      //         } catch (_) {}
-                      //       },
                       // Gene - Nov, 26, 2026: Disable SMS action until Service Order is started.
                       onTap:
                           (isTimingLocked || order.contactNumber.trim().isEmpty)
@@ -807,6 +552,443 @@ class ServiceOrderCard extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+*/
+// Gene - Nov, 26, 2026: Redesigned ServiceOrderCard to share Job Order's expandable StatusRailRow layout with distinct violet colorway, Start/Stop/Start Again bar, and 4-action footer.
+class ServiceOrderCard extends StatefulWidget {
+  final ServiceOrderDto order;
+  final ServiceOrdersSignals signals;
+  // Gene - Nov, 23, 2026: Optional plant & jobs signals forwarded to ServiceOrderDetailScreen for NAP pole deep link.
+  final LcpNapSignals? lcpNapSignals;
+  final JobsSignals? jobsSignals;
+
+  const ServiceOrderCard({
+    super.key,
+    required this.order,
+    required this.signals,
+    this.lcpNapSignals,
+    this.jobsSignals,
+  });
+
+  @override
+  State<ServiceOrderCard> createState() => _ServiceOrderCardState();
+}
+
+class _ServiceOrderCardState extends State<ServiceOrderCard> {
+  bool _isExpanded = false;
+
+  void _toggleExpanded() {
+    widget.signals.markOrderAsRead(widget.order.id);
+    setState(() => _isExpanded = !_isExpanded);
+  }
+
+  void _openDetails(ServiceOrderDto order) {
+    widget.signals.markOrderAsRead(order.id);
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ServiceOrderDetailScreen(
+          orderId: order.id,
+          signals: widget.signals,
+          lcpNapSignals: widget.lcpNapSignals,
+          jobsSignals: widget.jobsSignals,
+        ),
+      ),
+    );
+  }
+
+  (String, Color, Color) _statusVisuals(
+    BuildContext context,
+    ServiceOrderDto order,
+  ) {
+    if (!order.isSynced) {
+      return ('Pending sync', AppTheme.warning, AppTheme.warningInkOf(context));
+    }
+    if (order.isUrgent) {
+      return (
+        order.visitStatus?.trim().isNotEmpty == true
+            ? order.visitStatus!
+            : order.supportStatus,
+        AppTheme.danger,
+        AppTheme.dangerInkOf(context),
+      );
+    }
+    if ((order.priorityLevel ?? '').toLowerCase().contains('high')) {
+      return (
+        order.visitStatus?.trim().isNotEmpty == true
+            ? order.visitStatus!
+            : order.supportStatus,
+        AppTheme.warning,
+        AppTheme.warningInkOf(context),
+      );
+    }
+    return (
+      order.visitStatus?.trim().isNotEmpty == true
+          ? order.visitStatus!
+          : order.supportStatus,
+      AppTheme.serviceOrderAccent,
+      AppTheme.serviceOrderInkOf(context),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Watch((context) => _buildCardContent(context));
+  }
+
+  Widget _buildCardContent(BuildContext context) {
+    final signals = widget.signals;
+    final order = signals.allOrders.value
+            .where((o) => o.id == widget.order.id)
+            .firstOrNull ??
+        widget.order;
+    final isTimingLocked = order.isOpen && !order.isTimingInProgress;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isUrgent = order.isUrgent;
+    final (statusLabel, railColor, statusInk) = _statusVisuals(context, order);
+
+    String? distanceStr;
+    final myPos = LocationService.instance.lastKnownPosition;
+    final orderPos = order.latLng;
+    if (myPos != null && orderPos != null) {
+      final meters = LocationService.instance.distanceBetween(
+        startLat: myPos.latitude,
+        startLng: myPos.longitude,
+        endLat: orderPos.latitude,
+        endLng: orderPos.longitude,
+      );
+      distanceStr = LocationService.instance.formatDistance(meters);
+    }
+
+    final place = [
+      if (order.address.trim().isNotEmpty) order.address.trim(),
+      if (order.barangay?.trim().isNotEmpty == true) order.barangay!.trim(),
+      if (order.city?.trim().isNotEmpty == true) order.city!.trim(),
+    ].join(', ');
+    final plant = [
+      if (order.lcp?.trim().isNotEmpty == true) 'LCP ${order.lcp!.trim()}',
+      if (order.nap?.trim().isNotEmpty == true) 'NAP ${order.nap!.trim()}',
+      if (order.port?.trim().isNotEmpty == true) 'PORT ${order.port!.trim()}',
+    ].join(' · ');
+    final planOrProvider = [
+      if (order.provider?.trim().isNotEmpty == true) order.provider!.trim(),
+      if (order.plan?.trim().isNotEmpty == true) order.plan!.trim(),
+    ].join(' · ');
+
+    final isNew = order.isOpen && !signals.isOrderRead(order.id);
+    final soCode = 'SO-${order.id.toString().padLeft(4, '0')}';
+
+    return StatusRailRow(
+      leading: distanceStr,
+      railColor: railColor,
+      statusInk: statusInk,
+      borderColor: isUrgent
+          ? AppTheme.danger
+          : AppTheme.serviceOrderSubtleBorderOf(context),
+      borderWidth: isUrgent ? 1.5 : 1.0,
+      headerBadge: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppTheme.serviceOrderSubtleBgOf(context),
+              borderRadius: BorderRadius.circular(AppTheme.radiusStamp),
+              border: Border.all(
+                color: AppTheme.serviceOrderSubtleBorderOf(context),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  order.concern.toLowerCase().contains('pullout')
+                      ? CupertinoIcons.arrow_right_arrow_left
+                      : CupertinoIcons.wrench_fill,
+                  size: 20,
+                  color: AppTheme.serviceOrderInkOf(context),
+                ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    order.concern,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.text.labelSmall!.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.serviceOrderInkOf(context),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (!order.isSynced)
+            const Icon(
+              CupertinoIcons.cloud_upload,
+              size: 20,
+              color: AppTheme.warning,
+            ),
+          if (isUrgent)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppTheme.danger,
+                borderRadius: BorderRadius.circular(AppTheme.radiusStamp),
+              ),
+              child: Text(
+                'URGENT',
+                style: context.text.labelSmall!.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+        ],
+      ),
+      title: order.fullName,
+      data: '$soCode (${order.accountNumber})',
+      statusLabel: statusLabel,
+      isNew: isNew,
+      newTagKey: ValueKey('service_order_new_tag_${order.id}'),
+      newTagBgColor: isDark ? const Color(0xFF33260F) : AppTheme.warningSubtle,
+      newTagBorderColor: AppTheme.warningInkOf(context).withValues(alpha: 0.45),
+      newTagInkColor: AppTheme.warningInkOf(context),
+      onTap: _toggleExpanded,
+      expandToggle: IconButton(
+        key: ValueKey('service_order_expand_toggle_${order.id}'),
+        icon: Icon(
+          _isExpanded
+              ? Icons.keyboard_arrow_up_rounded
+              : Icons.keyboard_arrow_down_rounded,
+          color: AppTheme.secondaryInkOf(context),
+        ),
+        tooltip: _isExpanded ? 'Collapse details' : 'Expand details',
+        onPressed: _toggleExpanded,
+      ),
+      trailing: Tooltip(
+        message: isTimingLocked
+            ? (order.isTimingFinished
+                ? 'Work stopped (tap Start Again to open)'
+                : 'Tap Start to open ticket')
+            : 'Open repair ticket',
+        child: InkWell(
+          key: ValueKey('service_order_card_tap_${order.id}'),
+          onTap: isTimingLocked ? null : () => _openDetails(order),
+          child: SizedBox(
+            width: 48,
+            child: Center(
+              child: Icon(
+                Icons.chevron_right_rounded,
+                size: 26,
+                color: isTimingLocked
+                    ? (isDark ? Colors.white24 : Colors.black26)
+                    : AppTheme.serviceOrderAccent,
+              ),
+            ),
+          ),
+        ),
+      ),
+      extra: _isExpanded
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (place.isNotEmpty)
+                  _ServiceDetailLine(
+                    icon: Icons.location_on_outlined,
+                    text: place,
+                  ),
+                if (plant.isNotEmpty)
+                  _ServiceDetailLine(
+                    icon: Icons.hub_outlined,
+                    text: plant,
+                    mono: true,
+                  ),
+                if (planOrProvider.isNotEmpty)
+                  _ServiceDetailLine(
+                    icon: Icons.wifi_rounded,
+                    text: planOrProvider,
+                  ),
+                if (order.contactNumber.trim().isNotEmpty)
+                  _ServiceDetailLine(
+                    icon: Icons.call_outlined,
+                    text: order.contactNumber.trim(),
+                  ),
+                if (order.emailAddress.trim().isNotEmpty)
+                  _ServiceDetailLine(
+                    icon: Icons.alternate_email_rounded,
+                    text: order.emailAddress.trim(),
+                  ),
+              ],
+            )
+          : null,
+      timingBar: (order.isOpen || order.isTimingStarted)
+          ? Watch((context) {
+              final isBusy =
+                  signals.busyTimingOrderIds.value.contains(order.id);
+              final activeOrder = signals.activeStartedOrder.value;
+              final activeJob = widget.jobsSignals?.activeStartedJob.value;
+              final hasOtherActiveOrder =
+                  (activeOrder != null && activeOrder.id != order.id) ||
+                      activeJob != null;
+              return WorkTimingBar(
+                status: order.workTimingStatus,
+                startTime: order.startTimestamp,
+                endTime: order.stopTimestamp,
+                isBusy: isBusy,
+                hideStart: hasOtherActiveOrder,
+                finishLabel: 'Stop',
+                restartLabel: 'Start Again',
+                accentColor: AppTheme.serviceOrderAccent,
+                startButtonKey:
+                    ValueKey('service_order_start_button_${order.id}'),
+                finishButtonKey:
+                    ValueKey('service_order_finish_button_${order.id}'),
+                finishedButtonKey:
+                    ValueKey('service_order_finished_button_${order.id}'),
+                onStart: () async {
+                  signals.markOrderAsRead(order.id);
+                  final warning = await signals.startOrder(
+                    order,
+                    hasOtherActiveOrder: hasOtherActiveOrder,
+                  );
+                  if (warning != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(warning),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+                onFinish: () async {
+                  signals.markOrderAsRead(order.id);
+                  final warning = await signals.finishOrder(order);
+                  if (warning != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(warning),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+              );
+            })
+          : null,
+      actions: [
+        StatusRailAction(
+          key: ValueKey('so_action_navigate_${order.id}'),
+          icon: Icons.navigation_rounded,
+          label: 'Navigate',
+          onTap: isTimingLocked
+              ? null
+              : () async {
+                  signals.markOrderAsRead(order.id);
+                  final latLng = order.latLng;
+                  if (latLng != null) {
+                    await MapNavigationService.navigateTo(
+                      latLng,
+                      label: order.fullName,
+                      context: context,
+                    );
+                  } else {
+                    final fullAddr =
+                        '${order.address}${order.barangay != null ? ", ${order.barangay}" : ""}${order.city != null ? ", ${order.city}" : ""}, Philippines';
+                    await MapNavigationService.navigateToAddress(
+                      fullAddr,
+                      context: context,
+                    );
+                  }
+                },
+        ),
+        StatusRailAction(
+          key: ValueKey('so_action_call_${order.id}'),
+          icon: Icons.call_rounded,
+          label: 'Call',
+          onTap: (isTimingLocked || order.contactNumber.isEmpty)
+              ? null
+              : () async {
+                  signals.markOrderAsRead(order.id);
+                  final uri = Uri.parse('tel:${order.contactNumber}');
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri);
+                  }
+                },
+        ),
+        StatusRailAction(
+          key: ValueKey('so_action_sms_${order.id}'),
+          icon: Icons.sms_rounded,
+          label: 'SMS',
+          onTap: (isTimingLocked || order.contactNumber.trim().isEmpty)
+              ? null
+              : () async {
+                  signals.markOrderAsRead(order.id);
+                  final raw = order.contactNumber.trim();
+                  final clean = raw.replaceAll(RegExp(r'[^0-9+]'), '');
+                  final body =
+                      'Good day ${order.fullName}, Switch Fiber Technician is arriving shortly for repair ticket $soCode.';
+                  final uri = Uri(
+                    scheme: 'sms',
+                    path: clean.isNotEmpty ? clean : raw,
+                    queryParameters: {'body': body},
+                  );
+                  try {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  } catch (_) {}
+                },
+        ),
+        StatusRailAction(
+          key: ValueKey('so_action_details_${order.id}'),
+          icon: Icons.assignment_outlined,
+          label: 'Details',
+          onTap: isTimingLocked ? null : () => _openDetails(order),
+        ),
+      ],
+    );
+  }
+}
+
+class _ServiceDetailLine extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final bool mono;
+
+  const _ServiceDetailLine({
+    required this.icon,
+    required this.text,
+    this.mono = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = AppTheme.secondaryInkOf(context);
+    final base = mono ? context.text.bodyLarge! : context.text.bodyMedium!;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(icon, size: 20, color: muted),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: base.copyWith(color: muted),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],

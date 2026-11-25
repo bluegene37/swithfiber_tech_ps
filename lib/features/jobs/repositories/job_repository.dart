@@ -1,6 +1,9 @@
 import 'dart:async';
 import '../../../core/database/daos/job_orders_dao.dart';
 import '../../../core/database/daos/sync_error_logs_dao.dart';
+// Gene - Nov, 26, 2026: Added WorkTimingHistoryDao and WorkTimingEntry imports for recording restartable Job Order timing sessions.
+import '../../../core/database/daos/work_timing_history_dao.dart';
+import '../../../core/database/models/work_timing_entry.dart';
 import '../../../core/services/photo_storage_service.dart';
 // Gene - Nov, 25, 2026: Added shared timing helpers for Job Order Start/Finish tracking.
 import '../../../core/widgets/work_timing_bar.dart';
@@ -19,8 +22,21 @@ class JobRepository {
   /// it without reaching for a database singleton that does not exist.
   final SyncErrorLogsDao? errorLog;
 
+  // Gene - Nov, 26, 2026: Optional WorkTimingHistoryDao to log every Start / Start Again / Finish session by userId and date.
+  final WorkTimingHistoryDao? timingHistory;
+
+  /*
   JobRepository(this._dao, {JobOrdersApi? api, this.errorLog})
       : _api = api ?? DioJobOrdersApi() {
+    syncWorker = SyncWorker(_dao, api: _api, errorLog: errorLog);
+  }
+  */
+  JobRepository(
+    this._dao, {
+    JobOrdersApi? api,
+    this.errorLog,
+    this.timingHistory,
+  }) : _api = api ?? DioJobOrdersApi() {
     syncWorker = SyncWorker(_dao, api: _api, errorLog: errorLog);
   }
 
@@ -283,6 +299,7 @@ class JobRepository {
   }
 
   // Gene - Nov, 25, 2026: Stamp local Job Order Start time and post POST /JobOrders/createtiming.
+  /*
   Future<DateTime> startJobTiming(int id, {required String techId}) async {
     final now = DateTime.now().toUtc();
     await _dao.updateJobTiming(id, startTimeStamp: now);
@@ -325,6 +342,106 @@ class JobRepository {
         startTime: start,
         endTime: end,
       );
+    } catch (_) {
+      await _dao.updateJobTiming(
+        job.id,
+        startTimeStamp: start,
+        endTimeStamp: end,
+        isSynced: false,
+      );
+      await syncWorker.refreshPendingCount();
+      rethrow;
+    }
+    return end;
+  }
+  */
+  // Gene - Nov, 26, 2026: Support restarting finished Job Orders (resetting endTimeStamp to now) and log every Start/Finish session to WorkTimingHistoryDao.
+  Future<DateTime> startJobTiming(
+    int id, {
+    required String techId,
+    String? userName,
+  }) async {
+    final existing = await _dao.getJobById(id);
+    var now = DateTime.now().toUtc();
+    final prevStart = normalizeTimingTimestamp(existing?.startTimeStamp);
+    final prevEnd = normalizeTimingTimestamp(existing?.endTimeStamp);
+    for (final prev in [prevStart, prevEnd]) {
+      if (prev != null && !now.isAfter(prev)) {
+        now = prev.add(const Duration(seconds: 1));
+      }
+    }
+    await _dao.updateJobTiming(id, startTimeStamp: now, endTimeStamp: now);
+    final entryId = await timingHistory?.recordStart(
+      orderType: WorkTimingEntry.orderTypeJobOrder,
+      orderId: id,
+      orderReference: existing?.ticketNumber ?? 'JO-$id',
+      customerName: existing?.customerName ?? 'Job #$id',
+      userId: techId,
+      userName: userName,
+      startTime: now,
+      isSynced: false,
+    );
+    try {
+      await _api.createTiming(
+        joId: id,
+        techId: techId,
+        startTime: now,
+        endTime: now,
+      );
+      if (entryId != null) {
+        await timingHistory?.markSynced(entryId, isSynced: true);
+      }
+    } catch (_) {
+      // Keep local unlock and queue via syncPendingJobs on failure.
+      await _dao.updateJobTiming(
+        id,
+        startTimeStamp: now,
+        endTimeStamp: now,
+        isSynced: false,
+      );
+      await syncWorker.refreshPendingCount();
+      rethrow;
+    }
+    return now;
+  }
+
+  Future<DateTime> finishJobTiming(
+    JobOrderDto job, {
+    required String techId,
+    String? userName,
+  }) async {
+    final start = normalizeTimingTimestamp(job.startTimeStamp) ??
+        DateTime.now().toUtc().subtract(const Duration(seconds: 1));
+    var end = DateTime.now().toUtc();
+    if (!end.isAfter(start)) {
+      end = start.add(const Duration(seconds: 1));
+    }
+    await _dao.updateJobTiming(
+      job.id,
+      startTimeStamp: start,
+      endTimeStamp: end,
+    );
+    final entryId = await timingHistory?.recordFinish(
+      orderType: WorkTimingEntry.orderTypeJobOrder,
+      orderId: job.id,
+      orderReference: job.ticketNumber,
+      customerName: job.customerName,
+      userId: techId,
+      userName: userName,
+      startTime: start,
+      endTime: end,
+      isSynced: false,
+    );
+    try {
+      await _api.updateTiming(
+        joId: job.id,
+        techId: techId,
+        startTime: start,
+        endTime: end,
+      );
+      if (entryId != null) {
+        await timingHistory?.markSynced(entryId, isSynced: true);
+      }
     } catch (_) {
       await _dao.updateJobTiming(
         job.id,

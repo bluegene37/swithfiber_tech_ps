@@ -30,17 +30,27 @@ void main() async {
   final database = AppDatabase(powerSync.db);
   await database.jobOrdersDao.deleteSampleJobs();
   await database.lcpNapLocationsDao.deleteSampleLocations();
+  /*
   final jobRepository =
       JobRepository(database.jobOrdersDao, errorLog: database.syncErrorLogsDao);
   final lcpNapRepository = LcpNapRepository(database.lcpNapLocationsDao);
-  /*
-  final serviceOrdersSignals =
-      ServiceOrdersSignals(dao: database.serviceOrdersDao);
-  */
   // Gene - Nov, 23, 2026: Pass SyncErrorLogsDao into ServiceOrdersSignals so refused repair uploads are logged.
   final serviceOrdersSignals = ServiceOrdersSignals(
     dao: database.serviceOrdersDao,
     errorLog: database.syncErrorLogsDao,
+  );
+  */
+  // Gene - Nov, 26, 2026: Wire WorkTimingHistoryDao into JobRepository and ServiceOrdersSignals.
+  final jobRepository = JobRepository(
+    database.jobOrdersDao,
+    errorLog: database.syncErrorLogsDao,
+    timingHistory: database.workTimingHistoryDao,
+  );
+  final lcpNapRepository = LcpNapRepository(database.lcpNapLocationsDao);
+  final serviceOrdersSignals = ServiceOrdersSignals(
+    dao: database.serviceOrdersDao,
+    errorLog: database.syncErrorLogsDao,
+    timingHistory: database.workTimingHistoryDao,
   );
 
   // 2. Initialize Signals State Layer

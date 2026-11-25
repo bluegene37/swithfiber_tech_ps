@@ -44,6 +44,16 @@ class StatusRailRow extends StatelessWidget {
   // Gene - Nov, 25, 2026: Added optional timingBar slot above footer actions for Start/Finish work controls.
   final Widget? timingBar;
 
+  // Gene - Nov, 26, 2026: Added optional card border, NEW badge styling/key, headerBadge, and rowTapKey for Service Order visual parity & distinction.
+  final Color? borderColor;
+  final double borderWidth;
+  final Key? newTagKey;
+  final Color? newTagBgColor;
+  final Color? newTagBorderColor;
+  final Color? newTagInkColor;
+  final Widget? headerBadge;
+  final Key? rowTapKey;
+
   /*
   const StatusRailRow({
     super.key,
@@ -82,6 +92,7 @@ class StatusRailRow extends StatelessWidget {
   });
   */
   // Gene - Nov, 20, 2026: Added isNew parameter (default false) to StatusRailRow constructor.
+  // Gene - Nov, 26, 2026: Added optional styling/key parameters for Service Order cards while keeping Job Order defaults intact.
   const StatusRailRow({
     super.key,
     this.leading,
@@ -99,6 +110,14 @@ class StatusRailRow extends StatelessWidget {
     this.onTap,
     this.timingBar,
     this.actions,
+    this.borderColor,
+    this.borderWidth = 1,
+    this.newTagKey,
+    this.newTagBgColor,
+    this.newTagBorderColor,
+    this.newTagInkColor,
+    this.headerBadge,
+    this.rowTapKey,
   });
 
   static const double minHeight = 64;
@@ -113,7 +132,11 @@ class StatusRailRow extends StatelessWidget {
       color: AppTheme.cardOf(context),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.radiusButton),
+        /*
         side: BorderSide(color: hairline, width: 1),
+        */
+        // Gene - Nov, 26, 2026: Allow custom borderColor/borderWidth for Service Order cards.
+        side: BorderSide(color: borderColor ?? hairline, width: borderWidth),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -327,6 +350,7 @@ class StatusRailRow extends StatelessWidget {
               children: [
                 Expanded(
                   child: InkWell(
+                    key: rowTapKey,
                     onTap: onTap,
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(minHeight: minHeight),
@@ -365,6 +389,10 @@ class StatusRailRow extends StatelessWidget {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
+                                          if (headerBadge != null) ...[
+                                            headerBadge!,
+                                            const SizedBox(height: 6),
+                                          ],
                                           Text(title,
                                               style: context.text.titleMedium),
                                           if (subtitle != null &&
@@ -427,22 +455,25 @@ class StatusRailRow extends StatelessWidget {
                                               ),
                                               if (isNew)
                                                 Container(
+                                                  key: newTagKey,
                                                   padding: const EdgeInsets
                                                       .symmetric(
                                                       horizontal: 6,
                                                       vertical: 2),
                                                   decoration: BoxDecoration(
-                                                    color: AppTheme
-                                                        .primarySubtleBgOf(
-                                                            context),
+                                                    color: newTagBgColor ??
+                                                        AppTheme
+                                                            .primarySubtleBgOf(
+                                                                context),
                                                     borderRadius:
                                                         BorderRadius.circular(
                                                             AppTheme
                                                                 .radiusStamp),
                                                     border: Border.all(
-                                                      color: AppTheme
-                                                          .primarySubtleBorderOf(
-                                                              context),
+                                                      color: newTagBorderColor ??
+                                                          AppTheme
+                                                              .primarySubtleBorderOf(
+                                                                  context),
                                                       width: 1,
                                                     ),
                                                   ),
@@ -451,7 +482,7 @@ class StatusRailRow extends StatelessWidget {
                                                     style: context
                                                         .text.labelSmall!
                                                         .copyWith(
-                                                      color:
+                                                      color: newTagInkColor ??
                                                           AppTheme.brandInkOf(
                                                               context),
                                                       fontWeight:
