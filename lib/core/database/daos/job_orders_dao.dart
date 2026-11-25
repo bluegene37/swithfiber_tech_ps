@@ -109,6 +109,19 @@ class JobOrdersDao {
           {bool isSynced = false}) =>
       _patch(id, {'status': newStatus, 'is_synced': boolInt(isSynced)});
 
+  // Gene - Nov, 25, 2026: Persist Start/Finish work timing timestamps on a job_orders row.
+  Future<void> updateJobTiming(
+    int id, {
+    DateTime? startTimeStamp,
+    DateTime? endTimeStamp,
+    bool? isSynced,
+  }) =>
+      _patch(id, {
+        if (startTimeStamp != null) 'start_timestamp': dateText(startTimeStamp),
+        if (endTimeStamp != null) 'end_timestamp': dateText(endTimeStamp),
+        if (isSynced != null) 'is_synced': boolInt(isSynced),
+      });
+
   /// Complete a job: sets status to 'Completed', onsiteStatus to 'Done',
   /// updates dateInstalled, and marks isSynced = false for sync.
   Future<void> completeJob(

@@ -59,6 +59,8 @@ void main() {
         address: 'Lot 7, Fiber Street',
         status: 'Scheduled',
         onsiteStatus: 'Scheduled',
+        // Gene - Nov, 25, 2026: Seed active Start timestamp so Complete job CTA renders for tap-target check.
+        startTimeStamp: DateTime.utc(2026, 11, 25, 8, 0),
         contactNumber: '09171234567',
         clientSignature: _signature,
         modemRouterSN: 'HWTC7',

@@ -19,6 +19,8 @@ import '../../../core/widgets/action_pair.dart';
 import '../../../core/widgets/adaptive_dialogs.dart';
 import '../../../core/widgets/status_stamp.dart';
 import '../../../core/widgets/sticky_action_bar.dart';
+// Gene - Nov, 25, 2026: Added WorkTimingLockBanner to communicate Start/Finish lock state on Service Order details.
+import '../../../core/widgets/work_timing_bar.dart';
 import '../../auth/signals/auth_signals.dart';
 import '../../catalogs/models/catalog_model.dart';
 import '../../catalogs/services/catalog_service.dart';
@@ -1000,6 +1002,8 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
             ),
             // The screen's one red verb, pinned where the job detail pins its
             // own (DESIGN.md: read at the top, act at the bottom).
+            // Gene - Nov, 25, 2026: Gate repair/report submission until technician clicks Start in the list (and re-lock after Finish).
+            /*
             bottomNavigationBar: StickyActionBar(
               label: _isSubmitting
                   ? 'Saving…'
@@ -1009,12 +1013,35 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
               icon: Icons.check_circle_rounded,
               onPressed: _isSubmitting ? null : () => _handleSubmit(order),
             ),
+            */
+            bottomNavigationBar: !order.isWorkUnlocked
+                ? null
+                : StickyActionBar(
+                    label: _isSubmitting
+                        ? 'Saving…'
+                        : (_visitStatus == 'Done'
+                            ? 'Complete service order'
+                            : 'Save repair report'),
+                    icon: Icons.check_circle_rounded,
+                    onPressed:
+                        _isSubmitting ? null : () => _handleSubmit(order),
+                  ),
             body: Form(
               key: _formKey,
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                 children: [
                   _buildDraftRestoredBanner(),
+                  // Gene - Nov, 25, 2026: Display Start/Finish timing lock banner when Service Order editing is locked.
+                  if (!order.isWorkUnlocked)
+                    WorkTimingLockBanner(
+                      key: const ValueKey('service_order_timing_lock_banner'),
+                      status: order.isOpen
+                          ? order.workTimingStatus
+                          : WorkTimingStatus.finished,
+                      startTime: order.startTimestamp,
+                      endTime: order.stopTimestamp,
+                    ),
                   // 1. Concern & Subscriber Card
                   _buildSubscriberCard(order, isDark),
                   const SizedBox(height: 16),
@@ -1024,7 +1051,13 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
                   const SizedBox(height: 16),
 
                   // 3. Hardware Swaps & Pullout Card
-                  _buildHardwareSwapCard(order, isDark),
+                  IgnorePointer(
+                    ignoring: !order.isWorkUnlocked,
+                    child: Opacity(
+                      opacity: order.isWorkUnlocked ? 1.0 : 0.58,
+                      child: _buildHardwareSwapCard(order, isDark),
+                    ),
+                  ),
                   const SizedBox(height: 16),
 
                   // 3b. Live RADIUS PPPoE Connection & Reconnect Test
@@ -1039,12 +1072,24 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
                   const SizedBox(height: 16),
 
                   // 4. Materials Used (BOM)
-                  _buildMaterialsCounterCard(isDark),
+                  IgnorePointer(
+                    ignoring: !order.isWorkUnlocked,
+                    child: Opacity(
+                      opacity: order.isWorkUnlocked ? 1.0 : 0.58,
+                      child: _buildMaterialsCounterCard(isDark),
+                    ),
+                  ),
                   const SizedBox(height: 16),
 
                   // Gene - Nov, 25, 2026: Render structured Field Repair Report card and remote/local Site Photo Proofs gallery.
                   // 5. Field Repair Report (Status, Category, Crew, Charge, Pullout Model/CPE, Reassignment)
-                  _buildRepairReportCard(order, isDark),
+                  IgnorePointer(
+                    ignoring: !order.isWorkUnlocked,
+                    child: Opacity(
+                      opacity: order.isWorkUnlocked ? 1.0 : 0.58,
+                      child: _buildRepairReportCard(order, isDark),
+                    ),
+                  ),
                   const SizedBox(height: 16),
 
                   // 6. Site Photo Proofs (from GetServiceOrderImage + local fallback)
@@ -1060,11 +1105,23 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
                   const SizedBox(height: 16),
 
                   // 7. Photos Proofs (with GPS EXIF)
-                  _buildPhotosCard(isDark),
+                  IgnorePointer(
+                    ignoring: !order.isWorkUnlocked,
+                    child: Opacity(
+                      opacity: order.isWorkUnlocked ? 1.0 : 0.58,
+                      child: _buildPhotosCard(isDark),
+                    ),
+                  ),
                   const SizedBox(height: 16),
 
                   // 8. Subscriber Signature Pad
-                  _buildSignatureCard(isDark),
+                  IgnorePointer(
+                    ignoring: !order.isWorkUnlocked,
+                    child: Opacity(
+                      opacity: order.isWorkUnlocked ? 1.0 : 0.58,
+                      child: _buildSignatureCard(isDark),
+                    ),
+                  ),
                 ],
               ),
             ),

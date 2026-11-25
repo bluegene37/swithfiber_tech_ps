@@ -44,6 +44,8 @@ JobOrderDto _job({String status = 'Scheduled', String? statusRemarks}) =>
       address: 'Lot 42, Fiber Street',
       status: status,
       statusRemarks: statusRemarks,
+      // Gene - Nov, 25, 2026: Seed active Start timestamp so scheduled status-change controls are unlocked.
+      startTimeStamp: DateTime.utc(2026, 11, 25, 8, 0),
       rawJson: '{"id":42,"status":"$status","statusRemarks":""}',
     );
 

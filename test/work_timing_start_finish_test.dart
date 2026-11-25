@@ -1,0 +1,676 @@
+// Gene - Nov, 25, 2026: Unit, wire-contract, widget, and text-scale tests for Job Order & Service Order Start/Finish timing and gating.
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:swithfiber_tech_ps/core/database/app_database.dart';
+import 'package:swithfiber_tech_ps/core/network/api_client.dart';
+import 'package:swithfiber_tech_ps/core/services/draft_storage_service.dart';
+import 'package:swithfiber_tech_ps/core/theme/app_theme.dart';
+import 'package:swithfiber_tech_ps/core/widgets/work_timing_bar.dart';
+import 'package:swithfiber_tech_ps/features/jobs/models/job_order_model.dart';
+import 'package:swithfiber_tech_ps/features/jobs/repositories/job_repository.dart';
+import 'package:swithfiber_tech_ps/features/jobs/screens/job_order_detail_screen.dart';
+import 'package:swithfiber_tech_ps/features/jobs/screens/job_orders_screen.dart';
+import 'package:swithfiber_tech_ps/features/jobs/services/job_orders_api.dart';
+import 'package:swithfiber_tech_ps/features/jobs/signals/jobs_signals.dart';
+import 'package:swithfiber_tech_ps/features/service_orders/models/service_order_model.dart';
+import 'package:swithfiber_tech_ps/features/service_orders/screens/service_order_detail_screen.dart';
+import 'package:swithfiber_tech_ps/features/service_orders/services/service_orders_api.dart';
+import 'package:swithfiber_tech_ps/features/service_orders/signals/service_orders_signals.dart';
+import 'package:swithfiber_tech_ps/features/service_orders/widgets/service_order_card.dart';
+
+class _CapturingHttpAdapter implements HttpClientAdapter {
+  RequestOptions? lastOptions;
+  String? capturedBody;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    lastOptions = options;
+    if (requestStream != null) {
+      final chunks = <int>[];
+      await for (final chunk in requestStream) {
+        chunks.addAll(chunk);
+      }
+      capturedBody = utf8.decode(chunks, allowMalformed: true);
+    } else {
+      capturedBody = null;
+    }
+    return ResponseBody.fromString('{"ok":true}', 200, headers: {
+      Headers.contentTypeHeader: ['application/json'],
+    });
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _TimingRecordingJobApi extends JobOrdersApi {
+  final List<Map<String, dynamic>> created = [];
+  final List<Map<String, dynamic>> updated = [];
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchByStatus(String status) async => [];
+
+  @override
+  Future<Map<String, dynamic>?> fetchById(int id) async => null;
+
+  @override
+  Future<void> update(int id, Map<String, dynamic> body) async {}
+
+  @override
+  Future<void> createTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    DateTime? endTime,
+  }) async {
+    created.add({
+      'joId': joId,
+      'techId': techId,
+      'startTime': startTime,
+      'endTime': endTime ?? startTime,
+    });
+  }
+
+  @override
+  Future<void> updateTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    required DateTime endTime,
+  }) async {
+    updated.add({
+      'joId': joId,
+      'techId': techId,
+      'startTime': startTime,
+      'endTime': endTime,
+    });
+  }
+}
+
+class _TimingRecordingServiceOrdersApi extends ServiceOrdersApi {
+  final List<Map<String, dynamic>> created = [];
+  final List<Map<String, dynamic>> updated = [];
+
+  @override
+  Future<List<ServiceOrderDto>> fetchServiceOrders() async => [];
+
+  @override
+  Future<bool> createTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    DateTime? endTime,
+  }) async {
+    created.add({
+      'joId': joId,
+      'techId': techId,
+      'startTime': startTime,
+      'endTime': endTime ?? startTime,
+    });
+    return true;
+  }
+
+  @override
+  Future<bool> updateTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    required DateTime endTime,
+  }) async {
+    updated.add({
+      'joId': joId,
+      'techId': techId,
+      'startTime': startTime,
+      'endTime': endTime,
+    });
+    return true;
+  }
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('Timing helper & model status unit tests', () {
+    test('normalizeTimingTimestamp & parseTimingTimestamp filter C# sentinels',
+        () {
+      expect(normalizeTimingTimestamp(null), isNull);
+      expect(normalizeTimingTimestamp(DateTime.utc(1, 1, 1)), isNull);
+      expect(normalizeTimingTimestamp(DateTime.utc(1900, 12, 31)), isNull);
+      final valid = DateTime.utc(2026, 11, 25, 9, 30);
+      expect(normalizeTimingTimestamp(valid), equals(valid));
+
+      expect(parseTimingTimestamp('0001-01-01T00:00:00Z'), isNull);
+      expect(parseTimingTimestamp('null'), isNull);
+      expect(parseTimingTimestamp('  '), isNull);
+      expect(parseTimingTimestamp('2026-11-25T09:30:00Z'), equals(valid));
+    });
+
+    test('resolveWorkTimingStatus distinguishes notStarted/inProgress/finished',
+        () {
+      final start = DateTime.utc(2026, 11, 25, 8, 0);
+      final sameEnd = DateTime.utc(2026, 11, 25, 8, 0);
+      final laterEnd = DateTime.utc(2026, 11, 25, 9, 15);
+
+      expect(resolveWorkTimingStatus(null, null), WorkTimingStatus.notStarted);
+      expect(resolveWorkTimingStatus(DateTime.utc(1, 1, 1), laterEnd),
+          WorkTimingStatus.notStarted);
+      expect(resolveWorkTimingStatus(start, null), WorkTimingStatus.inProgress);
+      expect(
+          resolveWorkTimingStatus(start, sameEnd), WorkTimingStatus.inProgress);
+      expect(
+          resolveWorkTimingStatus(start, laterEnd), WorkTimingStatus.finished);
+    });
+
+    test('JobOrderDto and ServiceOrderDto round-trip timestamps through SQLite',
+        () async {
+      final db = AppDatabase.forTesting();
+      addTearDown(db.close);
+
+      final start = DateTime.utc(2026, 11, 25, 8, 15);
+      final end = DateTime.utc(2026, 11, 25, 9, 45);
+
+      final job = JobOrderDto(
+        id: 11,
+        ticketNumber: 'SF-11',
+        customerName: 'Example Customer',
+        address: 'Lot 11',
+        status: 'Scheduled',
+        startTimeStamp: start,
+        endTimeStamp: start,
+      );
+      expect(job.workTimingStatus, WorkTimingStatus.inProgress);
+      expect(job.isWorkUnlocked, isTrue);
+
+      await db.jobOrdersDao.insertOrUpdateJob(job, synced: true);
+      final loadedJob = await db.jobOrdersDao.getJobById(11);
+      expect(loadedJob?.workTimingStatus, WorkTimingStatus.inProgress);
+      expect(loadedJob?.startTimeStamp?.toUtc(), equals(start));
+
+      await db.jobOrdersDao.updateJobTiming(11, endTimeStamp: end);
+      final finishedJob = await db.jobOrdersDao.getJobById(11);
+      expect(finishedJob?.workTimingStatus, WorkTimingStatus.finished);
+      expect(finishedJob?.isWorkUnlocked, isFalse);
+
+      final order = ServiceOrderDto(
+        id: 22,
+        accountNumber: 'ACC-22',
+        fullName: 'Example Subscriber',
+        contactNumber: '09170000022',
+        emailAddress: 'sub22@example.com',
+        address: 'Lot 22',
+        startTimestamp: start,
+        stopTimestamp: end,
+      );
+      expect(order.workTimingStatus, WorkTimingStatus.finished);
+      expect(order.isWorkUnlocked, isFalse);
+
+      await db.serviceOrdersDao.insertOrUpdateOrder(order, synced: true);
+      final loadedOrder = await db.serviceOrdersDao.getOrderById(22);
+      expect(loadedOrder?.workTimingStatus, WorkTimingStatus.finished);
+      expect(loadedOrder?.startTimestamp?.toUtc(), equals(start));
+      expect(loadedOrder?.stopTimestamp?.toUtc(), equals(end));
+    });
+  });
+
+  group('Timing API wire-contract tests', () {
+    test(
+        'JobOrdersApi & ServiceOrdersApi send expected POST createtiming and PUT updatetiming JSON payloads',
+        () async {
+      final originalAdapter = ApiClient.instance.dio.httpClientAdapter;
+      final originalBlock = ApiClient.blockNetworkForTesting;
+      final adapter = _CapturingHttpAdapter();
+      FlutterSecureStorage.setMockInitialValues({'jwt_token': 'test-token'});
+      ApiClient.instance.dio.httpClientAdapter = adapter;
+      ApiClient.blockNetworkForTesting = false;
+
+      try {
+        final start = DateTime.utc(2026, 11, 25, 8, 0);
+        final end = DateTime.utc(2026, 11, 25, 9, 0);
+
+        final jobApi = DioJobOrdersApi(ApiClient.instance);
+        await jobApi.createTiming(
+          joId: 401,
+          techId: '7',
+          startTime: start,
+        );
+        expect(adapter.lastOptions?.method, 'POST');
+        expect(adapter.lastOptions?.path, '/JobOrders/createtiming');
+        expect(jsonDecode(adapter.capturedBody!), {
+          'joId': 401,
+          'techId': '7',
+          'startTime': start.toIso8601String(),
+          'endTime': start.toIso8601String(),
+        });
+
+        await jobApi.updateTiming(
+          joId: 401,
+          techId: '7',
+          startTime: start,
+          endTime: end,
+        );
+        expect(adapter.lastOptions?.method, 'PUT');
+        expect(adapter.lastOptions?.path, '/JobOrders/updatetiming');
+        expect(jsonDecode(adapter.capturedBody!), {
+          'joId': 401,
+          'techId': '7',
+          'startTime': start.toIso8601String(),
+          'endTime': end.toIso8601String(),
+        });
+
+        final soApi = ServiceOrdersApi(ApiClient.instance);
+        final soCreated = await soApi.createTiming(
+          joId: 501,
+          techId: '9',
+          startTime: start,
+        );
+        expect(soCreated, isTrue);
+        expect(adapter.lastOptions?.method, 'POST');
+        expect(adapter.lastOptions?.path, '/ServiceOrders/createtiming');
+        expect(jsonDecode(adapter.capturedBody!), {
+          'joId': 501,
+          'techId': '9',
+          'startTime': start.toIso8601String(),
+          'endTime': start.toIso8601String(),
+        });
+
+        final soUpdated = await soApi.updateTiming(
+          joId: 501,
+          techId: '9',
+          startTime: start,
+          endTime: end,
+        );
+        expect(soUpdated, isTrue);
+        expect(adapter.lastOptions?.method, 'PUT');
+        expect(adapter.lastOptions?.path, '/ServiceOrders/updatetiming');
+        expect(jsonDecode(adapter.capturedBody!), {
+          'joId': 501,
+          'techId': '9',
+          'startTime': start.toIso8601String(),
+          'endTime': end.toIso8601String(),
+        });
+      } finally {
+        ApiClient.instance.dio.httpClientAdapter = originalAdapter;
+        ApiClient.blockNetworkForTesting = originalBlock;
+      }
+    });
+  });
+
+  group('Job Order & Service Order Start -> Finish -> Locked lifecycle', () {
+    testWidgets(
+        'Job Order list Start unlocks report & detail controls, Finish re-locks them',
+        (tester) async {
+      final db = AppDatabase.forTesting();
+      final api = _TimingRecordingJobApi();
+      final repo = JobRepository(db.jobOrdersDao, api: api);
+      final signals = JobsSignals(repo);
+      signals.setTechnicianEmail('tech@example.com');
+      addTearDown(() async {
+        await signals.dispose();
+        await db.close();
+      });
+
+      await tester.runAsync(() async {
+        await db.jobOrdersDao.insertOrUpdateJob(
+          JobOrderDto(
+            id: 101,
+            ticketNumber: 'SF-101',
+            customerName: 'Juan Dela Cruz',
+            address: '101 Sample St',
+            status: 'Scheduled',
+            onsiteStatus: 'Scheduled',
+            assignedEmail: 'tech@example.com',
+            updatedAt: DateTime.now(),
+          ),
+          synced: true,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      });
+
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(402, 950);
+      addTearDown(tester.view.reset);
+
+      var reportTapped = false;
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: JobOrdersScreen(
+          jobsSignals: signals,
+          onSelectJobForReport: (_) => reportTapped = true,
+        ),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // 1. Not started: Start button visible; report shortcut locked.
+      final startFinder = find.byKey(const ValueKey('job_start_button_101'));
+      final shortcutFinder =
+          find.byKey(const ValueKey('job_report_shortcut_101'));
+      expect(startFinder, findsOneWidget);
+      expect(tester.widget<InkWell>(shortcutFinder).onTap, isNull);
+
+      await tester.tap(shortcutFinder, warnIfMissed: false);
+      await tester.pump();
+      expect(reportTapped, isFalse);
+
+      // Opening details before Start shows lock banner & hides report/status controls.
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: JobOrderDetailScreen(jobId: 101, jobsSignals: signals),
+      ));
+      await tester.pump();
+      expect(
+          find.byKey(const ValueKey('job_timing_lock_banner')), findsOneWidget);
+      expect(find.text('Fill completion report'), findsNothing);
+      expect(find.byKey(const ValueKey('job_status_change')), findsNothing);
+
+      // Return to list and tap Start.
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: JobOrdersScreen(
+          jobsSignals: signals,
+          onSelectJobForReport: (_) => reportTapped = true,
+        ),
+      ));
+      await tester.pump();
+
+      await tester.runAsync(() async {
+        await tester.tap(startFinder);
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      });
+      await tester.pumpAndSettle();
+
+      // 2. In progress: API called, Finish button shown, shortcut enabled.
+      expect(api.created.length, 1);
+      expect(api.created.first['joId'], 101);
+      final finishFinder = find.byKey(const ValueKey('job_finish_button_101'));
+      expect(finishFinder, findsOneWidget);
+      expect(tester.widget<InkWell>(shortcutFinder).onTap, isNotNull);
+
+      await tester.tap(shortcutFinder);
+      await tester.pump();
+      expect(reportTapped, isTrue);
+
+      // Detail screen now shows report & status controls.
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: JobOrderDetailScreen(jobId: 101, jobsSignals: signals),
+      ));
+      await tester.pump();
+      expect(
+          find.byKey(const ValueKey('job_timing_lock_banner')), findsNothing);
+      expect(find.text('Fill completion report'), findsOneWidget);
+      final statusChangeFinder =
+          find.byKey(const ValueKey('job_status_change'));
+      await tester.scrollUntilVisible(
+        statusChangeFinder,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(statusChangeFinder, findsOneWidget);
+
+      // Return to list and tap Finish.
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: JobOrdersScreen(
+          jobsSignals: signals,
+          onSelectJobForReport: (_) => reportTapped = true,
+        ),
+      ));
+      await tester.pump();
+
+      await tester.runAsync(() async {
+        await tester.tap(finishFinder);
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      });
+      await tester.pumpAndSettle();
+
+      // 3. Finished: updatetiming called with endTime > startTime, disabled Finished button shown, re-locked.
+      expect(api.updated.length, 1);
+      final updStart = api.updated.first['startTime'] as DateTime;
+      final updEnd = api.updated.first['endTime'] as DateTime;
+      expect(updEnd.isAfter(updStart), isTrue);
+
+      final finishedFinder =
+          find.byKey(const ValueKey('job_finished_button_101'));
+      expect(finishedFinder, findsOneWidget);
+      final finishedBtn = tester.widget<OutlinedButton>(finishedFinder);
+      expect(finishedBtn.onPressed, isNull);
+      expect(tester.widget<InkWell>(shortcutFinder).onTap, isNull);
+    });
+
+    testWidgets(
+        'Service Order list Start unlocks editing & StickyActionBar, Finish re-locks',
+        (tester) async {
+      DraftStorageService.instance.resetForTesting();
+      final api = _TimingRecordingServiceOrdersApi();
+      final signals = ServiceOrdersSignals(api: api);
+      signals.setTechnicianEmail('tech@example.com');
+      addTearDown(signals.dispose);
+
+      signals.allOrders.value = [
+        const ServiceOrderDto(
+          id: 201,
+          accountNumber: 'ACC-201',
+          fullName: 'Maria Santos',
+          contactNumber: '09170000201',
+          emailAddress: 'maria@example.com',
+          address: '201 Fiber Ave',
+          concern: 'Pullout',
+          priorityLevel: 'Urgent',
+          supportStatus: 'Open',
+        ),
+      ];
+
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(402, 950);
+      addTearDown(tester.view.reset);
+
+      // 1. Card renders Start button initially.
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Scaffold(
+          body: ServiceOrderCard(
+            order: signals.allOrders.value.first,
+            signals: signals,
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      final startFinder =
+          find.byKey(const ValueKey('service_order_start_button_201'));
+      expect(startFinder, findsOneWidget);
+
+      // Detail screen shows lock banner, hides StickyActionBar, ignores text input.
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: ServiceOrderDetailScreen(orderId: 201, signals: signals),
+      ));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('service_order_timing_lock_banner')),
+          findsOneWidget);
+      expect(find.text('Save repair report'), findsNothing);
+      expect(find.text('Complete service order'), findsNothing);
+      final remarksFinder = find.byKey(const ValueKey('pullout_remarks_field'));
+      expect(remarksFinder, findsOneWidget);
+      final ignoreAncestor = tester.widget<IgnorePointer>(find
+          .ancestor(
+            of: remarksFinder,
+            matching: find.byType(IgnorePointer),
+          )
+          .first);
+      expect(ignoreAncestor.ignoring, isTrue);
+
+      // Back to card and tap Start.
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Scaffold(
+          body: ServiceOrderCard(
+            order: signals.allOrders.value.first,
+            signals: signals,
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      await tester.tap(startFinder);
+      await tester.pumpAndSettle();
+
+      expect(api.created.length, 1);
+      expect(api.created.first['joId'], 201);
+
+      // Rebuild card with updated signal order -> Finish button appears.
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Scaffold(
+          body: ServiceOrderCard(
+            order: signals.allOrders.value.first,
+            signals: signals,
+          ),
+        ),
+      ));
+      await tester.pump();
+      final finishFinder =
+          find.byKey(const ValueKey('service_order_finish_button_201'));
+      expect(finishFinder, findsOneWidget);
+
+      // Detail screen now unlocked: no lock banner, StickyActionBar visible, IgnorePointer disabled.
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: ServiceOrderDetailScreen(orderId: 201, signals: signals),
+      ));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('service_order_timing_lock_banner')),
+          findsNothing);
+      expect(find.text('Complete service order'), findsOneWidget);
+      final unlockedIgnore = tester.widget<IgnorePointer>(find
+          .ancestor(
+            of: remarksFinder,
+            matching: find.byType(IgnorePointer),
+          )
+          .first);
+      expect(unlockedIgnore.ignoring, isFalse);
+
+      // Back to card and tap Finish.
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Scaffold(
+          body: ServiceOrderCard(
+            order: signals.allOrders.value.first,
+            signals: signals,
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      await tester.tap(finishFinder);
+      await tester.pumpAndSettle();
+
+      expect(api.updated.length, 1);
+      final soStart = api.updated.first['startTime'] as DateTime;
+      final soEnd = api.updated.first['endTime'] as DateTime;
+      expect(soEnd.isAfter(soStart), isTrue);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Scaffold(
+          body: ServiceOrderCard(
+            order: signals.allOrders.value.first,
+            signals: signals,
+          ),
+        ),
+      ));
+      await tester.pump();
+      final finishedFinder =
+          find.byKey(const ValueKey('service_order_finished_button_201'));
+      expect(finishedFinder, findsOneWidget);
+      expect(tester.widget<OutlinedButton>(finishedFinder).onPressed, isNull);
+
+      // Detail screen re-locked after Finish.
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: ServiceOrderDetailScreen(orderId: 201, signals: signals),
+      ));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('service_order_timing_lock_banner')),
+          findsOneWidget);
+      expect(find.text('Save repair report'), findsNothing);
+    });
+  });
+
+  group('Accessibility & 200% text-scale layout', () {
+    testWidgets(
+        'WorkTimingBar and WorkTimingLockBanner render without overflow at 200% text scale on 402dp width',
+        (tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(402, 874);
+      addTearDown(tester.view.reset);
+
+      final overflows = <String>[];
+      final origOnError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        final msg = details.exceptionAsString();
+        if (msg.contains('overflowed')) {
+          overflows.add(msg);
+        } else {
+          origOnError?.call(details);
+        }
+      };
+      addTearDown(() => FlutterError.onError = origOnError);
+
+      final start = DateTime.utc(2026, 11, 25, 8, 5);
+      final end = DateTime.utc(2026, 11, 25, 10, 42);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2.0)),
+          child: Scaffold(
+            body: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                WorkTimingBar(
+                  status: WorkTimingStatus.notStarted,
+                  onStart: () {},
+                ),
+                WorkTimingBar(
+                  status: WorkTimingStatus.inProgress,
+                  startTime: start,
+                  onFinish: () {},
+                ),
+                WorkTimingBar(
+                  status: WorkTimingStatus.finished,
+                  startTime: start,
+                  endTime: end,
+                ),
+                const WorkTimingLockBanner(
+                  status: WorkTimingStatus.notStarted,
+                ),
+                WorkTimingLockBanner(
+                  status: WorkTimingStatus.inProgress,
+                  startTime: start,
+                ),
+                WorkTimingLockBanner(
+                  status: WorkTimingStatus.finished,
+                  startTime: start,
+                  endTime: end,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ));
+      await tester.pump();
+      expect(overflows, isEmpty, reason: overflows.join('\n'));
+    });
+  });
+}

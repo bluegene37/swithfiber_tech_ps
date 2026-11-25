@@ -242,7 +242,8 @@ void main() {
       );
       final soSignals = ServiceOrdersSignals();
       addTearDown(soSignals.dispose);
-      soSignals.allOrders.value = const [
+      // Gene - Nov, 25, 2026: Seed active Start timestamp so ServiceOrderDetailScreen editing & BOM import are unlocked.
+      soSignals.allOrders.value = [
         ServiceOrderDto(
           id: 402,
           accountNumber: 'ACC-402',
@@ -251,6 +252,7 @@ void main() {
           emailAddress: 'bom@example.com',
           address: 'Lot 2',
           concern: 'No Connection',
+          startTimestamp: DateTime.utc(2026, 11, 25, 8, 0),
         ),
       ];
 

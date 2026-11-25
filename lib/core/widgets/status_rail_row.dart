@@ -41,6 +41,9 @@ class StatusRailRow extends StatelessWidget {
   /// bottom of the card (DESIGN.md: read at the top, act at the bottom).
   final List<Widget>? actions;
 
+  // Gene - Nov, 25, 2026: Added optional timingBar slot above footer actions for Start/Finish work controls.
+  final Widget? timingBar;
+
   /*
   const StatusRailRow({
     super.key,
@@ -74,6 +77,7 @@ class StatusRailRow extends StatelessWidget {
     this.trailing,
     this.expandToggle,
     this.onTap,
+    this.timingBar,
     this.actions,
   });
   */
@@ -93,6 +97,7 @@ class StatusRailRow extends StatelessWidget {
     this.trailing,
     this.expandToggle,
     this.onTap,
+    this.timingBar,
     this.actions,
   });
 
@@ -481,6 +486,11 @@ class StatusRailRow extends StatelessWidget {
               ],
             ),
           ),
+          // Gene - Nov, 25, 2026: Render optional WorkTimingBar separated by hairlines above footer action buttons.
+          if (timingBar != null) ...[
+            Container(height: 1, color: hairline),
+            timingBar!,
+          ],
           if (actions != null && actions!.isNotEmpty) ...[
             Container(height: 1, color: hairline),
             IntrinsicHeight(

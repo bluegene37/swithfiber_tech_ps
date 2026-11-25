@@ -9,6 +9,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_search_field.dart';
 import '../../../core/widgets/loading_states.dart';
 import '../../../core/widgets/status_rail_row.dart';
+// Gene - Nov, 25, 2026: Added WorkTimingBar for Start/Finish controls on Job Order list rows.
+import '../../../core/widgets/work_timing_bar.dart';
 import '../../auth/signals/auth_signals.dart';
 import '../../lcp_nap/signals/lcp_nap_signals.dart';
 import '../../service_orders/signals/service_orders_signals.dart';
@@ -676,6 +678,7 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
                     // Gene - Nov, 20, 2026: Pass unread NEW state and read-marking callback to _JobRow in Barangay view.
                     _JobRow(
                       job: job,
+                      jobsSignals: signals,
                       isNew: job.jobStatus == JobStatus.scheduled &&
                           !readJobIds.contains(job.id),
                       onMarkRead: () => signals.markJobAsRead(job.id),
@@ -733,6 +736,7 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
                         // Gene - Nov, 20, 2026: Pass unread NEW state and read-marking callback to _JobRow in Date view.
                         _JobRow(
                           job: job,
+                          jobsSignals: signals,
                           isNew: job.jobStatus == JobStatus.scheduled &&
                               !readJobIds.contains(job.id),
                           onMarkRead: () => signals.markJobAsRead(job.id),
@@ -1037,6 +1041,8 @@ class _JobRow extends StatefulWidget {
 // Gene - Nov, 20, 2026: Added isNew and onMarkRead properties to _JobRow for unread NEW badge display and click-to-read tracking.
 class _JobRow extends StatefulWidget {
   final JobOrderDto job;
+  // Gene - Nov, 25, 2026: Added optional JobsSignals to drive Start/Finish timing bar directly from list rows.
+  final JobsSignals? jobsSignals;
   final bool isNew;
   final VoidCallback? onMarkRead;
   final VoidCallback onTap;
@@ -1044,6 +1050,7 @@ class _JobRow extends StatefulWidget {
 
   const _JobRow({
     required this.job,
+    this.jobsSignals,
     this.isNew = false,
     this.onMarkRead,
     required this.onTap,
@@ -1234,22 +1241,36 @@ class _JobRowState extends State<_JobRow> {
       ),
       */
       // Gene - Oct 13, 2026: Disabled report shortcut button '>' for rescheduled jobs to prevent opening reports or modifying records.
+      // Gene - Nov, 25, 2026: Also gate report shortcut until technician taps Start (and re-lock after Finish).
       trailing: () {
         final isRescheduled =
             job.isRescheduled || job.siteException == SiteException.reschedule;
+        final isTimingLocked = job.canActivate && !job.isTimingInProgress;
+        final isLocked = isRescheduled || isTimingLocked;
+        final tooltip = isRescheduled
+            ? 'Rescheduled (report locked)'
+            : isTimingLocked
+                ? (job.isTimingFinished
+                    ? 'Work finished (report locked)'
+                    : 'Tap Start to open report')
+                : 'Open report';
         return Tooltip(
-          message:
-              isRescheduled ? 'Rescheduled (report locked)' : 'Open report',
+          message: tooltip,
           child: InkWell(
             key: ValueKey('job_report_shortcut_${job.id}'),
-            onTap: isRescheduled ? null : widget.onOpenReport,
+            onTap: isLocked
+                ? null
+                : () {
+                    widget.onMarkRead?.call();
+                    widget.onOpenReport?.call();
+                  },
             child: SizedBox(
               width: 48,
               child: Center(
                 child: Icon(
                   Icons.chevron_right_rounded,
                   size: 26,
-                  color: isRescheduled
+                  color: isLocked
                       ? (Theme.of(context).brightness == Brightness.dark
                           ? Colors.white24
                           : Colors.black26)
@@ -1333,6 +1354,46 @@ class _JobRowState extends State<_JobRow> {
       ],
 */
       // Gene - Nov, 20, 2026: Mark job as read when interacting with any footer action (Navigate, Call, SMS, or Details).
+      // Gene - Nov, 25, 2026: Added Start/Finish WorkTimingBar for active Job Orders above card footer actions.
+      timingBar: (job.canActivate && widget.jobsSignals != null)
+          ? Watch((context) {
+              final busy =
+                  widget.jobsSignals!.busyTimingJobIds.value.contains(job.id);
+              return WorkTimingBar(
+                status: job.workTimingStatus,
+                startTime: job.startTimeStamp,
+                endTime: job.endTimeStamp,
+                isBusy: busy,
+                startButtonKey: ValueKey('job_start_button_${job.id}'),
+                finishButtonKey: ValueKey('job_finish_button_${job.id}'),
+                finishedButtonKey: ValueKey('job_finished_button_${job.id}'),
+                onStart: () async {
+                  widget.onMarkRead?.call();
+                  final warning = await widget.jobsSignals!.startJob(job);
+                  if (warning != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(warning),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+                onFinish: () async {
+                  widget.onMarkRead?.call();
+                  final warning = await widget.jobsSignals!.finishJob(job);
+                  if (warning != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(warning),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+              );
+            })
+          : null,
       actions: [
         StatusRailAction(
           icon: Icons.navigation_rounded,

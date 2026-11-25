@@ -26,6 +26,8 @@ void main() {
     bool synced = true,
     DateTime? installed,
     String barangay = 'Batingan',
+    // Gene - Nov, 25, 2026: Optional active Start timestamp parameter for report-shortcut tests.
+    DateTime? startTimeStamp,
   }) =>
       JobOrderDto(
         id: id,
@@ -36,6 +38,7 @@ void main() {
         city: 'Binangonan',
         status: status,
         onsiteStatus: onsite,
+        startTimeStamp: startTimeStamp,
         contactNumber: '09171234567',
         rawJson: '{"applicantEmailAddress": "sub$id@example.com", '
             '"secondContactNumber": "09181234567"}',
@@ -327,7 +330,14 @@ void main() {
   testWidgets('trailing > button triggers report creation shortcut',
       (tester) async {
     JobOrderDto? reportJob;
-    await seed(tester, [job(1, 'Blaine Ivory Medel')]);
+    // Gene - Nov, 25, 2026: Seed active Start timestamp so report shortcut is unlocked on list card.
+    await seed(tester, [
+      job(
+        1,
+        'Blaine Ivory Medel',
+        startTimeStamp: DateTime.utc(2026, 11, 25, 8, 0),
+      ),
+    ]);
 
     tester.view.devicePixelRatio = 3.0;
     tester.view.physicalSize = const Size(402 * 3.0, 1000 * 3.0);

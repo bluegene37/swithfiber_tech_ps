@@ -8,6 +8,8 @@ import '../../../core/services/map_navigation_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/status_rail_row.dart';
+// Gene - Nov, 25, 2026: Added WorkTimingBar for Service Order Start/Finish lifecycle buttons on list cards.
+import '../../../core/widgets/work_timing_bar.dart';
 import '../../jobs/signals/jobs_signals.dart';
 import '../../lcp_nap/signals/lcp_nap_signals.dart';
 import '../models/service_order_model.dart';
@@ -520,6 +522,51 @@ class ServiceOrderCard extends StatelessWidget {
               ),
             ),
           ),
+
+          // Gene - Nov, 25, 2026: Render Start/Finish work timing bar above Navigate/Call/SMS strip.
+          if (order.isOpen || order.isTimingStarted) ...[
+            Container(height: 1, color: AppTheme.hairlineOf(context)),
+            Watch((context) {
+              final isBusy =
+                  signals.busyTimingOrderIds.value.contains(order.id);
+              return WorkTimingBar(
+                status: order.workTimingStatus,
+                startTime: order.startTimestamp,
+                endTime: order.stopTimestamp,
+                isBusy: isBusy,
+                startButtonKey:
+                    ValueKey('service_order_start_button_${order.id}'),
+                finishButtonKey:
+                    ValueKey('service_order_finish_button_${order.id}'),
+                finishedButtonKey:
+                    ValueKey('service_order_finished_button_${order.id}'),
+                onStart: () async {
+                  signals.markOrderAsRead(order.id);
+                  final warning = await signals.startOrder(order);
+                  if (warning != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(warning),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+                onFinish: () async {
+                  signals.markOrderAsRead(order.id);
+                  final warning = await signals.finishOrder(order);
+                  if (warning != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(warning),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+              );
+            }),
+          ],
 
           // 2. Action strip: the same Navigate | Call the Today cards carry,
           // in ink, 48dp each, under a hairline.

@@ -60,6 +60,9 @@ const Table jobOrdersTable = Table.localOnly('job_orders', [
   Column.text('signed_contract_image'),
   Column.text('house_front'),
   Column.text('assigned_email'),
+  // Gene - Nov, 25, 2026: Added start_timestamp and end_timestamp columns for Job Order Start/Finish timing tracking.
+  Column.text('start_timestamp'),
+  Column.text('end_timestamp'),
   Column.text('modified_date'),
   Column.text('raw_json'),
   Column.integer('is_synced'),

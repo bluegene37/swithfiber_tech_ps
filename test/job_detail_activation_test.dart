@@ -54,6 +54,8 @@ void main() {
         address: 'Lot 42, Fiber Street',
         status: 'Scheduled',
         onsiteStatus: 'Scheduled',
+        // Gene - Nov, 25, 2026: Seed active Start timestamp so detail CTAs are unlocked for completion flow tests.
+        startTimeStamp: DateTime.utc(2026, 11, 25, 8, 0),
         clientSignature: signature,
         modemRouterSN: serial,
       );

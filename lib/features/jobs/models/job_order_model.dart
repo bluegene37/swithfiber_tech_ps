@@ -6,6 +6,8 @@ import '../../../core/services/photo_storage_service.dart';
 import '../../../core/utils/data_url.dart';
 import '../../../core/database/sql_values.dart';
 import '../../catalogs/services/catalog_service.dart';
+// Gene - Nov, 25, 2026: Added shared work timing status helpers for Start/Finish lifecycle and gating.
+import '../../../core/widgets/work_timing_bar.dart';
 
 /// The two stages a job order moves through in the field.
 ///
@@ -300,6 +302,10 @@ class JobOrderDto {
   /// When the server record was last changed.
   final DateTime? modifiedDate;
 
+  // Gene - Nov, 25, 2026: Added technician Start/Finish work timestamps for Job Order timing and gating.
+  final DateTime? startTimeStamp;
+  final DateTime? endTimeStamp;
+
   final bool isSynced;
   final DateTime? updatedAt;
 
@@ -341,6 +347,8 @@ class JobOrderDto {
     this.materialsUsed = const {},
     this.assignedEmail,
     this.modifiedDate,
+    this.startTimeStamp,
+    this.endTimeStamp,
     this.isSynced = true,
     this.updatedAt,
   })  : _planName = planName,
@@ -383,6 +391,8 @@ class JobOrderDto {
     this.materialsUsed = const {},
     this.assignedEmail,
     this.modifiedDate,
+    this.startTimeStamp,
+    this.endTimeStamp,
     this.isSynced = true,
     this.updatedAt,
   })  : _planName = planName,
@@ -454,6 +464,16 @@ class JobOrderDto {
   */
   // Gene - Oct 6, 2026: Made rescheduled job orders view-only so they cannot be activated or reported on.
   bool get canActivate => !isHistory && !isRescheduled;
+
+  // Gene - Nov, 25, 2026: Added Start/Finish work timing status getters to gate editing until Start and re-lock on Finish.
+  WorkTimingStatus get workTimingStatus =>
+      resolveWorkTimingStatus(startTimeStamp, endTimeStamp);
+
+  bool get isTimingStarted => workTimingStatus != WorkTimingStatus.notStarted;
+  bool get isTimingInProgress =>
+      workTimingStatus == WorkTimingStatus.inProgress;
+  bool get isTimingFinished => workTimingStatus == WorkTimingStatus.finished;
+  bool get isWorkUnlocked => canActivate && isTimingInProgress;
 
   /// The next stage when the technician advances this job. A job outside the
   /// workflow goes straight to Completed.
@@ -984,6 +1004,12 @@ class JobOrderDto {
       modifiedDate: json['modifiedDate'] != null
           ? DateTime.tryParse(json['modifiedDate'].toString())
           : null,
+      // Gene - Nov, 25, 2026: Hydrate Start/Finish timestamps from API JSON, filtering sentinel default dates.
+      startTimeStamp: parseTimingTimestamp(
+          json['startTimeStamp'] ?? json['startTimestamp']),
+      endTimeStamp: parseTimingTimestamp(json['endTimeStamp'] ??
+          json['endTimestamp'] ??
+          json['stopTimestamp']),
       isSynced: true,
       updatedAt: DateTime.now(),
     );
@@ -1126,6 +1152,9 @@ class JobOrderDto {
       materialsUsed: materials,
       assignedEmail: rowText(row['assigned_email']),
       modifiedDate: rowDate(row['modified_date']),
+      // Gene - Nov, 25, 2026: Hydrate Start/Finish timestamps from SQLite columns.
+      startTimeStamp: normalizeTimingTimestamp(rowDate(row['start_timestamp'])),
+      endTimeStamp: normalizeTimingTimestamp(rowDate(row['end_timestamp'])),
       isSynced: rowBool(row['is_synced'], fallback: true),
       updatedAt: rowDate(row['updated_at']),
     );
@@ -1272,6 +1301,9 @@ class JobOrderDto {
       'signed_contract_image': signedContractImage,
       'house_front': houseFront,
       'assigned_email': assignedEmail,
+      // Gene - Nov, 25, 2026: Persist Start/Finish timestamps to job_orders SQLite columns.
+      'start_timestamp': dateText(startTimeStamp),
+      'end_timestamp': dateText(endTimeStamp),
       'modified_date': dateText(modifiedDate),
       'raw_json': rawJsonWithMaterials,
       'is_synced': boolInt(synced),
@@ -1462,6 +1494,22 @@ class JobOrderDto {
           ? server.assignedEmail
           : assignedEmail,
       modifiedDate: server.modifiedDate ?? modifiedDate,
+      // Gene - Nov, 25, 2026: Preserve non-sentinel Start/Finish timestamps when merging server rows.
+      startTimeStamp: normalizeTimingTimestamp(server.startTimeStamp) ??
+          normalizeTimingTimestamp(startTimeStamp),
+      endTimeStamp: () {
+        final sStart = normalizeTimingTimestamp(server.startTimeStamp) ??
+            normalizeTimingTimestamp(startTimeStamp);
+        final sEnd = normalizeTimingTimestamp(server.endTimeStamp);
+        final lEnd = normalizeTimingTimestamp(endTimeStamp);
+        if (sStart != null && sEnd != null && sEnd.isAfter(sStart)) {
+          return sEnd;
+        }
+        if (sStart != null && lEnd != null && lEnd.isAfter(sStart)) {
+          return lEnd;
+        }
+        return sEnd ?? lEnd;
+      }(),
       isSynced: true,
       updatedAt: DateTime.now(),
     );
@@ -1707,6 +1755,11 @@ class JobOrderDto {
       // Stamped on activation. Left out when unknown so a cached row from
       // before this column existed never blanks the office's assignment.
       if (assignedEmail != null) 'assignedEmail': assignedEmail,
+      // Gene - Nov, 25, 2026: Include recorded Start/Finish timestamps in UpdateJobOrderRequest edits when present.
+      if (startTimeStamp != null)
+        'startTimeStamp': startTimeStamp!.toUtc().toIso8601String(),
+      if (endTimeStamp != null)
+        'endTimeStamp': endTimeStamp!.toUtc().toIso8601String(),
     };
 
     if (materialsUsed.isNotEmpty) {

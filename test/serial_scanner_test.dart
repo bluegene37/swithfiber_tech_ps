@@ -117,6 +117,8 @@ void main() {
         emailAddress: 'bob@example.com',
         address: '456 Signal Rd',
         routerModemSN: 'OLD-SN-001',
+        // Gene - Nov, 25, 2026: Seed active Start timestamp so serial scanner buttons are unlocked.
+        startTimestamp: DateTime.utc(2026, 11, 25, 8, 0),
       );
 
       final signals = ServiceOrdersSignals();

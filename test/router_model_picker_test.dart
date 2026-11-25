@@ -158,6 +158,8 @@ void main() {
           concern: 'No Internet',
           priorityLevel: 'Urgent',
           routerModel: routerModel,
+          // Gene - Nov, 25, 2026: Seed active Start timestamp so repair form picker is unlocked.
+          startTimestamp: DateTime.utc(2026, 11, 25, 8, 0),
         );
 
     Future<void> pumpDetail(WidgetTester tester, ServiceOrderDto o) async {

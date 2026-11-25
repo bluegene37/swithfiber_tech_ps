@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:latlong2/latlong.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/database/sql_values.dart';
+// Gene - Nov, 25, 2026: Added shared work timing status helpers for Start/Finish lifecycle and gating.
+import '../../../core/widgets/work_timing_bar.dart';
 
 /// Data Transfer Object representing a Field Repair / Trouble Ticket / Service Order.
 class ServiceOrderDto {
@@ -434,9 +436,11 @@ class ServiceOrderDto {
       pulloutRouterModelSN: rowText(row['pullout_router_model_sn']),
       pulloutCPESN: rowText(row['pullout_cpe_sn']) ?? rawStr('pulloutCPESN'),
       pulloutRemarks: rowText(row['pullout_remarks']),
-      startTimestamp:
-          rowDate(row['start_timestamp']) ?? rawDt('startTimestamp'),
-      stopTimestamp: rowDate(row['stop_timestamp']) ?? rawDt('stopTimestamp'),
+      // Gene - Nov, 25, 2026: Drop sentinel default DateTime values when hydrating ServiceOrderDto timing from local storage.
+      startTimestamp: normalizeTimingTimestamp(
+          rowDate(row['start_timestamp']) ?? rawDt('startTimestamp')),
+      stopTimestamp: normalizeTimingTimestamp(
+          rowDate(row['stop_timestamp']) ?? rawDt('stopTimestamp')),
       modifiedBy: rowText(row['modified_by']) ?? rawStr('modifiedBy'),
       modifiedDate: rowDate(row['modified_date']) ?? rawDt('modifiedDate'),
       techModifiedDate:
@@ -575,6 +579,16 @@ class ServiceOrderDto {
       supportStatus.trim().toLowerCase() != 'resolved' &&
       supportStatus.trim().toLowerCase() != 'closed';
 
+  // Gene - Nov, 25, 2026: Added Start/Finish work timing status getters to gate editing until Start and re-lock on Finish.
+  WorkTimingStatus get workTimingStatus =>
+      resolveWorkTimingStatus(startTimestamp, stopTimestamp);
+
+  bool get isTimingStarted => workTimingStatus != WorkTimingStatus.notStarted;
+  bool get isTimingInProgress =>
+      workTimingStatus == WorkTimingStatus.inProgress;
+  bool get isTimingFinished => workTimingStatus == WorkTimingStatus.finished;
+  bool get isWorkUnlocked => isOpen && isTimingInProgress;
+
   bool isAssignedTo(String? email) {
     if (email == null || email.trim().isEmpty) return false;
     final mine = email.trim().toLowerCase();
@@ -690,8 +704,9 @@ class ServiceOrderDto {
       pulloutRouterModelSN: json['pulloutRouterModelSN']?.toString().trim(),
       pulloutCPESN: json['pulloutCPESN']?.toString().trim(),
       pulloutRemarks: json['pulloutRemarks']?.toString().trim(),
-      startTimestamp: parseDt(json['startTimestamp']),
-      stopTimestamp: parseDt(json['stopTimestamp']),
+      // Gene - Nov, 25, 2026: Drop sentinel default DateTime values when hydrating ServiceOrderDto timing from API JSON.
+      startTimestamp: normalizeTimingTimestamp(parseDt(json['startTimestamp'])),
+      stopTimestamp: normalizeTimingTimestamp(parseDt(json['stopTimestamp'])),
       modifiedBy: json['modifiedBy']?.toString().trim(),
       modifiedDate: parseDt(json['modifiedDate']),
       techModifiedDate: parseDt(json['techModifiedDate']),

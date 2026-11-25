@@ -254,4 +254,45 @@ class ServiceOrdersApi {
     );
     return response.statusCode == 200 || response.statusCode == 204;
   }
+
+  // Gene - Nov, 25, 2026: Added POST /ServiceOrders/createtiming and PUT /ServiceOrders/updatetiming for Start/Finish tracking.
+  Future<bool> createTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    DateTime? endTime,
+  }) async {
+    final startIso = startTime.toUtc().toIso8601String();
+    final endIso = (endTime ?? startTime).toUtc().toIso8601String();
+    final response = await _api.post(
+      '/ServiceOrders/createtiming',
+      data: {
+        'joId': joId,
+        'techId': techId,
+        'startTime': startIso,
+        'endTime': endIso,
+      },
+    );
+    return response.statusCode == 200 ||
+        response.statusCode == 201 ||
+        response.statusCode == 204;
+  }
+
+  Future<bool> updateTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    required DateTime endTime,
+  }) async {
+    final response = await _api.put(
+      '/ServiceOrders/updatetiming',
+      data: {
+        'joId': joId,
+        'techId': techId,
+        'startTime': startTime.toUtc().toIso8601String(),
+        'endTime': endTime.toUtc().toIso8601String(),
+      },
+    );
+    return response.statusCode == 200 || response.statusCode == 204;
+  }
 }

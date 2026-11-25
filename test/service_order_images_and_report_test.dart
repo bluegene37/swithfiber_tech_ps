@@ -90,6 +90,8 @@ void main() {
     double serviceCharge = 0.0,
     bool isSynced = true,
     String? rawJson,
+    // Gene - Nov, 25, 2026: Optional active Start timestamp parameter for unlocked detail tests.
+    DateTime? startTimestamp,
   }) =>
       ServiceOrderDto(
         id: id,
@@ -113,6 +115,7 @@ void main() {
         houseFrontPicture: houseFrontPicture,
         clientSignature: clientSignature,
         serviceCharge: serviceCharge,
+        startTimestamp: startTimestamp,
         isSynced: isSynced,
         rawJson: rawJson,
       );
@@ -504,9 +507,11 @@ void main() {
     testWidgets(
         'submitting ServiceOrderDetailScreen persists Repair Report fields, 4 independent photos, and copies report summary',
         (tester) async {
+      // Gene - Nov, 25, 2026: Seed active Start timestamp so ServiceOrderDetailScreen submit flow is unlocked.
       final order = makeOrder(
         id: 902,
         serviceCharge: 200.0,
+        startTimestamp: DateTime.utc(2026, 11, 25, 8, 0),
         rawJson: jsonEncode({
           'id': 902,
           'accountNumber': 'ACC-2026-501',

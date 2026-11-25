@@ -89,6 +89,15 @@ void main() {
       repository = JobRepository(db.jobOrdersDao);
       jobsSignals = JobsSignals(repository);
       await repository.seedSampleJobs();
+      // Gene - Nov, 25, 2026: Unlock seeded jobs with an active Start timestamp so Fill completion report renders.
+      for (final j in await db.jobOrdersDao.getAllJobs()) {
+        if (j.canActivate) {
+          await db.jobOrdersDao.updateJobTiming(
+            j.id,
+            startTimeStamp: DateTime.utc(2026, 11, 25, 8, 0),
+          );
+        }
+      }
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
 
@@ -186,6 +195,15 @@ void main() {
       repository = JobRepository(db.jobOrdersDao);
       jobsSignals = JobsSignals(repository);
       await repository.seedSampleJobs();
+      // Gene - Nov, 25, 2026: Unlock seeded jobs with an active Start timestamp so detail screen shows report button.
+      for (final j in await db.jobOrdersDao.getAllJobs()) {
+        if (j.canActivate) {
+          await db.jobOrdersDao.updateJobTiming(
+            j.id,
+            startTimeStamp: DateTime.utc(2026, 11, 25, 8, 0),
+          );
+        }
+      }
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
 

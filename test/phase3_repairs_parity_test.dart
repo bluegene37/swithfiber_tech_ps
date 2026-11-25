@@ -228,11 +228,18 @@ void main() {
     Future<void> pumpDetail(WidgetTester tester,
         {double textScale = 1.0}) async {
       signals.allOrders.value = [
-        _order(
+        ServiceOrderDto(
           id: 201,
+          accountNumber: 'ACC-201',
+          fullName: 'Subscriber 201',
+          contactNumber: '09171234567',
+          emailAddress: 'sub201@example.com',
+          address: 'Lot 201, Rizal St',
           concern: 'No Connection',
-          priority: 'Urgent',
-          coords: '14.47, 121.19',
+          priorityLevel: 'Urgent',
+          addressCoordinates: '14.47, 121.19',
+          // Gene - Nov, 25, 2026: Seed active Start timestamp so detail editing controls are unlocked.
+          startTimestamp: DateTime.utc(2026, 11, 25, 8, 0),
         ),
       ];
       tester.view.devicePixelRatio = 1.0;

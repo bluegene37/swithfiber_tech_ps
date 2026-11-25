@@ -7,6 +7,8 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/services/sound_service.dart';
 import '../../../core/storage/secure_storage_service.dart';
 import '../../../core/widgets/loading_states.dart';
+// Gene - Nov, 25, 2026: Added AuthSignals import to resolve technician ID for Start/Finish timing calls.
+import '../../auth/signals/auth_signals.dart';
 import '../models/job_order_images_model.dart';
 import '../models/job_order_model.dart';
 import '../repositories/job_repository.dart';
@@ -96,6 +98,9 @@ class JobsSignals {
   // Gene - Nov, 20, 2026: Track read job IDs per technician session so navigation bubbles only count unread dispatches.
   final readJobIds = signal<Set<int>>(<int>{});
   int _readLoadEpoch = 0;
+
+  // Gene - Nov, 25, 2026: Track in-flight Start/Finish timing requests per Job Order ID.
+  final busyTimingJobIds = signal<Set<int>>(<int>{});
 
   // Technician history: activated jobs whose assignedEmail matches the
   // signed-in technician, with their own date, area and search filters so the
@@ -481,6 +486,46 @@ class JobsSignals {
     if (job.isActivated) return;
     await repository.activateJob(job.id,
         technicianEmail: technicianEmail.value);
+  }
+
+  // Gene - Nov, 25, 2026: Start/Finish work timing actions on Job Orders; returns null when synced or a short warning when saved locally offline.
+  String _resolveTechId([String? override]) {
+    final explicit = override?.trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    final user = AuthSignals.instance.currentUser.value;
+    if (user != null) {
+      if (user.id > 0) return user.id.toString();
+      if (user.email.trim().isNotEmpty) return user.email.trim();
+    }
+    final email = technicianEmail.value?.trim();
+    if (email != null && email.isNotEmpty) return email;
+    return '0';
+  }
+
+  Future<String?> startJob(JobOrderDto job, {String? techId}) async {
+    if (busyTimingJobIds.value.contains(job.id)) return null;
+    busyTimingJobIds.value = {...busyTimingJobIds.value, job.id};
+    try {
+      await repository.startJobTiming(job.id, techId: _resolveTechId(techId));
+      return null;
+    } catch (e) {
+      return 'Started locally · sync pending ($e)';
+    } finally {
+      busyTimingJobIds.value = {...busyTimingJobIds.value}..remove(job.id);
+    }
+  }
+
+  Future<String?> finishJob(JobOrderDto job, {String? techId}) async {
+    if (busyTimingJobIds.value.contains(job.id)) return null;
+    busyTimingJobIds.value = {...busyTimingJobIds.value, job.id};
+    try {
+      await repository.finishJobTiming(job, techId: _resolveTechId(techId));
+      return null;
+    } catch (e) {
+      return 'Finished locally · sync pending ($e)';
+    } finally {
+      busyTimingJobIds.value = {...busyTimingJobIds.value}..remove(job.id);
+    }
   }
 
   /// Update tab filter

@@ -61,6 +61,27 @@ class _RecordingJobApi implements JobOrdersApi {
     calls.add('updateMultipart($id)');
     multipartUpdates[id] = formData;
   }
+
+  // Gene - Nov, 25, 2026: Stubbed timing methods on _RecordingJobApi test double.
+  @override
+  Future<void> createTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    DateTime? endTime,
+  }) async {
+    calls.add('createTiming($joId)');
+  }
+
+  @override
+  Future<void> updateTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    required DateTime endTime,
+  }) async {
+    calls.add('updateTiming($joId)');
+  }
 }
 
 JobOrderDto _createJob({

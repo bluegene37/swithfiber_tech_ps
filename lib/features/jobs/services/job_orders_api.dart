@@ -44,6 +44,23 @@ abstract class JobOrdersApi {
   /// `PUT /api/JobOrders/{id}` with multipart form data including photo files.
   Future<void> updateMultipart(int id, FormData formData) async =>
       update(id, {});
+
+  // Gene - Nov, 25, 2026: Added createtiming and updatetiming contract methods for Job Order Start/Finish tracking.
+  /// `POST /api/JobOrders/createtiming`: record technician start timestamp.
+  Future<void> createTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    DateTime? endTime,
+  }) async {}
+
+  /// `PUT /api/JobOrders/updatetiming`: record technician finish timestamp.
+  Future<void> updateTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    required DateTime endTime,
+  }) async {}
 }
 
 /// [JobOrdersApi] over the shared, certificate-pinned [ApiClient].
@@ -186,6 +203,45 @@ class DioJobOrdersApi implements JobOrdersApi {
         contentType: 'multipart/form-data',
         extra: {ApiClient.skipAuthOption: true},
       ),
+    );
+  }
+
+  // Gene - Nov, 25, 2026: Added createtiming (POST) and updatetiming (PUT) implementations for Job Orders.
+  @override
+  Future<void> createTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    DateTime? endTime,
+  }) async {
+    final startIso = startTime.toUtc().toIso8601String();
+    final endIso = (endTime ?? startTime).toUtc().toIso8601String();
+    await _api.post(
+      '/JobOrders/createtiming',
+      data: {
+        'joId': joId,
+        'techId': techId,
+        'startTime': startIso,
+        'endTime': endIso,
+      },
+    );
+  }
+
+  @override
+  Future<void> updateTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    required DateTime endTime,
+  }) async {
+    await _api.put(
+      '/JobOrders/updatetiming',
+      data: {
+        'joId': joId,
+        'techId': techId,
+        'startTime': startTime.toUtc().toIso8601String(),
+        'endTime': endTime.toUtc().toIso8601String(),
+      },
     );
   }
 }

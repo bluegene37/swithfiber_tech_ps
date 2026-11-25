@@ -2,6 +2,8 @@ import 'dart:async';
 import '../../../core/database/daos/job_orders_dao.dart';
 import '../../../core/database/daos/sync_error_logs_dao.dart';
 import '../../../core/services/photo_storage_service.dart';
+// Gene - Nov, 25, 2026: Added shared timing helpers for Job Order Start/Finish tracking.
+import '../../../core/widgets/work_timing_bar.dart';
 import '../models/job_order_images_model.dart';
 import '../models/job_order_model.dart';
 import '../services/job_orders_api.dart';
@@ -278,6 +280,62 @@ class JobRepository {
 
     // 2. Proactively trigger background sync
     unawaited(syncWorker.syncPendingJobs());
+  }
+
+  // Gene - Nov, 25, 2026: Stamp local Job Order Start time and post POST /JobOrders/createtiming.
+  Future<DateTime> startJobTiming(int id, {required String techId}) async {
+    final now = DateTime.now().toUtc();
+    await _dao.updateJobTiming(id, startTimeStamp: now);
+    try {
+      await _api.createTiming(
+        joId: id,
+        techId: techId,
+        startTime: now,
+        endTime: now,
+      );
+    } catch (_) {
+      // Keep local unlock and queue via syncPendingJobs on failure.
+      await _dao.updateJobTiming(id, startTimeStamp: now, isSynced: false);
+      await syncWorker.refreshPendingCount();
+      rethrow;
+    }
+    return now;
+  }
+
+  // Gene - Nov, 25, 2026: Stamp local Job Order Finish time and send PUT /JobOrders/updatetiming.
+  Future<DateTime> finishJobTiming(
+    JobOrderDto job, {
+    required String techId,
+  }) async {
+    final start = normalizeTimingTimestamp(job.startTimeStamp) ??
+        DateTime.now().toUtc().subtract(const Duration(seconds: 1));
+    var end = DateTime.now().toUtc();
+    if (!end.isAfter(start)) {
+      end = start.add(const Duration(seconds: 1));
+    }
+    await _dao.updateJobTiming(
+      job.id,
+      startTimeStamp: start,
+      endTimeStamp: end,
+    );
+    try {
+      await _api.updateTiming(
+        joId: job.id,
+        techId: techId,
+        startTime: start,
+        endTime: end,
+      );
+    } catch (_) {
+      await _dao.updateJobTiming(
+        job.id,
+        startTimeStamp: start,
+        endTimeStamp: end,
+        isSynced: false,
+      );
+      await syncWorker.refreshPendingCount();
+      rethrow;
+    }
+    return end;
   }
 
   /// Save completion report details locally and queue for sync.

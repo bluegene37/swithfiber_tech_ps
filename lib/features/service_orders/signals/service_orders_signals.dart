@@ -11,6 +11,9 @@ import '../../../core/database/daos/service_orders_dao.dart';
 import '../../../core/database/daos/sync_error_logs_dao.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/storage/secure_storage_service.dart';
+// Gene - Nov, 25, 2026: Added shared work timing helpers and AuthSignals for Start/Finish timing tracking.
+import '../../../core/widgets/work_timing_bar.dart';
+import '../../auth/signals/auth_signals.dart';
 import '../models/service_order_images_model.dart';
 import '../models/service_order_model.dart';
 import '../services/service_orders_api.dart';
@@ -580,12 +583,36 @@ class ServiceOrdersSignals {
 
       if (dao != null) {
         final pending = await dao!.getUnsyncedIds();
+        // Gene - Nov, 25, 2026: Preserve local Start/Stop timestamps when server GET rows omit them.
+        final existingOrders = await dao!.getAllOrders();
+        final existingMap = {for (final o in existingOrders) o.id: o};
         final fresh = <ServiceOrderDto>[];
         final keep = <int>{};
         for (final dto in scopedList) {
           keep.add(dto.id);
           if (pending.contains(dto.id)) continue;
-          fresh.add(dto);
+          final existing = existingMap[dto.id];
+          if (existing != null) {
+            final mergedStart = normalizeTimingTimestamp(dto.startTimestamp) ??
+                normalizeTimingTimestamp(existing.startTimestamp);
+            final serverStop = normalizeTimingTimestamp(dto.stopTimestamp);
+            final localStop = normalizeTimingTimestamp(existing.stopTimestamp);
+            final mergedStop = (mergedStart != null &&
+                    serverStop != null &&
+                    serverStop.isAfter(mergedStart))
+                ? serverStop
+                : (mergedStart != null &&
+                        localStop != null &&
+                        localStop.isAfter(mergedStart))
+                    ? localStop
+                    : (serverStop ?? localStop);
+            fresh.add(dto.copyWith(
+              startTimestamp: mergedStart,
+              stopTimestamp: mergedStop,
+            ));
+          } else {
+            fresh.add(dto);
+          }
         }
         if (fresh.isNotEmpty) {
           await dao!.insertAllOrders(fresh, synced: true);
@@ -690,5 +717,106 @@ class ServiceOrdersSignals {
       isSyncing.value = false;
     }
     return false;
+  }
+
+  // Gene - Nov, 25, 2026: Track in-flight Start/Finish timing calls and persist/sync Service Order work timing.
+  final busyTimingOrderIds = signal<Set<int>>(<int>{});
+
+  String _resolveTechId([String? override]) {
+    final explicit = override?.trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    final user = AuthSignals.instance.currentUser.value;
+    if (user != null) {
+      if (user.id > 0) return user.id.toString();
+      if (user.email.trim().isNotEmpty) return user.email.trim();
+    }
+    final email = technicianEmail.value?.trim();
+    if (email != null && email.isNotEmpty) return email;
+    return '0';
+  }
+
+  void _upsertInMemoryOrder(ServiceOrderDto order) {
+    final list = List<ServiceOrderDto>.from(allOrders.value);
+    final idx = list.indexWhere((o) => o.id == order.id);
+    if (idx != -1) {
+      list[idx] = order;
+    } else {
+      list.insert(0, order);
+    }
+    allOrders.value = list;
+  }
+
+  Future<String?> startOrder(ServiceOrderDto order, {String? techId}) async {
+    if (busyTimingOrderIds.value.contains(order.id)) return null;
+    busyTimingOrderIds.value = {...busyTimingOrderIds.value, order.id};
+    final now = DateTime.now().toUtc();
+    final updated = order.copyWith(
+      startTimestamp: now,
+      updatedAt: now,
+    );
+    _upsertInMemoryOrder(updated);
+    if (dao != null) {
+      await dao!.insertOrUpdateOrder(updated, synced: true);
+    }
+    try {
+      await api.createTiming(
+        joId: order.id,
+        techId: _resolveTechId(techId),
+        startTime: now,
+        endTime: now,
+      );
+      return null;
+    } catch (e) {
+      final unsynced = updated.copyWith(isSynced: false);
+      _upsertInMemoryOrder(unsynced);
+      if (dao != null) {
+        await dao!.insertOrUpdateOrder(unsynced, synced: false);
+        await syncWorker?.refreshPendingCount();
+      }
+      return 'Started locally · sync pending ($e)';
+    } finally {
+      busyTimingOrderIds.value = {...busyTimingOrderIds.value}
+        ..remove(order.id);
+    }
+  }
+
+  Future<String?> finishOrder(ServiceOrderDto order, {String? techId}) async {
+    if (busyTimingOrderIds.value.contains(order.id)) return null;
+    busyTimingOrderIds.value = {...busyTimingOrderIds.value, order.id};
+    final start = normalizeTimingTimestamp(order.startTimestamp) ??
+        DateTime.now().toUtc().subtract(const Duration(seconds: 1));
+    var end = DateTime.now().toUtc();
+    if (!end.isAfter(start)) {
+      end = start.add(const Duration(seconds: 1));
+    }
+    final updated = order.copyWith(
+      startTimestamp: start,
+      stopTimestamp: end,
+      updatedAt: end,
+    );
+    _upsertInMemoryOrder(updated);
+    if (dao != null) {
+      await dao!.insertOrUpdateOrder(updated, synced: true);
+    }
+    try {
+      await api.updateTiming(
+        joId: order.id,
+        techId: _resolveTechId(techId),
+        startTime: start,
+        endTime: end,
+      );
+      return null;
+    } catch (e) {
+      final unsynced = updated.copyWith(isSynced: false);
+      _upsertInMemoryOrder(unsynced);
+      if (dao != null) {
+        await dao!.insertOrUpdateOrder(unsynced, synced: false);
+        await syncWorker?.refreshPendingCount();
+      }
+      return 'Finished locally · sync pending ($e)';
+    } finally {
+      busyTimingOrderIds.value = {...busyTimingOrderIds.value}
+        ..remove(order.id);
+    }
   }
 }

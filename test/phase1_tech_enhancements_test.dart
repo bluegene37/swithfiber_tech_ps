@@ -317,6 +317,8 @@ void main() {
           address: 'Lot 42',
           status: 'Scheduled',
           onsiteStatus: 'Done',
+          // Gene - Nov, 25, 2026: Seed active Start timestamp so Edit completion report CTA is unlocked.
+          startTimeStamp: DateTime.utc(2026, 11, 25, 8, 0),
           lcpId: 1,
           napId: 12,
           nap: 'NAP 008',

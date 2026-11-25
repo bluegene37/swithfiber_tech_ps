@@ -170,9 +170,12 @@ void main() {
           ServiceOrdersSignals(api: mockApi, dao: db.serviceOrdersDao);
       addTearDown(signals.dispose);
 
+      // Gene - Nov, 25, 2026: Seed active Start timestamp so pullout remarks editing and completion are unlocked.
       await tester.runAsync(() async {
-        await db.serviceOrdersDao
-            .insertOrUpdateOrder(samplePullout, synced: true);
+        await db.serviceOrdersDao.insertOrUpdateOrder(
+            samplePullout.copyWith(
+                startTimestamp: DateTime.utc(2026, 11, 25, 8, 0)),
+            synced: true);
         await Future<void>.delayed(const Duration(milliseconds: 100));
       });
       await tester.pump();

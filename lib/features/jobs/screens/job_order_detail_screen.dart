@@ -17,6 +17,8 @@ import '../../../core/widgets/action_pair.dart';
 import '../../../core/widgets/adaptive_dialogs.dart';
 import '../../../core/widgets/status_stamp.dart';
 import '../../../core/widgets/sticky_action_bar.dart';
+// Gene - Nov, 25, 2026: Added WorkTimingLockBanner to show Start/Finish lock state on Job Order details.
+import '../../../core/widgets/work_timing_bar.dart';
 import '../widgets/job_contact.dart';
 import '../widgets/job_navigation.dart';
 import '../../diagnostics/widgets/radius_connection_card.dart';
@@ -144,10 +146,17 @@ class JobOrderDetailScreen extends StatelessWidget {
                 ),
               ),
               // Gene - Nov, 23, 2026: Allow re-opening a filed completion report from AppBar before finalizing.
+              // Gene - Nov, 25, 2026: Require active Start/Finish work timing unlock before allowing report edits.
+              /*
               if (!readOnly &&
                   job.hasCompletedReport &&
                   job.canActivate &&
                   !job.isRescheduled &&
+                  job.siteException != SiteException.reschedule)
+              */
+              if (!readOnly &&
+                  job.hasCompletedReport &&
+                  job.isWorkUnlocked &&
                   job.siteException != SiteException.reschedule)
                 IconButton(
                   key: const ValueKey('appbar_edit_report_button'),
@@ -187,9 +196,17 @@ class JobOrderDetailScreen extends StatelessWidget {
           bottomNavigationBar: readOnly || !job.canActivate || job.isRescheduled
           */
           // Gene - Oct 13, 2026: Hide action bar if job is rescheduled or has reschedule site exception so completion reports cannot be filed.
+          // Gene - Nov, 25, 2026: Also hide completion/report CTA until technician taps Start (and re-lock after Finish).
+          /*
           bottomNavigationBar: readOnly ||
                   !job.canActivate ||
                   job.isRescheduled ||
+                  job.siteException == SiteException.reschedule
+              ? null
+              : StickyActionBar(
+          */
+          bottomNavigationBar: readOnly ||
+                  !job.isWorkUnlocked ||
                   job.siteException == SiteException.reschedule
               ? null
               : StickyActionBar(
@@ -210,6 +227,17 @@ class JobOrderDetailScreen extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(
                 16, 12, 16, 16 + MediaQuery.of(context).padding.bottom),
             children: [
+              // Gene - Nov, 25, 2026: Show Start/Finish lock banner when Job Order editing/reporting is locked.
+              if (!readOnly &&
+                  job.canActivate &&
+                  job.siteException != SiteException.reschedule &&
+                  !job.isTimingInProgress)
+                WorkTimingLockBanner(
+                  key: const ValueKey('job_timing_lock_banner'),
+                  status: job.workTimingStatus,
+                  startTime: job.startTimeStamp,
+                  endTime: job.endTimeStamp,
+                ),
               // Read first: who and where, then the two actions the thumb
               // needs on arrival.
               _buildHeader(context, job, isDark),
@@ -524,7 +552,10 @@ class JobOrderDetailScreen extends StatelessWidget {
                   ],
                 ),
                 // Gene - Oct 12, 2026: Changed action icon to standard 20px size floor.
-                if (!readOnly && !job.isRescheduled)
+                // Gene - Nov, 25, 2026: Gate Fill Report shortcut until Start is clicked and before Finish.
+                if (!readOnly &&
+                    job.isWorkUnlocked &&
+                    job.siteException != SiteException.reschedule)
                   TextButton.icon(
                     onPressed: () => _handleOpenReport(context, job),
                     icon: const Icon(Icons.edit_note_rounded, size: 20),
@@ -732,7 +763,8 @@ class JobOrderDetailScreen extends StatelessWidget {
         ),
         */
         // Gene - Oct 6, 2026: Lock status editing on rescheduled jobs by hiding the Change button.
-        if (!job.isRescheduled)
+        // Gene - Nov, 25, 2026: Also require active Start/Finish work unlock to change status.
+        if (!readOnly && job.isWorkUnlocked)
           TextButton.icon(
             key: const ValueKey('job_status_change'),
             onPressed: () => _handleChangeStatus(context, job),
@@ -2453,7 +2485,10 @@ class JobOrderDetailScreen extends StatelessWidget {
               ),
             ],
           ),
-          if (!readOnly && job.canActivate && !job.isRescheduled) ...[
+          // Gene - Nov, 25, 2026: Require active Start/Finish work unlock to edit a filed completion report.
+          if (!readOnly &&
+              job.isWorkUnlocked &&
+              job.siteException != SiteException.reschedule) ...[
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
