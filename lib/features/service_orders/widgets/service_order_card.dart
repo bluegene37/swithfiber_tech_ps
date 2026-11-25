@@ -32,8 +32,20 @@ class ServiceOrderCard extends StatelessWidget {
     this.jobsSignals,
   });
 
+  // @override
+  // Widget build(BuildContext context) {
+  // Gene - Nov, 26, 2026: Wrap card in Watch so Start/Finish reactively unlocks/re-locks card tap and footer actions.
   @override
   Widget build(BuildContext context) {
+    return Watch((context) => _buildCardContent(context));
+  }
+
+  Widget _buildCardContent(BuildContext context) {
+    final order = signals.allOrders.value
+            .where((o) => o.id == this.order.id)
+            .firstOrNull ??
+        this.order;
+    final isTimingLocked = order.isOpen && !order.isTimingInProgress;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isUrgent = order.isUrgent;
 
@@ -71,6 +83,7 @@ class ServiceOrderCard extends StatelessWidget {
           Material(
             color: Colors.transparent,
             child: InkWell(
+              key: ValueKey('service_order_card_tap_${order.id}'),
               /*
               onTap: () {
                 Navigator.of(context).push(
@@ -84,19 +97,35 @@ class ServiceOrderCard extends StatelessWidget {
               },
               */
               // Gene - Nov, 20, 2026: Mark service order as read when card is tapped before opening details.
-              onTap: () {
-                signals.markOrderAsRead(order.id);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ServiceOrderDetailScreen(
-                      orderId: order.id,
-                      signals: signals,
-                      lcpNapSignals: lcpNapSignals,
-                      jobsSignals: jobsSignals,
-                    ),
-                  ),
-                );
-              },
+              // onTap: () {
+              //   signals.markOrderAsRead(order.id);
+              //   Navigator.of(context).push(
+              //     MaterialPageRoute(
+              //       builder: (_) => ServiceOrderDetailScreen(
+              //         orderId: order.id,
+              //         signals: signals,
+              //         lcpNapSignals: lcpNapSignals,
+              //         jobsSignals: jobsSignals,
+              //       ),
+              //     ),
+              //   );
+              // },
+              // Gene - Nov, 26, 2026: Disable opening Service Order details until technician taps Start (and re-lock after Finish).
+              onTap: isTimingLocked
+                  ? null
+                  : () {
+                      signals.markOrderAsRead(order.id);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ServiceOrderDetailScreen(
+                            orderId: order.id,
+                            signals: signals,
+                            lcpNapSignals: lcpNapSignals,
+                            jobsSignals: jobsSignals,
+                          ),
+                        ),
+                      );
+                    },
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
                 child: Column(
@@ -529,11 +558,54 @@ class ServiceOrderCard extends StatelessWidget {
             Watch((context) {
               final isBusy =
                   signals.busyTimingOrderIds.value.contains(order.id);
+              // return WorkTimingBar(
+              //   status: order.workTimingStatus,
+              //   startTime: order.startTimestamp,
+              //   endTime: order.stopTimestamp,
+              //   isBusy: isBusy,
+              //   startButtonKey:
+              //       ValueKey('service_order_start_button_${order.id}'),
+              //   finishButtonKey:
+              //       ValueKey('service_order_finish_button_${order.id}'),
+              //   finishedButtonKey:
+              //       ValueKey('service_order_finished_button_${order.id}'),
+              //   onStart: () async {
+              //     signals.markOrderAsRead(order.id);
+              //     final warning = await signals.startOrder(order);
+              //     if (warning != null && context.mounted) {
+              //       ScaffoldMessenger.of(context).showSnackBar(
+              //         SnackBar(
+              //           content: Text(warning),
+              //           behavior: SnackBarBehavior.floating,
+              //         ),
+              //       );
+              //     }
+              //   },
+              //   onFinish: () async {
+              //     signals.markOrderAsRead(order.id);
+              //     final warning = await signals.finishOrder(order);
+              //     if (warning != null && context.mounted) {
+              //       ScaffoldMessenger.of(context).showSnackBar(
+              //         SnackBar(
+              //           content: Text(warning),
+              //           behavior: SnackBarBehavior.floating,
+              //         ),
+              //       );
+              //     }
+              //   },
+              // );
+              // Gene - Nov, 26, 2026: Hide Start when another Job Order or Service Order is already active.
+              final activeOrder = signals.activeStartedOrder.value;
+              final activeJob = jobsSignals?.activeStartedJob.value;
+              final hasOtherActiveOrder =
+                  (activeOrder != null && activeOrder.id != order.id) ||
+                      activeJob != null;
               return WorkTimingBar(
                 status: order.workTimingStatus,
                 startTime: order.startTimestamp,
                 endTime: order.stopTimestamp,
                 isBusy: isBusy,
+                hideStart: hasOtherActiveOrder,
                 startButtonKey:
                     ValueKey('service_order_start_button_${order.id}'),
                 finishButtonKey:
@@ -542,7 +614,10 @@ class ServiceOrderCard extends StatelessWidget {
                     ValueKey('service_order_finished_button_${order.id}'),
                 onStart: () async {
                   signals.markOrderAsRead(order.id);
-                  final warning = await signals.startOrder(order);
+                  final warning = await signals.startOrder(
+                    order,
+                    hasOtherActiveOrder: hasOtherActiveOrder,
+                  );
                   if (warning != null && context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -579,6 +654,7 @@ class ServiceOrderCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: StatusRailAction(
+                      key: ValueKey('so_action_navigate_${order.id}'),
                       icon: Icons.navigation_rounded,
                       label: 'Navigate',
                       /*
@@ -598,29 +674,51 @@ class ServiceOrderCard extends StatelessWidget {
                       },
                       */
                       // Gene - Nov, 20, 2026: Mark service order as read when Navigate action is tapped.
-                      onTap: () async {
-                        signals.markOrderAsRead(order.id);
-                        final latLng = order.latLng;
-                        if (latLng != null) {
-                          await MapNavigationService.navigateTo(
-                            latLng,
-                            label: order.fullName,
-                            context: context,
-                          );
-                        } else {
-                          final fullAddr =
-                              '${order.address}${order.barangay != null ? ", ${order.barangay}" : ""}${order.city != null ? ", ${order.city}" : ""}, Philippines';
-                          await MapNavigationService.navigateToAddress(
-                            fullAddr,
-                            context: context,
-                          );
-                        }
-                      },
+                      // onTap: () async {
+                      //   signals.markOrderAsRead(order.id);
+                      //   final latLng = order.latLng;
+                      //   if (latLng != null) {
+                      //     await MapNavigationService.navigateTo(
+                      //       latLng,
+                      //       label: order.fullName,
+                      //       context: context,
+                      //     );
+                      //   } else {
+                      //     final fullAddr =
+                      //         '${order.address}${order.barangay != null ? ", ${order.barangay}" : ""}${order.city != null ? ", ${order.city}" : ""}, Philippines';
+                      //     await MapNavigationService.navigateToAddress(
+                      //       fullAddr,
+                      //       context: context,
+                      //     );
+                      //   }
+                      // },
+                      // Gene - Nov, 26, 2026: Disable Navigate action until Service Order is started.
+                      onTap: isTimingLocked
+                          ? null
+                          : () async {
+                              signals.markOrderAsRead(order.id);
+                              final latLng = order.latLng;
+                              if (latLng != null) {
+                                await MapNavigationService.navigateTo(
+                                  latLng,
+                                  label: order.fullName,
+                                  context: context,
+                                );
+                              } else {
+                                final fullAddr =
+                                    '${order.address}${order.barangay != null ? ", ${order.barangay}" : ""}${order.city != null ? ", ${order.city}" : ""}, Philippines';
+                                await MapNavigationService.navigateToAddress(
+                                  fullAddr,
+                                  context: context,
+                                );
+                              }
+                            },
                     ),
                   ),
                   Container(width: 1, color: AppTheme.hairlineOf(context)),
                   Expanded(
                     child: StatusRailAction(
+                      key: ValueKey('so_action_call_${order.id}'),
                       icon: Icons.call_rounded,
                       label: 'Call',
                       /*
@@ -635,7 +733,18 @@ class ServiceOrderCard extends StatelessWidget {
                             },
                       */
                       // Gene - Nov, 20, 2026: Mark service order as read when Call action is tapped.
-                      onTap: order.contactNumber.isEmpty
+                      // onTap: order.contactNumber.isEmpty
+                      //     ? null
+                      //     : () async {
+                      //         signals.markOrderAsRead(order.id);
+                      //         final uri =
+                      //             Uri.parse('tel:${order.contactNumber}');
+                      //         if (await canLaunchUrl(uri)) {
+                      //           await launchUrl(uri);
+                      //         }
+                      //       },
+                      // Gene - Nov, 26, 2026: Disable Call action until Service Order is started.
+                      onTap: (isTimingLocked || order.contactNumber.isEmpty)
                           ? null
                           : () async {
                               signals.markOrderAsRead(order.id);
@@ -651,27 +760,49 @@ class ServiceOrderCard extends StatelessWidget {
                   Container(width: 1, color: AppTheme.hairlineOf(context)),
                   Expanded(
                     child: StatusRailAction(
+                      key: ValueKey('so_action_sms_${order.id}'),
                       icon: Icons.sms_rounded,
                       label: 'SMS',
-                      onTap: order.contactNumber.trim().isEmpty
-                          ? null
-                          : () async {
-                              signals.markOrderAsRead(order.id);
-                              final raw = order.contactNumber.trim();
-                              final clean =
-                                  raw.replaceAll(RegExp(r'[^0-9+]'), '');
-                              final body =
-                                  'Good day ${order.fullName}, Switch Fiber Technician is arriving shortly for repair ticket SO-${order.id.toString().padLeft(4, '0')}.';
-                              final uri = Uri(
-                                scheme: 'sms',
-                                path: clean.isNotEmpty ? clean : raw,
-                                queryParameters: {'body': body},
-                              );
-                              try {
-                                await launchUrl(uri,
-                                    mode: LaunchMode.externalApplication);
-                              } catch (_) {}
-                            },
+                      // onTap: order.contactNumber.trim().isEmpty
+                      //     ? null
+                      //     : () async {
+                      //         signals.markOrderAsRead(order.id);
+                      //         final raw = order.contactNumber.trim();
+                      //         final clean =
+                      //             raw.replaceAll(RegExp(r'[^0-9+]'), '');
+                      //         final body =
+                      //             'Good day ${order.fullName}, Switch Fiber Technician is arriving shortly for repair ticket SO-${order.id.toString().padLeft(4, '0')}.';
+                      //         final uri = Uri(
+                      //           scheme: 'sms',
+                      //           path: clean.isNotEmpty ? clean : raw,
+                      //           queryParameters: {'body': body},
+                      //         );
+                      //         try {
+                      //           await launchUrl(uri,
+                      //               mode: LaunchMode.externalApplication);
+                      //         } catch (_) {}
+                      //       },
+                      // Gene - Nov, 26, 2026: Disable SMS action until Service Order is started.
+                      onTap:
+                          (isTimingLocked || order.contactNumber.trim().isEmpty)
+                              ? null
+                              : () async {
+                                  signals.markOrderAsRead(order.id);
+                                  final raw = order.contactNumber.trim();
+                                  final clean =
+                                      raw.replaceAll(RegExp(r'[^0-9+]'), '');
+                                  final body =
+                                      'Good day ${order.fullName}, Switch Fiber Technician is arriving shortly for repair ticket SO-${order.id.toString().padLeft(4, '0')}.';
+                                  final uri = Uri(
+                                    scheme: 'sms',
+                                    path: clean.isNotEmpty ? clean : raw,
+                                    queryParameters: {'body': body},
+                                  );
+                                  try {
+                                    await launchUrl(uri,
+                                        mode: LaunchMode.externalApplication);
+                                  } catch (_) {}
+                                },
                     ),
                   ),
                 ],

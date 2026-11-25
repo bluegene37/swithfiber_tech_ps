@@ -845,6 +845,11 @@ class ServiceOrderDto {
         'startTimestamp': startTimestamp!.toUtc().toIso8601String(),
       if (stopTimestamp != null)
         'stopTimestamp': stopTimestamp!.toUtc().toIso8601String(),
+      // Gene - Nov, 26, 2026: Compute numeric whole-minute duration for UpdateServiceOrderRequest when both Start and Stop timestamps are recorded.
+      if (startTimestamp != null &&
+          stopTimestamp != null &&
+          stopTimestamp!.isAfter(startTimestamp!))
+        'duration': formatTimingDurationMinutes(startTimestamp!, stopTimestamp!),
       'modifiedBy': modifiedBy,
       if (modifiedDate != null)
         'modifiedDate': modifiedDate!.toUtc().toIso8601String(),

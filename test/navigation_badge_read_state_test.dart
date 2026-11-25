@@ -70,6 +70,25 @@ class _StubServiceOrdersApi extends ServiceOrdersApi {
 
   @override
   Future<List<ServiceOrderDto>> fetchServiceOrders() async => orders;
+
+  // Gene - Nov, 26, 2026: Stub timing endpoints for Start/Finish unlock in read-state test.
+  @override
+  Future<bool> createTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    DateTime? endTime,
+  }) async =>
+      true;
+
+  @override
+  Future<bool> updateTiming({
+    required int joId,
+    required String techId,
+    required DateTime startTime,
+    required DateTime endTime,
+  }) async =>
+      true;
 }
 
 JobOrderDto _makeJob(
@@ -322,8 +341,16 @@ void main() {
       );
       expect(find.text('NEW'), findsOneWidget);
 
-      // 4. Clicking Details on the second job marks it read, opens JobOrderDetailScreen,
-      // and clears the Today bubble completely upon returning.
+      // 4. Start Job Two to unlock Details, open JobOrderDetailScreen,
+      // and clear the Today bubble completely upon returning, then Finish Job Two.
+      final jobTwoStart = find.byKey(const ValueKey('job_start_button_2'));
+      await tester.ensureVisible(jobTwoStart);
+      await tester.runAsync(() async {
+        await tester.tap(jobTwoStart);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      });
+      await tester.pumpAndSettle();
+
       final detailsButtons = find.text('DETAILS');
       expect(detailsButtons, findsNWidgets(3));
       final jobTwoRow = find.ancestor(
@@ -349,6 +376,12 @@ void main() {
       );
       expect(jobsSignals.unreadScheduledCount.value, 0);
 
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('job_finish_button_2')));
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      });
+      await tester.pumpAndSettle();
+
       // 5. Switch to Repairs tab: both repair cards display NEW tags.
       await tester.runAsync(() async {
         await tester.tap(find.text('Repairs'));
@@ -365,7 +398,13 @@ void main() {
         findsOneWidget,
       );
 
-      // 6. Tap first repair card -> opens details, marks read -> decrements Repairs bubble to 1.
+      // 6. Start first repair -> unlocks & marks read -> opens details -> decrements Repairs bubble to 1.
+      await tester.runAsync(() async {
+        await tester
+            .tap(find.byKey(const ValueKey('service_order_start_button_11')));
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      });
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Repair One'));
       await tester.pumpAndSettle();
       expect(find.byType(ServiceOrderDetailScreen), findsOneWidget);
@@ -382,7 +421,20 @@ void main() {
         findsOneWidget,
       );
 
-      // 7. Tap second repair card -> opens details, marks read -> clears Repairs bubble completely.
+      await tester.runAsync(() async {
+        await tester
+            .tap(find.byKey(const ValueKey('service_order_finish_button_11')));
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      });
+      await tester.pumpAndSettle();
+
+      // 7. Start second repair -> unlocks & opens details -> clears Repairs bubble completely.
+      await tester.runAsync(() async {
+        await tester
+            .tap(find.byKey(const ValueKey('service_order_start_button_12')));
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      });
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Repair Two'));
       await tester.pumpAndSettle();
       expect(find.byType(ServiceOrderDetailScreen), findsOneWidget);

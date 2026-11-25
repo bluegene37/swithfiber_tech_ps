@@ -127,7 +127,11 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
   }
   */
   // Gene - Nov, 20, 2026: Mark job order as read whenever its details are opened from the list, tablet pane, or map.
+  // Gene - Nov, 26, 2026: Disable opening active Job Order details until the technician taps Start (and re-lock after Finish).
   void _openDetails(JobOrderDto job) {
+    if (!_showDone && job.canActivate && !job.isTimingInProgress) {
+      return;
+    }
     widget.jobsSignals.markJobAsRead(job.id);
     if (widget.onSelectJobForDetails != null) {
       widget.onSelectJobForDetails!(job);
@@ -201,8 +205,14 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
   }
   */
   // Gene - Nov, 20, 2026: Mark job order as read when opening its completion report via the trailing shortcut.
+  // Gene - Nov, 26, 2026: Block opening completion report unless Job Order is unlocked via Start.
   void _openReport(JobOrderDto job) {
-    if (job.isRescheduled || job.siteException == SiteException.reschedule) {
+    // if (job.isRescheduled || job.siteException == SiteException.reschedule) {
+    //   return;
+    // }
+    if (job.isRescheduled ||
+        job.siteException == SiteException.reschedule ||
+        !job.isWorkUnlocked) {
       return;
     }
     widget.jobsSignals.markJobAsRead(job.id);
@@ -676,9 +686,11 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
                     ),
                     */
                     // Gene - Nov, 20, 2026: Pass unread NEW state and read-marking callback to _JobRow in Barangay view.
+                    // Gene - Nov, 26, 2026: Forward serviceOrdersSignals to hide Start across Job Orders and Service Orders when one is active.
                     _JobRow(
                       job: job,
                       jobsSignals: signals,
+                      serviceOrdersSignals: widget.serviceOrdersSignals,
                       isNew: job.jobStatus == JobStatus.scheduled &&
                           !readJobIds.contains(job.id),
                       onMarkRead: () => signals.markJobAsRead(job.id),
@@ -734,9 +746,11 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
                         ),
                         */
                         // Gene - Nov, 20, 2026: Pass unread NEW state and read-marking callback to _JobRow in Date view.
+                        // Gene - Nov, 26, 2026: Forward serviceOrdersSignals to hide Start across Job Orders and Service Orders when one is active.
                         _JobRow(
                           job: job,
                           jobsSignals: signals,
+                          serviceOrdersSignals: widget.serviceOrdersSignals,
                           isNew: job.jobStatus == JobStatus.scheduled &&
                               !readJobIds.contains(job.id),
                           onMarkRead: () => signals.markJobAsRead(job.id),
@@ -985,6 +999,8 @@ class _JobRow extends StatelessWidget {
       if (job.secondContactNumber != null) job.secondContactNumber!,
     ].join(' · ');
     final email = job.subscriberEmail;
+    // Gene - Nov, 26, 2026: Disable Details, Navigate, Call, SMS, and Copy contact until technician taps Start (and re-lock on Finish).
+    final isTimingLocked = job.canActivate && !job.isTimingInProgress;
 
     return StatusRailRow(
       leading: distanceLabelFor(job),
@@ -1043,6 +1059,8 @@ class _JobRow extends StatefulWidget {
   final JobOrderDto job;
   // Gene - Nov, 25, 2026: Added optional JobsSignals to drive Start/Finish timing bar directly from list rows.
   final JobsSignals? jobsSignals;
+  // Gene - Nov, 26, 2026: Added optional ServiceOrdersSignals so Job rows know if a Service Order is already active.
+  final ServiceOrdersSignals? serviceOrdersSignals;
   final bool isNew;
   final VoidCallback? onMarkRead;
   final VoidCallback onTap;
@@ -1051,6 +1069,7 @@ class _JobRow extends StatefulWidget {
   const _JobRow({
     required this.job,
     this.jobsSignals,
+    this.serviceOrdersSignals,
     this.isNew = false,
     this.onMarkRead,
     required this.onTap,
@@ -1102,6 +1121,8 @@ class _JobRowState extends State<_JobRow> {
       if (job.secondContactNumber != null) job.secondContactNumber!,
     ].join(' · ');
     final email = job.subscriberEmail;
+    // Gene - Nov, 26, 2026: Disable Details, Navigate, Call, SMS, and Copy contact until technician taps Start (and re-lock on Finish).
+    final isTimingLocked = job.canActivate && !job.isTimingInProgress;
 
 /*
     return StatusRailRow(
@@ -1133,7 +1154,13 @@ class _JobRowState extends State<_JobRow> {
                       icon: Icons.hub_outlined, text: plant, mono: true),
                 if (job.planName?.isNotEmpty == true)
                   _DetailLine(icon: Icons.wifi_rounded, text: job.planName!),
-                _ContactLines(phone: phone, email: email, job: job),
+                // _ContactLines(phone: phone, email: email, job: job),
+                _ContactLines(
+                  phone: phone,
+                  email: email,
+                  job: job,
+                  enabled: !isTimingLocked,
+                ),
               ],
             )
           : null,
@@ -1293,7 +1320,13 @@ class _JobRowState extends State<_JobRow> {
                       icon: Icons.hub_outlined, text: plant, mono: true),
                 if (job.planName?.isNotEmpty == true)
                   _DetailLine(icon: Icons.wifi_rounded, text: job.planName!),
-                _ContactLines(phone: phone, email: email, job: job),
+                // _ContactLines(phone: phone, email: email, job: job),
+                _ContactLines(
+                  phone: phone,
+                  email: email,
+                  job: job,
+                  enabled: !isTimingLocked,
+                ),
               ],
             )
           : null,
@@ -1355,21 +1388,33 @@ class _JobRowState extends State<_JobRow> {
 */
       // Gene - Nov, 20, 2026: Mark job as read when interacting with any footer action (Navigate, Call, SMS, or Details).
       // Gene - Nov, 25, 2026: Added Start/Finish WorkTimingBar for active Job Orders above card footer actions.
+      // Gene - Nov, 26, 2026: Hide Start when another Job Order or Service Order is already active, and disable Navigate/Call/SMS/Details while locked.
       timingBar: (job.canActivate && widget.jobsSignals != null)
           ? Watch((context) {
               final busy =
                   widget.jobsSignals!.busyTimingJobIds.value.contains(job.id);
+              final activeJob = widget.jobsSignals!.activeStartedJob.value;
+              final activeServiceOrder =
+                  widget.serviceOrdersSignals?.activeStartedOrder.value;
+              final hasOtherActiveOrder =
+                  (activeJob != null && activeJob.id != job.id) ||
+                      activeServiceOrder != null;
               return WorkTimingBar(
                 status: job.workTimingStatus,
                 startTime: job.startTimeStamp,
                 endTime: job.endTimeStamp,
                 isBusy: busy,
+                hideStart: hasOtherActiveOrder,
                 startButtonKey: ValueKey('job_start_button_${job.id}'),
                 finishButtonKey: ValueKey('job_finish_button_${job.id}'),
                 finishedButtonKey: ValueKey('job_finished_button_${job.id}'),
                 onStart: () async {
                   widget.onMarkRead?.call();
-                  final warning = await widget.jobsSignals!.startJob(job);
+                  // final warning = await widget.jobsSignals!.startJob(job);
+                  final warning = await widget.jobsSignals!.startJob(
+                    job,
+                    hasOtherActiveOrder: hasOtherActiveOrder,
+                  );
                   if (warning != null && context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -1394,39 +1439,80 @@ class _JobRowState extends State<_JobRow> {
               );
             })
           : null,
+      // actions: [
+      //   StatusRailAction(
+      //     icon: Icons.navigation_rounded,
+      //     label: 'Navigate',
+      //     onTap: () {
+      //       widget.onMarkRead?.call();
+      //       /*
+      //       navigateToJob(job);
+      //       */
+      //       // Gene - Nov, 23, 2026: Pass BuildContext so Always Ask navigation preference can present app chooser sheet.
+      //       navigateToJob(job, context: context);
+      //     },
+      //   ),
+      //   StatusRailAction(
+      //     icon: Icons.call_rounded,
+      //     label: 'Call',
+      //     onTap: () {
+      //       widget.onMarkRead?.call();
+      //       callJob(context, job);
+      //     },
+      //   ),
+      //   StatusRailAction(
+      //     icon: Icons.sms_rounded,
+      //     label: 'SMS',
+      //     onTap: () {
+      //       widget.onMarkRead?.call();
+      //       smsJob(context, job);
+      //     },
+      //   ),
+      //   StatusRailAction(
+      //     icon: Icons.assignment_outlined,
+      //     label: 'Details',
+      //     onTap: widget.onTap,
+      //   ),
+      // ],
       actions: [
         StatusRailAction(
+          key: ValueKey('job_action_navigate_${job.id}'),
           icon: Icons.navigation_rounded,
           label: 'Navigate',
-          onTap: () {
-            widget.onMarkRead?.call();
-            /*
-            navigateToJob(job);
-            */
-            // Gene - Nov, 23, 2026: Pass BuildContext so Always Ask navigation preference can present app chooser sheet.
-            navigateToJob(job, context: context);
-          },
+          onTap: isTimingLocked
+              ? null
+              : () {
+                  widget.onMarkRead?.call();
+                  navigateToJob(job, context: context);
+                },
         ),
         StatusRailAction(
+          key: ValueKey('job_action_call_${job.id}'),
           icon: Icons.call_rounded,
           label: 'Call',
-          onTap: () {
-            widget.onMarkRead?.call();
-            callJob(context, job);
-          },
+          onTap: isTimingLocked
+              ? null
+              : () {
+                  widget.onMarkRead?.call();
+                  callJob(context, job);
+                },
         ),
         StatusRailAction(
+          key: ValueKey('job_action_sms_${job.id}'),
           icon: Icons.sms_rounded,
           label: 'SMS',
-          onTap: () {
-            widget.onMarkRead?.call();
-            smsJob(context, job);
-          },
+          onTap: isTimingLocked
+              ? null
+              : () {
+                  widget.onMarkRead?.call();
+                  smsJob(context, job);
+                },
         ),
         StatusRailAction(
+          key: ValueKey('job_action_details_${job.id}'),
           icon: Icons.assignment_outlined,
           label: 'Details',
-          onTap: widget.onTap,
+          onTap: isTimingLocked ? null : widget.onTap,
         ),
       ],
     );
@@ -1479,11 +1565,14 @@ class _ContactLines extends StatelessWidget {
   final String phone;
   final String? email;
   final JobOrderDto job;
+  // Gene - Nov, 26, 2026: Gate Copy contact button until Job Order is started.
+  final bool enabled;
 
   const _ContactLines({
     required this.phone,
     required this.email,
     required this.job,
+    this.enabled = true,
   });
 
   /// What the copy button puts on the clipboard: `phone · email`.
@@ -1519,6 +1608,7 @@ class _ContactLines extends StatelessWidget {
         IconButton(
           tooltip: 'Copy contact',
           icon: const Icon(Icons.copy_rounded, size: 20),
+          /*
           onPressed: () {
             final text = copyText(job);
             Clipboard.setData(ClipboardData(text: text));
@@ -1527,6 +1617,17 @@ class _ContactLines extends StatelessWidget {
               behavior: SnackBarBehavior.floating,
             ));
           },
+          */
+          onPressed: enabled
+              ? () {
+                  final text = copyText(job);
+                  Clipboard.setData(ClipboardData(text: text));
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Copied $text'),
+                    behavior: SnackBarBehavior.floating,
+                  ));
+                }
+              : null,
         ),
       ],
     );

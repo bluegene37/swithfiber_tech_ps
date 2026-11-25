@@ -41,6 +41,8 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
   bool _showMap = false;
 
   void _openOrderDetail(ServiceOrderDto order) {
+    // Gene - Nov, 26, 2026: Gate opening Service Order details until technician taps Start.
+    if (order.isOpen && !order.isTimingInProgress) return;
     widget.signals.markOrderAsRead(order.id);
     Navigator.of(context).push(
       MaterialPageRoute(

@@ -413,6 +413,7 @@ class _ServiceOrdersMapViewState extends State<ServiceOrdersMapView> {
                           ),
                         ],
                         const SizedBox(height: 10),
+                        /*
                         Row(
                           children: [
                             Expanded(
@@ -449,6 +450,54 @@ class _ServiceOrdersMapViewState extends State<ServiceOrdersMapView> {
                             ),
                           ],
                         ),
+                        */
+                        // Gene - Nov, 26, 2026: Gate Open Ticket and Navigate on Repairs map popup until technician taps Start.
+                        Builder(builder: (context) {
+                          final isTimingLocked = selected.isOpen &&
+                              !selected.isTimingInProgress;
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: FilledButton.icon(
+                                  key: const ValueKey(
+                                      'repairs_map_navigate_button'),
+                                  onPressed: isTimingLocked
+                                      ? null
+                                      : () => MapNavigationService.navigateTo(
+                                            selected.latLng!,
+                                            label: selected.fullName,
+                                            context: context,
+                                          ),
+                                  icon: const Icon(Icons.navigation_rounded,
+                                      size: 20),
+                                  label: const Text('Navigate'),
+                                  style: FilledButton.styleFrom(
+                                    minimumSize: const Size(0, 48),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  key: const ValueKey(
+                                      'repairs_map_open_button'),
+                                  onPressed: isTimingLocked
+                                      ? null
+                                      : () =>
+                                          widget.onOpenTicket?.call(selected),
+                                  icon: const Icon(Icons.open_in_new_rounded,
+                                      size: 20),
+                                  label: Text(isTimingLocked
+                                      ? 'Start ticket first'
+                                      : 'Open Ticket'),
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size(0, 48),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        }),
                       ],
                     ),
                   ),

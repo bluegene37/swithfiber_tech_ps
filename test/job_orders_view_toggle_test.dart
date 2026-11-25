@@ -16,7 +16,7 @@ import 'package:swithfiber_tech_ps/core/widgets/status_rail_row.dart';
 /// status-rail cards with Navigate, Call and SMS on every one.)
 void main() {
   Future<(AppDatabase, JobsSignals)> seed(WidgetTester tester,
-      {String? coordinates}) async {
+      {String? coordinates, DateTime? startTimeStamp}) async {
     late final AppDatabase db;
     late final JobsSignals jobsSignals;
     await tester.runAsync(() async {
@@ -35,6 +35,7 @@ void main() {
           contactNumber: '09171234567',
           nap: 'NAP-01',
           napId: 1,
+          startTimeStamp: startTimeStamp,
           isSynced: true,
           updatedAt: DateTime.now(),
           rawJson:
@@ -99,7 +100,11 @@ void main() {
 
   testWidgets('JobOrdersScreen shows search empty state and clears search',
       (WidgetTester tester) async {
-    final (db, jobsSignals) = await seed(tester);
+    // Gene - Nov, 26, 2026: Seed active Start timestamp so DETAILS action unlocks tablet master-detail pane.
+    final (db, jobsSignals) = await seed(
+      tester,
+      startTimeStamp: DateTime.utc(2026, 11, 26, 8, 0),
+    );
     await pumpHome(tester, jobsSignals);
 
     expect(find.byType(StatusRailRow), findsOneWidget);
@@ -136,7 +141,11 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    final (db, jobsSignals) = await seed(tester);
+    // Gene - Nov, 26, 2026: Seed active Start timestamp so DETAILS action unlocks tablet master-detail pane.
+    final (db, jobsSignals) = await seed(
+      tester,
+      startTimeStamp: DateTime.utc(2026, 11, 26, 8, 0),
+    );
     await pumpHome(tester, jobsSignals);
 
     expect(find.byType(StatusRailRow), findsOneWidget);

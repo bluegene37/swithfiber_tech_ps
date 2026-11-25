@@ -333,11 +333,19 @@ class _TechnicianShellState extends State<TechnicianShell>
   }
   */
   // Gene - Oct 13, 2026: Guarded _openReportForJob so rescheduled jobs cannot open report screen or modify records.
+  // Gene - Nov, 26, 2026: Require active Start work timing unlock before opening completion report or pushing alert details.
   void _openReportForJob(JobOrderDto job) {
     // Gene - Nov 07, 2026: Wrapped single-line if statement in curly braces for linter compliance (curly_braces_in_flow_control_structures).
     // if (job.isRescheduled || job.siteException == SiteException.reschedule)
     //   return;
+    /*
     if (job.isRescheduled || job.siteException == SiteException.reschedule) {
+      return;
+    }
+    */
+    if (!job.isWorkUnlocked ||
+        job.isRescheduled ||
+        job.siteException == SiteException.reschedule) {
       return;
     }
     _reportSignals.setJobOrder(job);
@@ -377,6 +385,8 @@ class _TechnicianShellState extends State<TechnicianShell>
     if (_currentIndex != _tabScheduled) {
       setState(() => _currentIndex = _tabScheduled);
     }
+    // Gene - Nov, 26, 2026: Land on Today list instead of pushing unstarted JobOrderDetailScreen.
+    if (job.canActivate && !job.isTimingInProgress) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => JobOrderDetailScreen(
@@ -413,6 +423,8 @@ class _TechnicianShellState extends State<TechnicianShell>
     if (_currentIndex != _tabRepairs) {
       setState(() => _currentIndex = _tabRepairs);
     }
+    // Gene - Nov, 26, 2026: Land on Repairs list instead of pushing unstarted ServiceOrderDetailScreen.
+    if (order.isOpen && !order.isTimingInProgress) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ServiceOrderDetailScreen(

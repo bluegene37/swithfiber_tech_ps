@@ -62,6 +62,8 @@ void main() {
     required String customerName,
     String status = 'Scheduled',
     String? assignedEmail = 'tech@switchfiber.ph',
+    // Gene - Nov, 26, 2026: Optional startTimeStamp for started-job View navigation assertions.
+    DateTime? startTimeStamp,
   }) {
     return JobOrderDto(
       id: id,
@@ -74,6 +76,7 @@ void main() {
       city: 'Angono',
       planName: 'Fiber 50Mbps',
       contactNumber: '09123456789',
+      startTimeStamp: startTimeStamp,
     );
   }
 
@@ -396,7 +399,28 @@ void main() {
 
       expect(find.text('NEW DISPATCH'), findsOneWidget);
 
-      // Tap View button
+      // Unstarted job: View dismisses banner without pushing JobOrderDetailScreen.
+      await tester.tap(find.text('View'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(signals.newJobAlert.value, isNull);
+      expect(find.byType(JobOrderDetailScreen), findsNothing);
+
+      // Started job: View dismisses banner and navigates to JobOrderDetailScreen.
+      final startedJob = createSampleJob(
+        id: 888,
+        ticketNumber: 'T-888999',
+        customerName: 'Maria Clara',
+        startTimeStamp: DateTime.utc(2026, 11, 26, 8, 0),
+      );
+      await tester.runAsync(() async {
+        await db.jobOrdersDao.insertOrUpdateJob(startedJob);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      signals.newJobAlert.value = startedJob;
+      await tester.pump();
+      expect(find.text('NEW DISPATCH'), findsOneWidget);
+
       await tester.tap(find.text('View'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
@@ -408,7 +432,9 @@ void main() {
       expect(find.byType(JobOrderDetailScreen), findsOneWidget);
       expect(find.text('Maria Clara'), findsWidgets);
 
+      await tester.pump(const Duration(seconds: 1));
       await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 1));
     });
   });
 }

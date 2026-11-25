@@ -276,7 +276,14 @@ void main() {
       'card tap toggles expand/collapse and DETAILS button triggers details navigation',
       (tester) async {
     JobOrderDto? selectedJob;
-    await seed(tester, [job(1, 'Blaine Ivory Medel')]);
+    // Gene - Nov, 26, 2026: Seed active Start timestamp so DETAILS action is unlocked.
+    await seed(tester, [
+      job(
+        1,
+        'Blaine Ivory Medel',
+        startTimeStamp: DateTime.utc(2026, 11, 26, 8, 0),
+      ),
+    ]);
 
     tester.view.devicePixelRatio = 3.0;
     tester.view.physicalSize = const Size(402 * 3.0, 1000 * 3.0);

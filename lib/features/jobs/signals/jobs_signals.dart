@@ -102,6 +102,21 @@ class JobsSignals {
   // Gene - Nov, 25, 2026: Track in-flight Start/Finish timing requests per Job Order ID.
   final busyTimingJobIds = signal<Set<int>>(<int>{});
 
+  // Gene - Nov, 26, 2026: Expose currently started (in-progress) Job Order so other Job Orders and Service Orders hide Start.
+  late final ReadonlySignal<JobOrderDto?> activeStartedJob = computed(() {
+    final email = technicianEmail.value?.trim() ?? '';
+    for (final job in allJobs.value) {
+      if (!job.canActivate || !job.isTimingInProgress) continue;
+      if (email.isNotEmpty &&
+          (job.assignedEmail?.trim().isNotEmpty ?? false) &&
+          !job.isAssignedTo(email)) {
+        continue;
+      }
+      return job;
+    }
+    return null;
+  });
+
   // Technician history: activated jobs whose assignedEmail matches the
   // signed-in technician, with their own date, area and search filters so the
   // history and the scheduled queue never fight over one query box.
@@ -502,8 +517,32 @@ class JobsSignals {
     return '0';
   }
 
+  /*
   Future<String?> startJob(JobOrderDto job, {String? techId}) async {
     if (busyTimingJobIds.value.contains(job.id)) return null;
+    busyTimingJobIds.value = {...busyTimingJobIds.value, job.id};
+    try {
+      await repository.startJobTiming(job.id, techId: _resolveTechId(techId));
+      return null;
+    } catch (e) {
+      return 'Started locally · sync pending ($e)';
+    } finally {
+      busyTimingJobIds.value = {...busyTimingJobIds.value}..remove(job.id);
+    }
+  }
+  */
+  // Gene - Nov, 26, 2026: Guard startJob against starting a second Job Order while another Job Order or Service Order is already active.
+  Future<String?> startJob(
+    JobOrderDto job, {
+    String? techId,
+    bool hasOtherActiveOrder = false,
+  }) async {
+    if (busyTimingJobIds.value.contains(job.id)) return null;
+    final currentActive = activeStartedJob.value;
+    if (hasOtherActiveOrder ||
+        (currentActive != null && currentActive.id != job.id)) {
+      return 'Finish the active order before starting another.';
+    }
     busyTimingJobIds.value = {...busyTimingJobIds.value, job.id};
     try {
       await repository.startJobTiming(job.id, techId: _resolveTechId(techId));

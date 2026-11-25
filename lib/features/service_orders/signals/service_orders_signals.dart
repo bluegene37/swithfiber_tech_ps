@@ -722,6 +722,23 @@ class ServiceOrdersSignals {
   // Gene - Nov, 25, 2026: Track in-flight Start/Finish timing calls and persist/sync Service Order work timing.
   final busyTimingOrderIds = signal<Set<int>>(<int>{});
 
+  // Gene - Nov, 26, 2026: Expose currently started (in-progress) Service Order so other Service Orders and Job Orders hide Start.
+  late final ReadonlySignal<ServiceOrderDto?> activeStartedOrder = computed(() {
+    final onlyMe = onlyAssignedToMe.value;
+    final email = technicianEmail.value?.trim();
+    for (final order in allOrders.value) {
+      if (!order.isOpen || !order.isTimingInProgress) continue;
+      if (onlyMe &&
+          email != null &&
+          email.isNotEmpty &&
+          !order.isAssignedTo(email)) {
+        continue;
+      }
+      return order;
+    }
+    return null;
+  });
+
   String _resolveTechId([String? override]) {
     final explicit = override?.trim();
     if (explicit != null && explicit.isNotEmpty) return explicit;
@@ -735,6 +752,23 @@ class ServiceOrdersSignals {
     return '0';
   }
 
+  // Gene - Nov, 26, 2026: Helpers to resolve technician identity/email metadata for Service Order audit fields.
+  String? _resolveModifiedBy(ServiceOrderDto order) {
+    final fullName = AuthSignals.instance.currentUser.value?.fullName.trim();
+    if (fullName != null && fullName.isNotEmpty) return fullName;
+    final email = technicianEmail.value?.trim();
+    if (email != null && email.isNotEmpty) return email;
+    return order.modifiedBy;
+  }
+
+  String? _resolveUserEmail(ServiceOrderDto order) {
+    final authEmail = AuthSignals.instance.currentUser.value?.email.trim();
+    if (authEmail != null && authEmail.isNotEmpty) return authEmail;
+    final email = technicianEmail.value?.trim();
+    if (email != null && email.isNotEmpty) return email;
+    return order.userEmail;
+  }
+
   void _upsertInMemoryOrder(ServiceOrderDto order) {
     final list = List<ServiceOrderDto>.from(allOrders.value);
     final idx = list.indexWhere((o) => o.id == order.id);
@@ -746,6 +780,7 @@ class ServiceOrdersSignals {
     allOrders.value = list;
   }
 
+  /*
   Future<String?> startOrder(ServiceOrderDto order, {String? techId}) async {
     if (busyTimingOrderIds.value.contains(order.id)) return null;
     busyTimingOrderIds.value = {...busyTimingOrderIds.value, order.id};
@@ -792,6 +827,98 @@ class ServiceOrdersSignals {
     final updated = order.copyWith(
       startTimestamp: start,
       stopTimestamp: end,
+      updatedAt: end,
+    );
+    _upsertInMemoryOrder(updated);
+    if (dao != null) {
+      await dao!.insertOrUpdateOrder(updated, synced: true);
+    }
+    try {
+      await api.updateTiming(
+        joId: order.id,
+        techId: _resolveTechId(techId),
+        startTime: start,
+        endTime: end,
+      );
+      return null;
+    } catch (e) {
+      final unsynced = updated.copyWith(isSynced: false);
+      _upsertInMemoryOrder(unsynced);
+      if (dao != null) {
+        await dao!.insertOrUpdateOrder(unsynced, synced: false);
+        await syncWorker?.refreshPendingCount();
+      }
+      return 'Finished locally · sync pending ($e)';
+    } finally {
+      busyTimingOrderIds.value = {...busyTimingOrderIds.value}
+        ..remove(order.id);
+    }
+  }
+  */
+  // Gene - Nov, 26, 2026: Enforce single active order guard in startOrder and stamp Service Order audit metadata on Start/Finish.
+  Future<String?> startOrder(
+    ServiceOrderDto order, {
+    String? techId,
+    bool hasOtherActiveOrder = false,
+  }) async {
+    if (busyTimingOrderIds.value.contains(order.id)) return null;
+    final currentActive = activeStartedOrder.value;
+    if (hasOtherActiveOrder ||
+        (currentActive != null && currentActive.id != order.id)) {
+      return 'Finish the active order before starting another.';
+    }
+    busyTimingOrderIds.value = {...busyTimingOrderIds.value, order.id};
+    final now = DateTime.now().toUtc();
+    final updated = order.copyWith(
+      startTimestamp: now,
+      modifiedBy: _resolveModifiedBy(order),
+      modifiedDate: now,
+      techModifiedDate: now,
+      userEmail: _resolveUserEmail(order),
+      updatedAt: now,
+    );
+    _upsertInMemoryOrder(updated);
+    if (dao != null) {
+      await dao!.insertOrUpdateOrder(updated, synced: true);
+    }
+    try {
+      await api.createTiming(
+        joId: order.id,
+        techId: _resolveTechId(techId),
+        startTime: now,
+        endTime: now,
+      );
+      return null;
+    } catch (e) {
+      final unsynced = updated.copyWith(isSynced: false);
+      _upsertInMemoryOrder(unsynced);
+      if (dao != null) {
+        await dao!.insertOrUpdateOrder(unsynced, synced: false);
+        await syncWorker?.refreshPendingCount();
+      }
+      return 'Started locally · sync pending ($e)';
+    } finally {
+      busyTimingOrderIds.value = {...busyTimingOrderIds.value}
+        ..remove(order.id);
+    }
+  }
+
+  Future<String?> finishOrder(ServiceOrderDto order, {String? techId}) async {
+    if (busyTimingOrderIds.value.contains(order.id)) return null;
+    busyTimingOrderIds.value = {...busyTimingOrderIds.value, order.id};
+    final start = normalizeTimingTimestamp(order.startTimestamp) ??
+        DateTime.now().toUtc().subtract(const Duration(seconds: 1));
+    var end = DateTime.now().toUtc();
+    if (!end.isAfter(start)) {
+      end = start.add(const Duration(seconds: 1));
+    }
+    final updated = order.copyWith(
+      startTimestamp: start,
+      stopTimestamp: end,
+      modifiedBy: _resolveModifiedBy(order),
+      modifiedDate: end,
+      techModifiedDate: end,
+      userEmail: _resolveUserEmail(order),
       updatedAt: end,
     );
     _upsertInMemoryOrder(updated);

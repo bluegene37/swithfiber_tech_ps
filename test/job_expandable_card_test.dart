@@ -27,6 +27,8 @@ void main() {
     status: 'Scheduled',
     lcpId: 10,
     napId: 2,
+    // Gene - Nov, 26, 2026: Seed active Start timestamp so DETAILS action is unlocked.
+    startTimeStamp: DateTime.utc(2026, 11, 26, 8, 0),
     rawJson: '{"id":99,"status":"Scheduled"}',
   );
 

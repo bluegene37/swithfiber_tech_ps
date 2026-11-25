@@ -58,24 +58,48 @@ String formatTimingClock(DateTime timestamp) {
   return '$hour12:$minute $period';
 }
 
+// Gene - Nov, 26, 2026: Compute numeric whole-minute duration (>= 1) for UpdateJobOrderRequest / UpdateServiceOrderRequest.
+String formatTimingDurationMinutes(DateTime start, DateTime end) {
+  return end.difference(start).inMinutes.clamp(1, 999999).toString();
+}
+
 /// Compact list-row timing bar with `Start` -> `Finish` -> disabled `Finished`.
 class WorkTimingBar extends StatelessWidget {
   final WorkTimingStatus status;
   final DateTime? startTime;
   final DateTime? endTime;
   final bool isBusy;
+  // Gene - Nov, 26, 2026: Added hideStart and lockedHint so other cards hide Start while another Job/Service Order is active.
+  final bool hideStart;
+  final String? lockedHint;
   final Key? startButtonKey;
   final Key? finishButtonKey;
   final Key? finishedButtonKey;
   final VoidCallback? onStart;
   final VoidCallback? onFinish;
 
+  /*
   const WorkTimingBar({
     super.key,
     required this.status,
     this.startTime,
     this.endTime,
     this.isBusy = false,
+    this.startButtonKey,
+    this.finishButtonKey,
+    this.finishedButtonKey,
+    this.onStart,
+    this.onFinish,
+  });
+  */
+  const WorkTimingBar({
+    super.key,
+    required this.status,
+    this.startTime,
+    this.endTime,
+    this.isBusy = false,
+    this.hideStart = false,
+    this.lockedHint,
     this.startButtonKey,
     this.finishButtonKey,
     this.finishedButtonKey,
@@ -95,7 +119,13 @@ class WorkTimingBar extends StatelessWidget {
       WorkTimingStatus.notStarted => (
           Icons.lock_outline_rounded,
           secondaryInk,
+          /*
           'Tap Start to unlock',
+          */
+          // Gene - Nov, 26, 2026: Show active-order lock hint when Start is hidden because another order is already in progress.
+          hideStart
+              ? (lockedHint ?? 'Finish active order first')
+              : 'Tap Start to unlock',
         ),
       WorkTimingStatus.inProgress => (
           Icons.timer_outlined,
@@ -146,6 +176,8 @@ class WorkTimingBar extends StatelessWidget {
   Widget _buildActionButton(BuildContext context, bool isDark) {
     switch (status) {
       case WorkTimingStatus.notStarted:
+        // Gene - Nov, 26, 2026: Hide Start button when another Job Order or Service Order is already started.
+        if (hideStart) return const SizedBox.shrink();
         return FilledButton.icon(
           key: startButtonKey,
           onPressed: isBusy ? null : onStart,

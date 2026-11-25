@@ -10,15 +10,22 @@ import 'package:swithfiber_tech_ps/core/database/app_database.dart';
 import 'package:swithfiber_tech_ps/core/network/api_client.dart';
 import 'package:swithfiber_tech_ps/core/services/draft_storage_service.dart';
 import 'package:swithfiber_tech_ps/core/theme/app_theme.dart';
+import 'package:swithfiber_tech_ps/core/widgets/status_rail_row.dart';
+import 'package:swithfiber_tech_ps/core/widgets/sticky_action_bar.dart';
 import 'package:swithfiber_tech_ps/core/widgets/work_timing_bar.dart';
+import 'package:swithfiber_tech_ps/features/auth/models/user_model.dart';
+import 'package:swithfiber_tech_ps/features/auth/signals/auth_signals.dart';
 import 'package:swithfiber_tech_ps/features/jobs/models/job_order_model.dart';
 import 'package:swithfiber_tech_ps/features/jobs/repositories/job_repository.dart';
 import 'package:swithfiber_tech_ps/features/jobs/screens/job_order_detail_screen.dart';
 import 'package:swithfiber_tech_ps/features/jobs/screens/job_orders_screen.dart';
 import 'package:swithfiber_tech_ps/features/jobs/services/job_orders_api.dart';
 import 'package:swithfiber_tech_ps/features/jobs/signals/jobs_signals.dart';
+import 'package:swithfiber_tech_ps/features/reports/screens/create_report_screen.dart';
+import 'package:swithfiber_tech_ps/features/reports/signals/report_signals.dart';
 import 'package:swithfiber_tech_ps/features/service_orders/models/service_order_model.dart';
 import 'package:swithfiber_tech_ps/features/service_orders/screens/service_order_detail_screen.dart';
+import 'package:swithfiber_tech_ps/features/service_orders/screens/service_orders_screen.dart';
 import 'package:swithfiber_tech_ps/features/service_orders/services/service_orders_api.dart';
 import 'package:swithfiber_tech_ps/features/service_orders/signals/service_orders_signals.dart';
 import 'package:swithfiber_tech_ps/features/service_orders/widgets/service_order_card.dart';
@@ -467,6 +474,7 @@ void main() {
           concern: 'Pullout',
           priorityLevel: 'Urgent',
           supportStatus: 'Open',
+          assignedEmail: 'tech@example.com',
         ),
       ];
 
@@ -605,6 +613,561 @@ void main() {
           findsOneWidget);
       expect(find.text('Save repair report'), findsNothing);
     });
+
+    // Gene - Nov, 26, 2026: Verify Job Order card disables Details/Navigate/Call/SMS/> until Start and re-locks on Finish.
+    testWidgets(
+        'Job Order card disables Details, Navigate, Call, SMS, and > until Start and re-locks on Finish',
+        (tester) async {
+      final db = AppDatabase.forTesting();
+      final api = _TimingRecordingJobApi();
+      final repo = JobRepository(db.jobOrdersDao, api: api);
+      final signals = JobsSignals(repo);
+      signals.setTechnicianEmail('tech@example.com');
+      addTearDown(() async {
+        await signals.dispose();
+        await db.close();
+      });
+
+      await tester.runAsync(() async {
+        await db.jobOrdersDao.insertOrUpdateJob(
+          JobOrderDto(
+            id: 101,
+            ticketNumber: 'SF-101',
+            customerName: 'Juan Dela Cruz',
+            address: '101 Sample St',
+            contactNumber: '09171234567',
+            status: 'Scheduled',
+            onsiteStatus: 'Scheduled',
+            assignedEmail: 'tech@example.com',
+            updatedAt: DateTime.now(),
+          ),
+          synced: true,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      });
+
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(402, 950);
+      addTearDown(tester.view.reset);
+
+      var detailsTapped = false;
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: JobOrdersScreen(
+          jobsSignals: signals,
+          onSelectJobForDetails: (_) => detailsTapped = true,
+        ),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      for (final keyName in [
+        'job_action_navigate_101',
+        'job_action_call_101',
+        'job_action_sms_101',
+        'job_action_details_101',
+      ]) {
+        final action = tester
+            .widget<StatusRailAction>(find.byKey(ValueKey(keyName)));
+        expect(action.onTap, isNull, reason: '$keyName locked before Start');
+      }
+      expect(
+        tester
+            .widget<InkWell>(
+                find.byKey(const ValueKey('job_report_shortcut_101')))
+            .onTap,
+        isNull,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('job_action_details_101')),
+        warnIfMissed: false,
+      );
+      await tester.pump();
+      expect(detailsTapped, isFalse);
+
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('job_start_button_101')));
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      });
+      await tester.pumpAndSettle();
+
+      for (final keyName in [
+        'job_action_navigate_101',
+        'job_action_call_101',
+        'job_action_sms_101',
+        'job_action_details_101',
+      ]) {
+        final action = tester
+            .widget<StatusRailAction>(find.byKey(ValueKey(keyName)));
+        expect(action.onTap, isNotNull,
+            reason: '$keyName unlocked after Start');
+      }
+      expect(
+        tester
+            .widget<InkWell>(
+                find.byKey(const ValueKey('job_report_shortcut_101')))
+            .onTap,
+        isNotNull,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('job_action_details_101')));
+      await tester.pump();
+      expect(detailsTapped, isTrue);
+
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('job_finish_button_101')));
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      });
+      await tester.pumpAndSettle();
+
+      for (final keyName in [
+        'job_action_navigate_101',
+        'job_action_call_101',
+        'job_action_sms_101',
+        'job_action_details_101',
+      ]) {
+        final action = tester
+            .widget<StatusRailAction>(find.byKey(ValueKey(keyName)));
+        expect(action.onTap, isNull, reason: '$keyName re-locked after Finish');
+      }
+      expect(
+        tester
+            .widget<InkWell>(
+                find.byKey(const ValueKey('job_report_shortcut_101')))
+            .onTap,
+        isNull,
+      );
+    });
+
+    // Gene - Nov, 26, 2026: Verify Service Order card disables details tap & Navigate/Call/SMS until Start and re-locks on Finish.
+    testWidgets(
+        'Service Order card disables details tap and Navigate/Call/SMS until Start and re-locks on Finish',
+        (tester) async {
+      DraftStorageService.instance.resetForTesting();
+      final api = _TimingRecordingServiceOrdersApi();
+      final signals = ServiceOrdersSignals(api: api);
+      signals.setTechnicianEmail('tech@example.com');
+      addTearDown(signals.dispose);
+
+      signals.allOrders.value = [
+        const ServiceOrderDto(
+          id: 201,
+          accountNumber: 'ACC-201',
+          fullName: 'Maria Santos',
+          contactNumber: '09170000201',
+          emailAddress: 'maria@example.com',
+          address: '201 Fiber Ave',
+          concern: 'Pullout',
+          priorityLevel: 'Urgent',
+          supportStatus: 'Open',
+          assignedEmail: 'tech@example.com',
+        ),
+      ];
+
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(402, 950);
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: ServiceOrdersScreen(signals: signals),
+      ));
+      await tester.pump();
+
+      expect(
+        tester
+            .widget<InkWell>(
+                find.byKey(const ValueKey('service_order_card_tap_201')))
+            .onTap,
+        isNull,
+      );
+      for (final keyName in [
+        'so_action_navigate_201',
+        'so_action_call_201',
+        'so_action_sms_201',
+      ]) {
+        expect(
+          tester
+              .widget<StatusRailAction>(find.byKey(ValueKey(keyName)))
+              .onTap,
+          isNull,
+          reason: '$keyName locked before Start',
+        );
+      }
+
+      // Tapping locked card body must NOT open ServiceOrderDetailScreen.
+      await tester.tap(
+        find.byKey(const ValueKey('service_order_card_tap_201')),
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ServiceOrderDetailScreen), findsNothing);
+
+      // Tap Start -> unlocked.
+      await tester
+          .tap(find.byKey(const ValueKey('service_order_start_button_201')));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<InkWell>(
+                find.byKey(const ValueKey('service_order_card_tap_201')))
+            .onTap,
+        isNotNull,
+      );
+      for (final keyName in [
+        'so_action_navigate_201',
+        'so_action_call_201',
+        'so_action_sms_201',
+      ]) {
+        expect(
+          tester
+              .widget<StatusRailAction>(find.byKey(ValueKey(keyName)))
+              .onTap,
+          isNotNull,
+          reason: '$keyName unlocked after Start',
+        );
+      }
+
+      // Tapping unlocked card opens ServiceOrderDetailScreen.
+      await tester
+          .tap(find.byKey(const ValueKey('service_order_card_tap_201')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ServiceOrderDetailScreen), findsOneWidget);
+
+      // Pop back and tap Finish -> re-locked.
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester
+          .tap(find.byKey(const ValueKey('service_order_finish_button_201')));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<InkWell>(
+                find.byKey(const ValueKey('service_order_card_tap_201')))
+            .onTap,
+        isNull,
+      );
+      for (final keyName in [
+        'so_action_navigate_201',
+        'so_action_call_201',
+        'so_action_sms_201',
+      ]) {
+        expect(
+          tester
+              .widget<StatusRailAction>(find.byKey(ValueKey(keyName)))
+              .onTap,
+          isNull,
+          reason: '$keyName re-locked after Finish',
+        );
+      }
+    });
+
+    // Gene - Nov, 26, 2026: Verify starting one Job Order or Service Order hides Start on all other Job Orders and Service Orders until Finish.
+    testWidgets(
+        'Starting one Job Order or Service Order hides Start on all other Job Orders and Service Orders until Finish',
+        (tester) async {
+      DraftStorageService.instance.resetForTesting();
+      final db = AppDatabase.forTesting();
+      final jobApi = _TimingRecordingJobApi();
+      final soApi = _TimingRecordingServiceOrdersApi();
+      final jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao, api: jobApi));
+      final soSignals = ServiceOrdersSignals(api: soApi);
+      jobsSignals.setTechnicianEmail('tech@example.com');
+      soSignals.setTechnicianEmail('tech@example.com');
+      addTearDown(() async {
+        await jobsSignals.dispose();
+        soSignals.dispose();
+        await db.close();
+      });
+
+      await tester.runAsync(() async {
+        await db.jobOrdersDao.insertAllJobs([
+          JobOrderDto(
+            id: 101,
+            ticketNumber: 'SF-101',
+            customerName: 'Job 101',
+            address: '101 St',
+            status: 'Scheduled',
+            assignedEmail: 'tech@example.com',
+            updatedAt: DateTime.now(),
+          ),
+          JobOrderDto(
+            id: 102,
+            ticketNumber: 'SF-102',
+            customerName: 'Job 102',
+            address: '102 St',
+            status: 'Scheduled',
+            assignedEmail: 'tech@example.com',
+            updatedAt: DateTime.now(),
+          ),
+        ]);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      });
+
+      soSignals.allOrders.value = [
+        const ServiceOrderDto(
+          id: 201,
+          accountNumber: 'ACC-201',
+          fullName: 'Repair 201',
+          contactNumber: '09170000201',
+          emailAddress: 'r201@example.com',
+          address: '201 Ave',
+          concern: 'Pullout',
+          priorityLevel: 'Normal',
+          supportStatus: 'Open',
+          assignedEmail: 'tech@example.com',
+        ),
+        const ServiceOrderDto(
+          id: 202,
+          accountNumber: 'ACC-202',
+          fullName: 'Repair 202',
+          contactNumber: '09170000202',
+          emailAddress: 'r202@example.com',
+          address: '202 Ave',
+          concern: 'No Connection',
+          priorityLevel: 'High',
+          supportStatus: 'Open',
+          assignedEmail: 'tech@example.com',
+        ),
+      ];
+
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(402, 1800);
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: DefaultTabController(
+          length: 2,
+          child: Scaffold(
+            body: TabBarView(
+              children: [
+                JobOrdersScreen(
+                  jobsSignals: jobsSignals,
+                  serviceOrdersSignals: soSignals,
+                ),
+                ServiceOrdersScreen(
+                  signals: soSignals,
+                  jobsSignals: jobsSignals,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // Initially JO 101 and 102 both show Start.
+      expect(find.byKey(const ValueKey('job_start_button_101')), findsOneWidget);
+      expect(find.byKey(const ValueKey('job_start_button_102')), findsOneWidget);
+
+      // Start JO 101 -> JO 101 shows Finish, JO 102 Start is hidden.
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('job_start_button_101')));
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      });
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('job_finish_button_101')), findsOneWidget);
+      expect(find.byKey(const ValueKey('job_start_button_102')), findsNothing);
+
+      // Switch to Service Orders tab -> SO 201 and 202 Start buttons are hidden.
+      final tabController = DefaultTabController.of(
+          tester.element(find.byType(TabBarView)));
+      tabController.animateTo(1);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('service_order_start_button_201')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('service_order_start_button_202')),
+          findsNothing);
+
+      // Switch back to Job Orders tab and Finish JO 101 -> JO 102 Start reappears.
+      tabController.animateTo(0);
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('job_finish_button_101')));
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      });
+      await tester.pumpAndSettle();
+      expect(
+          find.byKey(const ValueKey('job_finished_button_101')), findsOneWidget);
+      expect(find.byKey(const ValueKey('job_start_button_102')), findsOneWidget);
+
+      // Switch to Service Orders tab -> SO 201 and 202 Start buttons reappeared.
+      tabController.animateTo(1);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('service_order_start_button_201')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('service_order_start_button_202')),
+          findsOneWidget);
+
+      // Start SO 201 -> SO 202 Start is hidden, and JO 102 Start is hidden.
+      await tester
+          .tap(find.byKey(const ValueKey('service_order_start_button_201')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('service_order_finish_button_201')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('service_order_start_button_202')),
+          findsNothing);
+
+      tabController.animateTo(0);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('job_start_button_102')), findsNothing);
+
+      // Finish SO 201 -> JO 102 and SO 202 Start buttons reappear.
+      tabController.animateTo(1);
+      await tester.pumpAndSettle();
+      await tester
+          .tap(find.byKey(const ValueKey('service_order_finish_button_201')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('service_order_finished_button_201')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('service_order_start_button_202')),
+          findsOneWidget);
+
+      tabController.animateTo(0);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('job_start_button_102')), findsOneWidget);
+    });
+
+    // Gene - Nov, 26, 2026: Verify techId (user ID), computed duration, and Service Order audit fields are populated on Start/Finish.
+    test(
+        'Start/Finish populate techId from signed-in user ID, numeric duration, and Service Order audit metadata',
+        () async {
+      final prevUser = AuthSignals.instance.currentUser.value;
+      addTearDown(() => AuthSignals.instance.currentUser.value = prevUser);
+
+      AuthSignals.instance.currentUser.value = UserModel(
+        id: 42,
+        username: 'tech42',
+        fname: 'Juan',
+        lname: 'Tech',
+        email: 'tech42@example.com',
+      );
+
+      final db = AppDatabase.forTesting();
+      final jobApi = _TimingRecordingJobApi();
+      final soApi = _TimingRecordingServiceOrdersApi();
+      final jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao, api: jobApi));
+      final soSignals = ServiceOrdersSignals(api: soApi, dao: db.serviceOrdersDao);
+      jobsSignals.setTechnicianEmail('tech42@example.com');
+      soSignals.setTechnicianEmail('tech42@example.com');
+      addTearDown(() async {
+        await jobsSignals.dispose();
+        soSignals.dispose();
+        await db.close();
+      });
+
+      final job = JobOrderDto(
+        id: 301,
+        ticketNumber: 'SF-301',
+        customerName: 'Job 301',
+        address: '301 St',
+        status: 'Scheduled',
+        assignedEmail: 'tech42@example.com',
+      );
+      await db.jobOrdersDao.insertOrUpdateJob(job, synced: true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      await jobsSignals.startJob(job);
+      expect(jobApi.created.length, 1);
+      expect(jobApi.created.first['techId'], '42');
+
+      final startedJob = (await db.jobOrdersDao.getJobById(301))!;
+      await jobsSignals.finishJob(startedJob);
+      expect(jobApi.updated.length, 1);
+      expect(jobApi.updated.first['techId'], '42');
+
+      final finishedJob = (await db.jobOrdersDao.getJobById(301))!;
+      final jobPutJson = finishedJob.toApiJson();
+      expect(int.tryParse(jobPutJson['duration'].toString()), isNotNull);
+
+      const order = ServiceOrderDto(
+        id: 401,
+        accountNumber: 'ACC-401',
+        fullName: 'Order 401',
+        contactNumber: '09170000401',
+        emailAddress: 'o401@example.com',
+        address: '401 Ave',
+        concern: 'Pullout',
+        supportStatus: 'Open',
+        assignedEmail: 'tech42@example.com',
+      );
+      await db.serviceOrdersDao.insertOrUpdateOrder(order, synced: true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      await soSignals.startOrder(order);
+      expect(soApi.created.length, 1);
+      expect(soApi.created.first['techId'], '42');
+
+      final startedOrder = (await db.serviceOrdersDao.getOrderById(401))!;
+      expect(startedOrder.modifiedBy, 'Juan Tech');
+      expect(startedOrder.userEmail, 'tech42@example.com');
+      expect(startedOrder.modifiedDate, isNotNull);
+      expect(startedOrder.techModifiedDate, isNotNull);
+
+      await soSignals.finishOrder(startedOrder);
+      expect(soApi.updated.length, 1);
+      expect(soApi.updated.first['techId'], '42');
+
+      final finishedOrder = (await db.serviceOrdersDao.getOrderById(401))!;
+      final soPutJson = finishedOrder.toJson();
+      expect(int.tryParse(soPutJson['duration'].toString()), isNotNull);
+      expect(soPutJson['modifiedBy'], 'Juan Tech');
+      expect(soPutJson['userEmail'], 'tech42@example.com');
+    });
+
+    // Gene - Nov, 26, 2026: Verify CreateReportScreen locks and disables Save report when Job Order is not started.
+    testWidgets(
+        'CreateReportScreen shows lock banner and disables Save report when Job Order is not started',
+        (tester) async {
+      final db = AppDatabase.forTesting();
+      final jobApi = _TimingRecordingJobApi();
+      final jobsSignals = JobsSignals(JobRepository(db.jobOrdersDao, api: jobApi));
+      addTearDown(() async {
+        await jobsSignals.dispose();
+        await db.close();
+      });
+
+      final unstartedJob = JobOrderDto(
+        id: 501,
+        ticketNumber: 'SF-501',
+        customerName: 'Unstarted Subscriber',
+        address: '501 St',
+        status: 'Scheduled',
+        modemRouterSN: 'SN501',
+      );
+      await tester.runAsync(() async {
+        await db.jobOrdersDao.insertOrUpdateJob(unstartedJob, synced: true);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+
+      final reportSignals = ReportSignals()..setJobOrder(unstartedJob);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: CreateReportScreen(
+          jobsSignals: jobsSignals,
+          reportSignals: reportSignals,
+          pickImage: (_) async => null,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('report_timing_lock_banner')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Locked until started'),
+        findsWidgets,
+      );
+      final stickyBar =
+          tester.widget<StickyActionBar>(find.byType(StickyActionBar));
+      expect(stickyBar.onPressed, isNull);
+    });
   });
 
   group('Accessibility & 200% text-scale layout', () {
@@ -641,6 +1204,10 @@ void main() {
                 WorkTimingBar(
                   status: WorkTimingStatus.notStarted,
                   onStart: () {},
+                ),
+                const WorkTimingBar(
+                  status: WorkTimingStatus.notStarted,
+                  hideStart: true,
                 ),
                 WorkTimingBar(
                   status: WorkTimingStatus.inProgress,

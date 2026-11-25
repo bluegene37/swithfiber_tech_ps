@@ -17,6 +17,8 @@ import '../../../core/widgets/adaptive_dialogs.dart';
 import '../../../core/widgets/port_tile_grid.dart';
 import '../../../core/widgets/step_header.dart';
 import '../../../core/widgets/sticky_action_bar.dart';
+// Gene - Nov, 26, 2026: Added WorkTimingLockBanner import to block/communicate unstarted completion reports.
+import '../../../core/widgets/work_timing_bar.dart';
 import '../../../core/utils/data_url.dart';
 import '../../../core/widgets/material_counter_row.dart';
 import '../../../core/widgets/searchable_picker_sheet.dart';
@@ -678,6 +680,21 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   Future<void> _handleSubmit() async {
     final rep = widget.reportSignals;
 
+    // Gene - Nov, 26, 2026: Block completion report submission if the selected Job Order has not been started yet (or is finished).
+    final currentJob = rep.selectedJobOrder.value;
+    if (currentJob != null && !currentJob.isWorkUnlocked) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+              'Start this job order before submitting a completion report.'),
+          backgroundColor: AppTheme.danger,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     // Check 1: Modem / Router Serial Number
     if (_serialController.text.trim().isEmpty) {
       if (_hardwareSectionKey.currentContext != null) {
@@ -895,6 +912,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     return SignalBuilder(
       builder: (context) {
         final submitting = rep.isSubmitting.value;
+        // Gene - Nov, 26, 2026: Show timing lock banner at the top of CreateReportScreen if job is not started/unlocked.
+        final selectedJob = rep.selectedJobOrder.value;
+        final isTimingLocked = selectedJob != null && !selectedJob.isWorkUnlocked;
         return PopScope(
           canPop: !_hasUnsavedChanges || submitting,
           onPopInvokedWithResult: (didPop, _) {
@@ -911,6 +931,13 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (isTimingLocked)
+                      WorkTimingLockBanner(
+                        key: const ValueKey('report_timing_lock_banner'),
+                        status: selectedJob.workTimingStatus,
+                        startTime: selectedJob.startTimeStamp,
+                        endTime: selectedJob.endTimeStamp,
+                      ),
                     _buildDraftRestoredBanner(rep),
                     _buildJobOrderSummary(rep),
                     const SizedBox(height: 16),
@@ -982,6 +1009,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
               if (!rep.hasSignature.value && _signatureController.isEmpty)
                 'signature',
             ];
+            /*
             return StickyActionBar(
               label: submitting ? 'Saving…' : 'Save report',
               icon: Icons.check_circle_outline_rounded,
@@ -989,6 +1017,21 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   ? 'All steps done · saved on the phone first, sent when online'
                   : 'Missing: ${missing.join(' · ')}',
               onPressed: submitting ? null : _handleSubmit,
+            );
+            */
+            // Gene - Nov, 26, 2026: Disable Save report button when selected job order is not started/unlocked.
+            final selectedJob = rep.selectedJobOrder.value;
+            final isTimingLocked =
+                selectedJob != null && !selectedJob.isWorkUnlocked;
+            return StickyActionBar(
+              label: submitting ? 'Saving…' : 'Save report',
+              icon: Icons.check_circle_outline_rounded,
+              why: isTimingLocked
+                  ? 'Locked until started · go back and tap Start on the job order'
+                  : (missing.isEmpty
+                      ? 'All steps done · saved on the phone first, sent when online'
+                      : 'Missing: ${missing.join(' · ')}'),
+              onPressed: (submitting || isTimingLocked) ? null : _handleSubmit,
             );
           },
         ),

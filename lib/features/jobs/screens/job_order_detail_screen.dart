@@ -2361,11 +2361,19 @@ class JobOrderDetailScreen extends StatelessWidget {
   }
   */
   // Gene - Oct 13, 2026: Guarded _handleOpenReport so rescheduled jobs cannot open report screen or modify records.
+  // Gene - Nov, 26, 2026: Also require job.isWorkUnlocked (started and not finished) before opening report.
   void _handleOpenReport(BuildContext context, JobOrderDto job) {
     // Gene - Nov 07, 2026: Wrapped single-line if statement in curly braces for linter compliance (curly_braces_in_flow_control_structures).
     // if (job.isRescheduled || job.siteException == SiteException.reschedule)
     //   return;
+    /*
     if (job.isRescheduled || job.siteException == SiteException.reschedule) {
+      return;
+    }
+    */
+    if (!job.isWorkUnlocked ||
+        job.isRescheduled ||
+        job.siteException == SiteException.reschedule) {
       return;
     }
     if (onOpenReport != null) {
@@ -2606,6 +2614,8 @@ class JobOrderDetailScreen extends StatelessWidget {
   /// history, so it deserves a second look.
   Future<void> _handleComplete(
       BuildContext context, JobOrderDto job, bool isDark) async {
+    // Gene - Nov, 26, 2026: Prevent completing a job order unless it is actively started (unlocked).
+    if (!job.isWorkUnlocked) return;
     final confirmed = await showConfirmDialog(
       context,
       title: 'Mark as Completed?',

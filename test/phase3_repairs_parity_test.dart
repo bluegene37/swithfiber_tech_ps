@@ -60,6 +60,8 @@ ServiceOrderDto _order({
   String priority = 'Normal',
   String? coords,
   String contactNumber = '09171234567',
+  // Gene - Nov, 26, 2026: Optional startTimestamp for unlocked ServiceOrderCard action tests.
+  DateTime? startTimestamp,
 }) =>
     ServiceOrderDto(
       id: id,
@@ -71,6 +73,7 @@ ServiceOrderDto _order({
       concern: concern,
       priorityLevel: priority,
       addressCoordinates: coords,
+      startTimestamp: startTimestamp,
     );
 
 void main() {
@@ -100,6 +103,8 @@ void main() {
         id: 101,
         priority: 'Urgent',
         coords: '14.4800, 121.1950',
+        // Gene - Nov, 26, 2026: Seed active Start timestamp so SMS action is unlocked.
+        startTimestamp: DateTime.utc(2026, 11, 26, 8, 0),
       );
       signals.allOrders.value = [urgentOrder];
 

@@ -63,6 +63,8 @@ JobOrderDto _job(int id) => JobOrderDto(
       address: 'Lot $id',
       status: 'Scheduled',
       modemRouterSN: 'SN$id',
+      // Gene - Nov, 26, 2026: Seed active Start timestamp so completion report tests run against started jobs.
+      startTimeStamp: DateTime.utc(2026, 11, 26, 8, 0),
     );
 
 void main() {
@@ -192,6 +194,8 @@ void main() {
           address: 'Lot 1',
           status: 'Scheduled',
           modemRouterSN: '', // blank serial
+          // Gene - Nov, 26, 2026: Seed active Start timestamp so Save report button validation runs.
+          startTimeStamp: DateTime.utc(2026, 11, 26, 8, 0),
         )
       ]);
       await Future<void>.delayed(const Duration(milliseconds: 100));

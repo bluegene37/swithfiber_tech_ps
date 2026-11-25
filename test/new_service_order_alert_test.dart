@@ -64,6 +64,8 @@ void main() {
     String? visitStatus = 'Pending',
     String concern = 'No Connection',
     String? assignedEmail = 'tech@switchfiber.ph',
+    // Gene - Nov, 26, 2026: Optional startTimestamp for started-order View navigation assertions.
+    DateTime? startTimestamp,
   }) {
     return ServiceOrderDto(
       id: id,
@@ -78,6 +80,7 @@ void main() {
       visitStatus: visitStatus,
       concern: concern,
       assignedEmail: assignedEmail,
+      startTimestamp: startTimestamp,
     );
   }
 
@@ -403,7 +406,29 @@ void main() {
 
       expect(find.text('NEW SERVICE ORDER'), findsOneWidget);
 
-      // Tap View button
+      // Unstarted order: View dismisses banner without pushing ServiceOrderDetailScreen.
+      await tester.tap(find.text('View'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(serviceOrdersSignals.newOrderAlert.value, isNull);
+      expect(find.byType(ServiceOrderDetailScreen), findsNothing);
+
+      // Started order: View dismisses banner and navigates to ServiceOrderDetailScreen.
+      final startedOrder = createSampleOrder(
+        id: 888,
+        accountNumber: 'ACC-SO-888',
+        fullName: 'Maria Clara',
+        concern: 'High Loss / Red LOS',
+        startTimestamp: DateTime.utc(2026, 11, 26, 8, 0),
+      );
+      await tester.runAsync(() async {
+        await db.serviceOrdersDao.insertOrUpdateOrder(startedOrder);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      serviceOrdersSignals.newOrderAlert.value = startedOrder;
+      await tester.pump();
+      expect(find.text('NEW SERVICE ORDER'), findsOneWidget);
+
       await tester.tap(find.text('View'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
@@ -415,7 +440,11 @@ void main() {
       expect(find.byType(ServiceOrderDetailScreen), findsOneWidget);
       expect(find.text('Maria Clara'), findsWidgets);
 
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await tester.pump(const Duration(seconds: 2));
       await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 2));
     });
   });
 }

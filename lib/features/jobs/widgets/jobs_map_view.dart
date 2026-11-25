@@ -691,6 +691,8 @@ class _JobsMapViewState extends State<JobsMapView> {
     bool isDark,
     List<LcpNapDto> naps,
   ) {
+    // Gene - Nov, 26, 2026: Lock Open Ticket and Navigate actions on Job map popup until technician taps Start.
+    final isTimingLocked = job.canActivate && !job.isTimingInProgress;
     final jobPos = _resolveJobLocation(job, naps);
     final nearestNapInfo = _findNearestNap(jobPos, naps);
     String? distanceStr;
@@ -915,16 +917,27 @@ class _JobsMapViewState extends State<JobsMapView> {
                   color: AppTheme.primary,
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   borderRadius: BorderRadius.circular(10),
+                  /*
                   onPressed: () {
                     widget.onOpenJob?.call(job);
                   },
+                  */
+                  onPressed: isTimingLocked
+                      ? null
+                      : () {
+                          widget.onOpenJob?.call(job);
+                        },
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Icon(CupertinoIcons.doc_text_fill,
                           size: 24, color: Colors.white),
                       const SizedBox(width: 6),
-                      Text('Open Ticket',
+                      // Text('Open Ticket',
+                      //     style: context.text.labelLarge!
+                      //         .copyWith(color: Colors.white)),
+                      Text(
+                          isTimingLocked ? 'Start job first' : 'Open Ticket',
                           style: context.text.labelLarge!
                               .copyWith(color: Colors.white)),
                     ],
@@ -943,8 +956,14 @@ class _JobsMapViewState extends State<JobsMapView> {
                 ),
                 child: IconButton(
                   tooltip: 'Navigate to Job',
-                  icon: const Icon(CupertinoIcons.location_north_fill,
-                      color: AppTheme.primary, size: 24),
+                  // icon: const Icon(CupertinoIcons.location_north_fill,
+                  //     color: AppTheme.primary, size: 24),
+                  icon: Icon(CupertinoIcons.location_north_fill,
+                      color: isTimingLocked
+                          ? AppTheme.secondaryInkOf(context)
+                          : AppTheme.primary,
+                      size: 24),
+                  /*
                   onPressed: () {
                     MapNavigationService.navigateToCoordinates(
                       latitude: jobPos.latitude,
@@ -952,6 +971,16 @@ class _JobsMapViewState extends State<JobsMapView> {
                       destinationLabel: job.customerName,
                     );
                   },
+                  */
+                  onPressed: isTimingLocked
+                      ? null
+                      : () {
+                          MapNavigationService.navigateToCoordinates(
+                            latitude: jobPos.latitude,
+                            longitude: jobPos.longitude,
+                            destinationLabel: job.customerName,
+                          );
+                        },
                 ),
               ),
               if (nearestNapInfo != null &&

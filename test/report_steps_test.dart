@@ -51,6 +51,8 @@ void main() {
           customerName: 'Subscriber One',
           address: 'Lot 1',
           status: 'Scheduled',
+          // Gene - Nov, 26, 2026: Seed active Start timestamp so CreateReportScreen is unlocked.
+          startTimeStamp: DateTime.utc(2026, 11, 26, 8, 0),
         ),
       ]);
       await Future<void>.delayed(const Duration(milliseconds: 100));

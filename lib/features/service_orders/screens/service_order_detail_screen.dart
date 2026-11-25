@@ -696,6 +696,8 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
   }
 
   Future<void> _handleSubmit(ServiceOrderDto order) async {
+    // Gene - Nov, 26, 2026: Reject Service Order report/completion submission unless started and not finished.
+    if (!order.isWorkUnlocked) return;
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
 

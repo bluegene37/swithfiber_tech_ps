@@ -1760,6 +1760,12 @@ class JobOrderDto {
         'startTimeStamp': startTimeStamp!.toUtc().toIso8601String(),
       if (endTimeStamp != null)
         'endTimeStamp': endTimeStamp!.toUtc().toIso8601String(),
+      // Gene - Nov, 26, 2026: Compute numeric whole-minute duration for UpdateJobOrderRequest when both Start and End timestamps are recorded.
+      if (startTimeStamp != null &&
+          endTimeStamp != null &&
+          endTimeStamp!.isAfter(startTimeStamp!))
+        'duration':
+            formatTimingDurationMinutes(startTimeStamp!, endTimeStamp!),
     };
 
     if (materialsUsed.isNotEmpty) {
