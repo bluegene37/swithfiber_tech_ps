@@ -20,6 +20,10 @@
 #   APP_STORE_CONNECT_KEY_ID  App Store Connect API Key ID
 #   APP_STORE_CONNECT_ISSUER_ID App Store Connect API Issuer ID
 #
+# Optional repository variables/secrets (enables live PowerSync v11 replication when both are set):
+#   POWERSYNC_ENDPOINT        Public PowerSync sync URL (e.g. https://sync.switchfiber.ph)
+#   POWERSYNC_GATEWAY_URL     Public PowerSync Gateway URL for RS256 auth and uploads
+#
 # iOS needs a macOS runner plus signing certificates; it is left as a
 # manual `flutter build ipa` from Xcode-signed machine (see docs/RELEASE.md).
 # Gene - Oct 08, 2026: Added iOS TestFlight CI build and release job with ephemeral keychain and App Store Connect upload.
@@ -217,18 +221,63 @@ jobs:
           fi
           echo "Keystore verified and setup complete."
 
+      # - name: Build App Bundle (Play Store)
+      #   env:
+      #     GRADLE_OPTS: "-Dorg.gradle.vfs.watch=false"
+      #   run: |
+      #     flutter build appbundle --release \
+      #       --build-number=${{ steps.params.outputs.build_number }} \
+      #       --obfuscate --split-debug-info=build/symbols/android
+      #
+      # - name: Build APK (direct install)
+      #   run: |
+      #     flutter build apk --release \
+      #       --build-number=${{ steps.params.outputs.build_number }} \
+      #       --obfuscate --split-debug-info=build/symbols/android
+      # Gene - Nov, 28, 2026: Pass optional POWERSYNC_ENDPOINT and POWERSYNC_GATEWAY_URL from GitHub Actions vars/secrets via --dart-define (falls back to REST mode when unset).
       - name: Build App Bundle (Play Store)
         env:
           GRADLE_OPTS: "-Dorg.gradle.vfs.watch=false"
+          POWERSYNC_ENDPOINT: ${{ vars.POWERSYNC_ENDPOINT || secrets.POWERSYNC_ENDPOINT }}
+          POWERSYNC_GATEWAY_URL: ${{ vars.POWERSYNC_GATEWAY_URL || secrets.POWERSYNC_GATEWAY_URL }}
         run: |
+          DART_DEFINES=()
+          if [ -n "${POWERSYNC_ENDPOINT:-}" ]; then
+            DART_DEFINES+=("--dart-define=POWERSYNC_ENDPOINT=${POWERSYNC_ENDPOINT}")
+          fi
+          if [ -n "${POWERSYNC_GATEWAY_URL:-}" ]; then
+            DART_DEFINES+=("--dart-define=POWERSYNC_GATEWAY_URL=${POWERSYNC_GATEWAY_URL}")
+          fi
+          if [ "${#DART_DEFINES[@]}" -eq 2 ]; then
+            echo "PowerSync replicated mode enabled for this build."
+          else
+            echo "PowerSync endpoints not both configured; building in local-only REST fallback mode."
+          fi
           flutter build appbundle --release \
             --build-number=${{ steps.params.outputs.build_number }} \
+            ${DART_DEFINES[@]+"${DART_DEFINES[@]}"} \
             --obfuscate --split-debug-info=build/symbols/android
 
       - name: Build APK (direct install)
+        env:
+          POWERSYNC_ENDPOINT: ${{ vars.POWERSYNC_ENDPOINT || secrets.POWERSYNC_ENDPOINT }}
+          POWERSYNC_GATEWAY_URL: ${{ vars.POWERSYNC_GATEWAY_URL || secrets.POWERSYNC_GATEWAY_URL }}
         run: |
+          DART_DEFINES=()
+          if [ -n "${POWERSYNC_ENDPOINT:-}" ]; then
+            DART_DEFINES+=("--dart-define=POWERSYNC_ENDPOINT=${POWERSYNC_ENDPOINT}")
+          fi
+          if [ -n "${POWERSYNC_GATEWAY_URL:-}" ]; then
+            DART_DEFINES+=("--dart-define=POWERSYNC_GATEWAY_URL=${POWERSYNC_GATEWAY_URL}")
+          fi
+          if [ "${#DART_DEFINES[@]}" -eq 2 ]; then
+            echo "PowerSync replicated mode enabled for this build."
+          else
+            echo "PowerSync endpoints not both configured; building in local-only REST fallback mode."
+          fi
           flutter build apk --release \
             --build-number=${{ steps.params.outputs.build_number }} \
+            ${DART_DEFINES[@]+"${DART_DEFINES[@]}"} \
             --obfuscate --split-debug-info=build/symbols/android
 
       - name: Archive symbols
@@ -446,13 +495,37 @@ jobs:
           echo "Generated ios/ExportOptions.plist:"
           cat ios/ExportOptions.plist
 
+      # - name: Build iOS Archive (unsigned)
+      #   run: |
+      #     VERSION_NAME=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+      #     echo "Building $VERSION_NAME+${{ steps.params.outputs.build_number }}"
+      #     flutter build ipa --release --no-codesign \
+      #       --build-name="$VERSION_NAME" \
+      #       --build-number="${{ steps.params.outputs.build_number }}" \
+      #       --obfuscate --split-debug-info=build/symbols/ios
+      # Gene - Nov, 28, 2026: Pass optional POWERSYNC_ENDPOINT and POWERSYNC_GATEWAY_URL from GitHub Actions vars/secrets via --dart-define (falls back to REST mode when unset).
       - name: Build iOS Archive (unsigned)
+        env:
+          POWERSYNC_ENDPOINT: ${{ vars.POWERSYNC_ENDPOINT || secrets.POWERSYNC_ENDPOINT }}
+          POWERSYNC_GATEWAY_URL: ${{ vars.POWERSYNC_GATEWAY_URL || secrets.POWERSYNC_GATEWAY_URL }}
         run: |
           VERSION_NAME=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
-          echo "Building $VERSION_NAME+${{ steps.params.outputs.build_number }}"
+          DART_DEFINES=()
+          if [ -n "${POWERSYNC_ENDPOINT:-}" ]; then
+            DART_DEFINES+=("--dart-define=POWERSYNC_ENDPOINT=${POWERSYNC_ENDPOINT}")
+          fi
+          if [ -n "${POWERSYNC_GATEWAY_URL:-}" ]; then
+            DART_DEFINES+=("--dart-define=POWERSYNC_GATEWAY_URL=${POWERSYNC_GATEWAY_URL}")
+          fi
+          if [ "${#DART_DEFINES[@]}" -eq 2 ]; then
+            echo "Building $VERSION_NAME+${{ steps.params.outputs.build_number }} (PowerSync replicated mode enabled)."
+          else
+            echo "Building $VERSION_NAME+${{ steps.params.outputs.build_number }} (local-only REST fallback mode)."
+          fi
           flutter build ipa --release --no-codesign \
             --build-name="$VERSION_NAME" \
             --build-number="${{ steps.params.outputs.build_number }}" \
+            ${DART_DEFINES[@]+"${DART_DEFINES[@]}"} \
             --obfuscate --split-debug-info=build/symbols/ios
 
       - name: Export and Sign IPA

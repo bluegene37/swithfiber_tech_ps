@@ -6,6 +6,11 @@ All notable changes to Switch Fiber Tech are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **PowerSync v11 & RS256 Gateway Integration (Dual-Mode).** Connects to self-hosted PowerSync streaming and authenticated Gateway uploads when `POWERSYNC_ENDPOINT` and `POWERSYNC_GATEWAY_URL` are supplied via `--dart-define`, while remaining in local-only REST fallback mode when unset.
+- **Job & Service Order Work Timing Controls.** Start, Finish/Stop, and restartable work timing with pre-Start editing lock, single-active-order enforcement, and a local technician timing history log.
+- **Service Order Visual Parity & 4-Slot Photo Gallery.** `GetServiceOrderImage` gallery viewer, multipart photo uploads across all repair slots, and structured repair completion reporting.
+
 ## [1.0.3] - 2026-11-07
 
 ### Added
