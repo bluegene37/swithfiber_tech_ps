@@ -8,6 +8,8 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/network_exceptions.dart';
 // Gene - Nov, 8, 2026: Imported PhotoStorageService and DataUrl to sync uploaded/deleted LCP NAP photos with local SQLite rows.
 import '../../../core/services/photo_storage_service.dart';
+// Gene - Nov, 27, 2026: Added PowerSyncService import to route plant mutations via PowerSync ps_crud when replicated mode is active.
+import '../../../core/sync/powersync_service.dart';
 import '../../../core/utils/data_url.dart';
 import '../models/lcp_nap_images_model.dart';
 import '../models/lcp_nap_model.dart';
@@ -22,9 +24,15 @@ class LcpNapRepository {
   */
   // Gene - Oct 29, 2026: Allow optional ApiClient injection for unit testing upload and image endpoints.
   final ApiClient _api;
+  final bool Function() _isReplicatedMode;
 
-  LcpNapRepository(this._dao, [ApiClient? api])
-      : _api = api ?? ApiClient.instance;
+  LcpNapRepository(
+    this._dao, [
+    ApiClient? api,
+    bool Function()? isReplicatedMode,
+  ])  : _api = api ?? ApiClient.instance,
+        _isReplicatedMode = isReplicatedMode ??
+            (() => PowerSyncService.instance.isReplicatedMode);
 
   /// Watch reactive stream of all locations from the local database
   Stream<List<LcpNapDto>> watchLocations() => _dao.watchAllLocations();
@@ -122,6 +130,12 @@ class LcpNapRepository {
   */
   // Gene - Nov, 13, 2026: Reconcile deleted live LCP NAP records via deleteSyncedLocationsNotIn and evict stale _imagesCache entries even when the server returns an empty list.
   Future<void> fetchRemoteLocations() async {
+    // Gene - Nov, 27, 2026: Downstream plant rows arrive via PowerSync streaming when replicated mode is active.
+    if (_isReplicatedMode()) {
+      _imagesCache.clear();
+      return;
+    }
+
     // Purge test/sample demo locations permanently
     await _dao.deleteSampleLocations();
 
@@ -646,6 +660,69 @@ class LcpNapRepository {
       userEmail: location.userEmail ?? baseLoc.userEmail,
     );
 
+    final nowUtc = DateTime.now().toUtc();
+    final nowIso = nowUtc.toIso8601String();
+
+    // Gene - Nov, 27, 2026: In replicated PowerSync mode, write only changed/cleared photo slots locally so PowerSync Gateway handles multipart upload & preserves sibling photos on disk.
+    if (_isReplicatedMode()) {
+      final String? nextImg1 = clearImage
+          ? ''
+          : (imageBytes != null && imageBytes.isNotEmpty
+              ? await _persistPhotoSlotLocally(locationId, 'enc1', imageBytes)
+              : mergedBase.image);
+      final String? nextImg2 = clearImage2
+          ? ''
+          : (image2Bytes != null && image2Bytes.isNotEmpty
+              ? await _persistPhotoSlotLocally(locationId, 'enc2', image2Bytes)
+              : mergedBase.image2);
+      final String? nextReading = clearReadingImage
+          ? ''
+          : (readingImageBytes != null && readingImageBytes.isNotEmpty
+              ? await _persistPhotoSlotLocally(
+                  locationId, 'reading', readingImageBytes)
+              : mergedBase.readingImage);
+
+      final existingCache = _imagesCache[locationId];
+      _imagesCache[locationId] = LcpNapImagesDto(
+        image: clearImage
+            ? null
+            : ((imageBytes != null && imageBytes.isNotEmpty)
+                ? _buildImagesDtoFromBytes(enc1Bytes: imageBytes).image
+                : (existingCache?.image ??
+                    _buildImagesDtoFromBytes(
+                      enc1Bytes: _resolvePhotoBytes(mergedBase.image),
+                    ).image)),
+        image2: clearImage2
+            ? null
+            : ((image2Bytes != null && image2Bytes.isNotEmpty)
+                ? _buildImagesDtoFromBytes(enc2Bytes: image2Bytes).image2
+                : (existingCache?.image2 ??
+                    _buildImagesDtoFromBytes(
+                      enc2Bytes: _resolvePhotoBytes(mergedBase.image2),
+                    ).image2)),
+        readingImage: clearReadingImage
+            ? null
+            : ((readingImageBytes != null && readingImageBytes.isNotEmpty)
+                ? _buildImagesDtoFromBytes(readingBytes: readingImageBytes)
+                    .readingImage
+                : (existingCache?.readingImage ??
+                    _buildImagesDtoFromBytes(
+                      readingBytes: _resolvePhotoBytes(mergedBase.readingImage),
+                    ).readingImage)),
+      );
+
+      final queuedDto = mergedBase.copyWith(
+        image: nextImg1,
+        image2: nextImg2,
+        readingImage: nextReading,
+        modifiedDate: nowUtc,
+        isSynced: false,
+        updatedAt: DateTime.now(),
+      );
+      await _dao.insertOrUpdateLocation(queuedDto, synced: false);
+      return true;
+    }
+
     final needsServerSiblingCheck = !_imagesCache.containsKey(locationId) &&
         mergedBase.modifiedDate != null &&
         !ApiClient.isNetworkBlocked &&
@@ -697,9 +774,6 @@ class LcpNapRepository {
             ? await _persistPhotoSlotLocally(
                 locationId, 'reading', finalReadingBytes)
             : null;
-
-    final nowUtc = DateTime.now().toUtc();
-    final nowIso = nowUtc.toIso8601String();
 
     try {
       final map = <String, dynamic>{
@@ -950,8 +1024,9 @@ class LcpNapRepository {
     final resolvedUserEmail =
         userEmail ?? location.userEmail ?? baseLoc.userEmail;
 
-    // If this row was created offline (negative temporary ID), update locally and let syncPendingLocations POST it
-    if (locationId < 0) {
+    // If this row was created offline (negative temporary ID) or replicated PowerSync mode is active,
+    // write locally so PowerSync ps_crud / syncPendingLocations handles the upload.
+    if (locationId < 0 || _isReplicatedMode()) {
       final updatedOffline = baseLoc.copyWith(
         lcp: resolvedLcp,
         nap: resolvedNap,
@@ -970,7 +1045,9 @@ class LcpNapRepository {
         updatedAt: DateTime.now(),
       );
       await _dao.insertOrUpdateLocation(updatedOffline, synced: false);
-      unawaited(syncPendingLocations());
+      if (!_isReplicatedMode()) {
+        unawaited(syncPendingLocations());
+      }
       return true;
     }
 
@@ -1172,6 +1249,45 @@ class LcpNapRepository {
     final nowUtc = DateTime.now().toUtc();
     final nowIso = nowUtc.toIso8601String();
 
+    // Gene - Nov, 27, 2026: In replicated PowerSync mode, insert locally with a negative temporary ID so PowerSync ps_crud routes to idempotent POST /api/LCPNapLocations.
+    if (_isReplicatedMode()) {
+      final rawTemp = -(DateTime.now().millisecondsSinceEpoch % 1000000000);
+      final tempId = rawTemp == 0 ? -1 : rawTemp;
+      final savedImg1 = (imageBytes != null && imageBytes.isNotEmpty)
+          ? await _persistPhotoSlotLocally(tempId, 'enc1', imageBytes)
+          : null;
+      final savedImg2 = (image2Bytes != null && image2Bytes.isNotEmpty)
+          ? await _persistPhotoSlotLocally(tempId, 'enc2', image2Bytes)
+          : null;
+      final savedReading = (readingImageBytes != null &&
+              readingImageBytes.isNotEmpty)
+          ? await _persistPhotoSlotLocally(tempId, 'reading', readingImageBytes)
+          : null;
+
+      final offlineDto = LcpNapDto(
+        id: tempId,
+        lcp: cleanLcp,
+        nap: cleanNap,
+        lcpNap: cleanLcpNap,
+        portTotal: portTotal,
+        coordinates: cleanCoords,
+        street: cleanStreet,
+        barangay: cleanBarangay,
+        city: cleanCity,
+        region: cleanRegion,
+        image: savedImg1,
+        image2: savedImg2,
+        readingImage: savedReading,
+        modifiedBy: resolvedModifiedBy,
+        userEmail: resolvedUserEmail,
+        modifiedDate: nowUtc,
+        isSynced: false,
+        updatedAt: DateTime.now(),
+      );
+      await _dao.insertOrUpdateLocation(offlineDto, synced: false);
+      return offlineDto;
+    }
+
     final queryParams = <String, dynamic>{
       'LCP': cleanLcp,
       'NAP': cleanNap,
@@ -1356,6 +1472,9 @@ class LcpNapRepository {
 
   // Gene - Nov, 11, 2026: Single-flight background auto-sync worker that pushes all queued offline LCP NAP photo uploads, photo deletions, and GPS coordinate updates to PUT /LCPNapLocations/{id}.
   Future<int> syncPendingLocations() {
+    if (_isReplicatedMode()) {
+      return Future.value(0);
+    }
     final inFlight = _activeSyncPendingFuture;
     if (inFlight != null) {
       return inFlight;

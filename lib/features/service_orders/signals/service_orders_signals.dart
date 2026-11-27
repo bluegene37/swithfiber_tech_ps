@@ -14,6 +14,8 @@ import '../../../core/database/daos/work_timing_history_dao.dart';
 import '../../../core/database/models/work_timing_entry.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/storage/secure_storage_service.dart';
+// Gene - Nov, 27, 2026: Added PowerSyncService import for replicated mode awareness.
+import '../../../core/sync/powersync_service.dart';
 // Gene - Nov, 25, 2026: Added shared work timing helpers and AuthSignals for Start/Finish timing tracking.
 import '../../../core/widgets/work_timing_bar.dart';
 import '../../auth/signals/auth_signals.dart';
@@ -101,6 +103,8 @@ class ServiceOrdersSignals {
   // Gene - Nov, 23, 2026: Added optional errorLog parameter passed into ServiceOrdersSyncWorker.
   // Gene - Nov, 26, 2026: Added optional timingHistory parameter for recording Start/Stop sessions.
   final WorkTimingHistoryDao? timingHistory;
+  // Gene - Nov, 27, 2026: Flag callback indicating live PowerSync replication is active.
+  final bool Function() _isReplicatedMode;
 
   /*
   ServiceOrdersSignals({
@@ -119,8 +123,11 @@ class ServiceOrdersSignals {
     SecureStorageService? storage,
     SyncErrorLogsDao? errorLog,
     this.timingHistory,
+    bool Function()? isReplicatedMode,
   })  : api = api ?? ServiceOrdersApi(),
-        _storage = storage ?? SecureStorageService.instance {
+        _storage = storage ?? SecureStorageService.instance,
+        _isReplicatedMode = isReplicatedMode ??
+            (() => PowerSyncService.instance.isReplicatedMode) {
     if (dao != null) {
       /*
       syncWorker = ServiceOrdersSyncWorker(
@@ -577,6 +584,11 @@ class ServiceOrdersSignals {
     if (effectiveEmail != null && effectiveEmail.isNotEmpty) {
       setTechnicianEmail(effectiveEmail);
     }
+    // Gene - Nov, 27, 2026: Downstream rows arrive via PowerSync streaming when replicated mode is active.
+    if (_isReplicatedMode()) {
+      _imagesCache.clear();
+      return;
+    }
     isSyncing.value = true;
     syncError.value = null;
 
@@ -712,8 +724,12 @@ class ServiceOrdersSignals {
     _imagesCache.remove(updated.id);
 
     if (dao != null) {
-      // Optimistic local persist; the sync worker pushes it to the API.
+      // Optimistic local persist; PowerSync or the sync worker pushes it to the server.
       await dao!.insertOrUpdateOrder(prepared, synced: false);
+      if (_isReplicatedMode()) {
+        isSyncing.value = false;
+        return true;
+      }
       // Gene - Nov, 8, 2026: Update pendingCount before triggering background sync worker.
       await syncWorker?.refreshPendingCount();
       // Proactively trigger background sync
@@ -921,8 +937,9 @@ class ServiceOrdersSignals {
       updatedAt: now,
     );
     _upsertInMemoryOrder(updated);
+    final replicated = _isReplicatedMode();
     if (dao != null) {
-      await dao!.insertOrUpdateOrder(updated, synced: true);
+      await dao!.insertOrUpdateOrder(updated, synced: !replicated);
     }
     final entryId = await timingHistory?.recordStart(
       orderType: WorkTimingEntry.orderTypeServiceOrder,
@@ -946,6 +963,10 @@ class ServiceOrdersSignals {
       }
       return null;
     } catch (e) {
+      if (replicated) {
+        // start_timestamp & audit fields are queued via PowerSync ps_crud on service_orders.
+        return null;
+      }
       final unsynced = updated.copyWith(isSynced: false);
       _upsertInMemoryOrder(unsynced);
       if (dao != null) {
@@ -980,8 +1001,9 @@ class ServiceOrdersSignals {
       updatedAt: end,
     );
     _upsertInMemoryOrder(updated);
+    final replicated = _isReplicatedMode();
     if (dao != null) {
-      await dao!.insertOrUpdateOrder(updated, synced: true);
+      await dao!.insertOrUpdateOrder(updated, synced: !replicated);
     }
     final entryId = await timingHistory?.recordFinish(
       orderType: WorkTimingEntry.orderTypeServiceOrder,
@@ -1006,6 +1028,10 @@ class ServiceOrdersSignals {
       }
       return null;
     } catch (e) {
+      if (replicated) {
+        // stop_timestamp & duration are queued via PowerSync ps_crud on service_orders.
+        return null;
+      }
       final unsynced = updated.copyWith(isSynced: false);
       _upsertInMemoryOrder(unsynced);
       if (dao != null) {

@@ -66,6 +66,10 @@ class SecureStorageService {
   Future<void> write(String key, String value) =>
       _storage.write(key: key, value: value);
 
+  // Gene - Nov, 27, 2026: Expose key deletion for clearing cached PowerSync & gateway tokens cleanly.
+  /// Delete an arbitrary preference key.
+  Future<void> delete(String key) => _storage.delete(key: key);
+
   // Gene - Nov, 20, 2026: Added safe JSON-encoded integer-set persistence helpers for unread badge state across app restarts.
   /// Reads a stored JSON integer list as a [Set<int>].
   /// Returns an empty set when absent, malformed, or when secure storage is unavailable (e.g. headless tests).
@@ -113,9 +117,21 @@ class SecureStorageService {
   /// Clear only the technician's credentials, preserving device configuration
   /// such as the API base URL, which is not a credential and must survive a
   /// logout or an expired-token 401.
+  /*
   Future<void> clearCredentials() async {
     await deleteToken();
     await deleteUserSession();
+  }
+  */
+  // Gene - Nov, 27, 2026: Also purge cached PowerSync and Gateway tokens/metadata on logout or 401.
+  Future<void> clearCredentials() async {
+    await deleteToken();
+    await deleteUserSession();
+    await delete(AppConstants.keyPowerSyncToken);
+    await delete(AppConstants.keyPowerSyncGatewayToken);
+    await delete(AppConstants.keyPowerSyncTokenExpiresAt);
+    await delete(AppConstants.keyPowerSyncUserId);
+    await delete(AppConstants.keyPowerSyncEndpoint);
   }
 
   /// Clear everything, including device configuration. Full factory reset.

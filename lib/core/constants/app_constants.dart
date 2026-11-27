@@ -35,6 +35,11 @@ class AppConstants {
   static const String keyApiBaseUrl = 'api_base_url';
   static const String keyDarkMode = 'dark_mode_enabled';
   static const String keyPowerSyncToken = 'powersync_token';
+  // Gene - Nov, 27, 2026: Added PowerSync Gateway token/session keys and compile-time gateway URL config.
+  static const String keyPowerSyncGatewayToken = 'powersync_gateway_token';
+  static const String keyPowerSyncTokenExpiresAt = 'powersync_token_expires_at';
+  static const String keyPowerSyncUserId = 'powersync_user_id';
+  static const String keyPowerSyncEndpoint = 'powersync_endpoint';
   // Gene - Nov, 20, 2026: Added local storage keys for tracking read Job Orders and Service Orders across restarts.
   static const String keyReadJobIds = 'read_job_order_ids';
   static const String keyReadServiceOrderIds = 'read_service_order_ids';
@@ -47,6 +52,17 @@ class AppConstants {
   // Gene - Nov, 23, 2026: Moved PowerSync endpoint and dev signing key to compile-time --dart-define environment variables so no server IP or secret is hardcoded in source.
   static const String defaultPowerSyncEndpoint =
       String.fromEnvironment('POWERSYNC_ENDPOINT', defaultValue: '');
+  // Gene - Nov, 27, 2026: Added compile-time PowerSync Gateway base URL and helper to detect replicated PowerSync configuration.
+  static const String defaultPowerSyncGatewayUrl =
+      String.fromEnvironment('POWERSYNC_GATEWAY_URL', defaultValue: '');
+  /*
+  static bool get isPowerSyncConfigured =>
+      defaultPowerSyncEndpoint.trim().isNotEmpty;
+  */
+  // Gene - Nov, 28, 2026: Require both POWERSYNC_ENDPOINT and POWERSYNC_GATEWAY_URL so replicated mode never runs without an upload gateway.
+  static bool get isPowerSyncConfigured =>
+      defaultPowerSyncEndpoint.trim().isNotEmpty &&
+      defaultPowerSyncGatewayUrl.trim().isNotEmpty;
   static const String devSecretKey =
       String.fromEnvironment('POWERSYNC_DEV_KEY', defaultValue: '');
 

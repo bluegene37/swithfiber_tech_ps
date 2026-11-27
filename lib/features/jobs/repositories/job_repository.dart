@@ -5,6 +5,8 @@ import '../../../core/database/daos/sync_error_logs_dao.dart';
 import '../../../core/database/daos/work_timing_history_dao.dart';
 import '../../../core/database/models/work_timing_entry.dart';
 import '../../../core/services/photo_storage_service.dart';
+// Gene - Nov, 27, 2026: Added PowerSyncService import to detect replicated PowerSync mode.
+import '../../../core/sync/powersync_service.dart';
 // Gene - Nov, 25, 2026: Added shared timing helpers for Job Order Start/Finish tracking.
 import '../../../core/widgets/work_timing_bar.dart';
 import '../models/job_order_images_model.dart';
@@ -24,6 +26,8 @@ class JobRepository {
 
   // Gene - Nov, 26, 2026: Optional WorkTimingHistoryDao to log every Start / Start Again / Finish session by userId and date.
   final WorkTimingHistoryDao? timingHistory;
+  // Gene - Nov, 27, 2026: Flag callback indicating live PowerSync replication is active (skip legacy REST pull/push).
+  final bool Function() _isReplicatedMode;
 
   /*
   JobRepository(this._dao, {JobOrdersApi? api, this.errorLog})
@@ -36,7 +40,10 @@ class JobRepository {
     JobOrdersApi? api,
     this.errorLog,
     this.timingHistory,
-  }) : _api = api ?? DioJobOrdersApi() {
+    bool Function()? isReplicatedMode,
+  })  : _api = api ?? DioJobOrdersApi(),
+        _isReplicatedMode = isReplicatedMode ??
+            (() => PowerSyncService.instance.isReplicatedMode) {
     syncWorker = SyncWorker(_dao, api: _api, errorLog: errorLog);
   }
 
@@ -104,6 +111,12 @@ class JobRepository {
   /// server's older copy nor dropped. They are replaced by the server's
   /// version once the edit has been delivered (see [SyncWorker]).
   Future<void> fetchRemoteJobs({String? technicianEmail}) async {
+    // Gene - Nov, 27, 2026: Downstream rows arrive via PowerSync streaming when replicated mode is active.
+    if (_isReplicatedMode()) {
+      _imagesCache.clear();
+      return;
+    }
+
     // Purge test/sample demo jobs (IDs 101-106) permanently
     await _dao.deleteSampleJobs();
 
@@ -242,6 +255,13 @@ class JobRepository {
       installedAt: existing?.dateInstalled ?? DateTime.now(),
       isSynced: false,
     );
+    if (_isReplicatedMode()) {
+      return SyncResult(
+        success: true,
+        syncedCount: 1,
+        message: 'Queued via PowerSync sync.',
+      );
+    }
     await syncWorker.refreshPendingCount();
     return syncWorker.syncPendingJobs();
   }
@@ -256,6 +276,7 @@ class JobRepository {
       installedAt: existing?.dateInstalled ?? DateTime.now(),
       isSynced: false,
     );
+    if (_isReplicatedMode()) return;
     await syncWorker.refreshPendingCount();
     unawaited(syncWorker.syncPendingJobs());
   }
@@ -277,6 +298,7 @@ class JobRepository {
       statusRemarks: status == JobStatus.rescheduled ? statusRemarks : '',
       isSynced: false,
     );
+    if (_isReplicatedMode()) return;
     await syncWorker.refreshPendingCount();
     unawaited(syncWorker.syncPendingJobs());
   }
@@ -284,6 +306,7 @@ class JobRepository {
   /// Update the technician's on-site status locally and queue it for sync.
   Future<void> updateFieldStatus(int id, String onsiteStatus) async {
     await _dao.updateFieldStatus(id, onsiteStatus, isSynced: false);
+    if (_isReplicatedMode()) return;
     await syncWorker.refreshPendingCount();
     unawaited(syncWorker.syncPendingJobs());
   }
@@ -292,6 +315,7 @@ class JobRepository {
   Future<void> updateJobStatus(int id, String newStatus) async {
     // 1. Instant local optimistic update (isSynced = false)
     await _dao.updateJobStatus(id, newStatus, isSynced: false);
+    if (_isReplicatedMode()) return;
     await syncWorker.refreshPendingCount();
 
     // 2. Proactively trigger background sync
@@ -392,6 +416,10 @@ class JobRepository {
         await timingHistory?.markSynced(entryId, isSynced: true);
       }
     } catch (_) {
+      if (_isReplicatedMode()) {
+        // start_timestamp is queued via PowerSync ps_crud on job_orders.
+        return now;
+      }
       // Keep local unlock and queue via syncPendingJobs on failure.
       await _dao.updateJobTiming(
         id,
@@ -443,6 +471,10 @@ class JobRepository {
         await timingHistory?.markSynced(entryId, isSynced: true);
       }
     } catch (_) {
+      if (_isReplicatedMode()) {
+        // end_timestamp is queued via PowerSync ps_crud on job_orders.
+        return end;
+      }
       await _dao.updateJobTiming(
         job.id,
         startTimeStamp: start,
@@ -739,6 +771,7 @@ class JobRepository {
     // Gene - Nov 5, 2026: Invalidate cached photos so subsequent views fetch fresh server uploads.
     _imagesCache.remove(id);
 
+    if (_isReplicatedMode()) return;
     await syncWorker.refreshPendingCount();
     unawaited(syncWorker.syncPendingJobs());
   }

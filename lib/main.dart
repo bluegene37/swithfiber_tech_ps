@@ -28,8 +28,11 @@ void main() async {
   final powerSync = PowerSyncService.instance;
   await powerSync.initialize();
   final database = AppDatabase(powerSync.db);
-  await database.jobOrdersDao.deleteSampleJobs();
-  await database.lcpNapLocationsDao.deleteSampleLocations();
+  // Gene - Nov, 27, 2026: Only prune sample seed rows in local-only mode so replicated PowerSync mode never queues deletes against real server IDs.
+  if (!powerSync.isReplicatedMode) {
+    await database.jobOrdersDao.deleteSampleJobs();
+    await database.lcpNapLocationsDao.deleteSampleLocations();
+  }
   /*
   final jobRepository =
       JobRepository(database.jobOrdersDao, errorLog: database.syncErrorLogsDao);
@@ -51,6 +54,23 @@ void main() async {
     dao: database.serviceOrdersDao,
     errorLog: database.syncErrorLogsDao,
     timingHistory: database.workTimingHistoryDao,
+  );
+  // Gene - Nov, 27, 2026: Wire SyncErrorLogsDao and post-upload image cache invalidation into PowerSyncService connector.
+  powerSync.setUploadHooks(
+    errorLog: database.syncErrorLogsDao,
+    onEntityUploaded: (table, entityId) {
+      switch (table) {
+        case 'job_orders':
+          jobRepository.clearImagesCache(entityId);
+          break;
+        case 'service_orders':
+          serviceOrdersSignals.clearImagesCache(entityId);
+          break;
+        case 'lcp_nap_locations':
+          lcpNapRepository.invalidateImagesCache(entityId);
+          break;
+      }
+    },
   );
 
   // 2. Initialize Signals State Layer

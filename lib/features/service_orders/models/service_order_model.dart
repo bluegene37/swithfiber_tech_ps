@@ -66,6 +66,8 @@ class ServiceOrderDto {
   final String? newPLAN;
   final String? pulloutCPESN;
   final String? connectionRemarks;
+  // Gene - Nov, 27, 2026: Added _supportRemarks backing field for Server v11 support_remarks column hydration.
+  final String? _supportRemarks;
   final DateTime? startTimestamp;
   final DateTime? stopTimestamp;
   final String? modifiedBy;
@@ -160,6 +162,8 @@ class ServiceOrderDto {
     this.dateInstalled,
     this.repairCategory,
     this.connectionRemarks,
+    // Gene - Nov, 27, 2026: Optional Server v11 supportRemarks backing field.
+    String? supportRemarks,
     this.newRouterModemSN,
     this.newLCP,
     this.newNAP,
@@ -188,7 +192,7 @@ class ServiceOrderDto {
     this.rawJson,
     this.isSynced = true,
     this.updatedAt,
-  });
+  }) : _supportRemarks = supportRemarks;
 
   /*
   ServiceOrderDto copyWith({
@@ -271,6 +275,7 @@ class ServiceOrderDto {
     DateTime? dateInstalled,
     String? repairCategory,
     String? connectionRemarks,
+    String? supportRemarks,
     String? newRouterModemSN,
     String? newLCP,
     String? newNAP,
@@ -331,6 +336,7 @@ class ServiceOrderDto {
       dateInstalled: dateInstalled ?? this.dateInstalled,
       repairCategory: repairCategory ?? this.repairCategory,
       connectionRemarks: connectionRemarks ?? this.connectionRemarks,
+      supportRemarks: supportRemarks ?? _supportRemarks,
       newRouterModemSN: newRouterModemSN ?? this.newRouterModemSN,
       newLCP: newLCP ?? this.newLCP,
       newNAP: newNAP ?? this.newNAP,
@@ -374,6 +380,37 @@ class ServiceOrderDto {
               decoded.map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
         }
       } catch (_) {}
+    }
+    // Gene - Nov, 27, 2026: Hydrate materials from Server v11 item_name / item_name1..10 columns when materials_used_json is absent.
+    if (materials.isEmpty) {
+      final colMaterials = <String, int>{};
+      void checkRowSlot(String nameKey, String qtyKey,
+          [String? altNameKey, String? altQtyKey]) {
+        final name = (rowText(row[nameKey]) ??
+                (altNameKey != null ? rowText(row[altNameKey]) : null))
+            ?.trim();
+        final qtyRaw =
+            row[qtyKey] ?? (altQtyKey != null ? row[altQtyKey] : null);
+        if (name != null && name.isNotEmpty) {
+          final qty = qtyRaw is int
+              ? qtyRaw
+              : int.tryParse(qtyRaw?.toString() ?? '0') ?? 0;
+          if (qty > 0) colMaterials[name] = qty;
+        }
+      }
+
+      checkRowSlot('item_name', 'item_quantity');
+      for (int i = 1; i <= 10; i++) {
+        checkRowSlot(
+          'item_name$i',
+          'item_quantity$i',
+          'item_name_$i',
+          'item_quantity_$i',
+        );
+      }
+      if (colMaterials.isNotEmpty) {
+        materials = colMaterials;
+      }
     }
     final rawJsonStr = rowText(row['raw_json']);
     Map<String, dynamic>? rawMap;
@@ -425,6 +462,8 @@ class ServiceOrderDto {
           rowText(row['repair_category']) ?? rawStr('repairCategory'),
       connectionRemarks:
           rowText(row['connection_remarks']) ?? rawStr('connectionRemarks'),
+      supportRemarks:
+          rowText(row['support_remarks']) ?? rawStr('supportRemarks'),
       newRouterModemSN: rowText(row['new_router_modem_sn']),
       newLCP: rowText(row['new_lcp']),
       newNAP: rowText(row['new_nap']),
@@ -461,6 +500,7 @@ class ServiceOrderDto {
   }
 
   /// The `service_orders` row for this order.
+  /*
   Map<String, Object?> toRow({bool synced = true}) => {
         'id': idText(id),
         'account_number': accountNumber,
@@ -522,6 +562,104 @@ class ServiceOrderDto {
         'is_synced': boolInt(synced),
         'updated_at': dateText(updatedAt ?? DateTime.now()),
       };
+  */
+  // Gene - Nov, 27, 2026: Emit Server v11 columns (support_remarks, duration, item_name/item_quantity 1..10) in toRow().
+  Map<String, Object?> toRow({bool synced = true}) {
+    final materialCols = <String, Object?>{
+      'item_name': synced ? null : '',
+      'item_quantity': synced ? null : '',
+    };
+    if (materialsUsed.isNotEmpty) {
+      int index = 1;
+      materialsUsed.forEach((name, qty) {
+        if (index <= 10) {
+          materialCols['item_name$index'] = name;
+          materialCols['item_quantity$index'] = qty.toString();
+          index++;
+        }
+      });
+      for (int i = index; i <= 10; i++) {
+        materialCols['item_name$i'] = '';
+        materialCols['item_quantity$i'] = '';
+      }
+    } else {
+      for (int i = 1; i <= 10; i++) {
+        materialCols['item_name$i'] = synced ? null : '';
+        materialCols['item_quantity$i'] = synced ? null : '';
+      }
+    }
+
+    final durationText = (startTimestamp != null &&
+            stopTimestamp != null &&
+            stopTimestamp!.isAfter(startTimestamp!))
+        ? formatTimingDurationMinutes(startTimestamp!, stopTimestamp!)
+        : null;
+
+    return {
+      'id': idText(id),
+      'account_number': accountNumber,
+      'full_name': fullName,
+      'contact_number': contactNumber,
+      'email_address': emailAddress,
+      'address': address,
+      'barangay': barangay,
+      'city': city,
+      'provider': provider,
+      'plan': plan,
+      'username': username,
+      'connection_type': connectionType,
+      'router_modem_sn': routerModemSN,
+      'lcp': lcp,
+      'nap': nap,
+      'port': port,
+      'vlan': vlan,
+      'support_status': supportStatus,
+      'support_remarks': supportRemarks,
+      'concern': concern,
+      'priority_level': priorityLevel,
+      'visit_status': visitStatus,
+      'visit_by': visitBy,
+      'visit_with': visitWith,
+      'visit_with_others': visitWithOthers,
+      'visit_remarks': visitRemarks,
+      'assigned_email': assignedEmail,
+      'created_date': dateText(createdDate),
+      'date_installed': dateText(dateInstalled),
+      'repair_category': repairCategory,
+      'connection_remarks': connectionRemarks,
+      'new_router_modem_sn': newRouterModemSN,
+      'new_lcp': newLCP,
+      'new_nap': newNAP,
+      'new_port': newPORT,
+      'new_vlan': newVLAN,
+      'new_plan': newPLAN,
+      'router_model': routerModel,
+      'pullout_router_model': pulloutRouterModel,
+      'pullout_router_model_sn': pulloutRouterModelSN,
+      'pullout_cpe_sn': pulloutCPESN,
+      'pullout_remarks': pulloutRemarks,
+      'start_timestamp': dateText(startTimestamp),
+      'stop_timestamp': dateText(stopTimestamp),
+      'duration': durationText,
+      'modified_by': modifiedBy,
+      'modified_date': dateText(modifiedDate),
+      'tech_modified_date': dateText(techModifiedDate),
+      'user_email': userEmail,
+      'materials_used_json':
+          materialsUsed.isNotEmpty ? jsonEncode(materialsUsed) : null,
+      ...materialCols,
+      'client_signature': clientSignature,
+      'image1': image1,
+      'image2': image2,
+      'image3': image3,
+      'house_front_picture': houseFrontPicture,
+      'address_coordinates': addressCoordinates,
+      'service_charge': serviceCharge,
+      'raw_json': rawJson,
+      'is_synced': boolInt(synced),
+      'updated_at': dateText(updatedAt ?? DateTime.now()),
+    };
+  }
 
   /// Converts fields to API JSON map, resolving local photo file paths
   /// back into Base64 data URLs as required by the backend API.
@@ -628,7 +766,11 @@ class ServiceOrderDto {
     }
   }
 
+  // Gene - Nov, 27, 2026: Prefer hydrated support_remarks column before falling back to rawJson.
   String? get supportRemarks {
+    if (_supportRemarks != null && _supportRemarks.trim().isNotEmpty) {
+      return _supportRemarks.trim();
+    }
     if (rawJson == null) return null;
     try {
       final m = jsonDecode(rawJson!) as Map<String, dynamic>;
@@ -693,6 +835,9 @@ class ServiceOrderDto {
       dateInstalled: parseDt(json['dateInstalled']),
       repairCategory: json['repairCategory']?.toString().trim(),
       connectionRemarks: json['connectionRemarks']?.toString().trim(),
+      supportRemarks: (json['supportRemarks'] ?? json['support_remarks'])
+          ?.toString()
+          .trim(),
       newRouterModemSN: json['newRouterModemSN']?.toString().trim(),
       newLCP: json['newLCP']?.toString().trim(),
       newNAP: json['newNAP']?.toString().trim(),
@@ -830,6 +975,7 @@ class ServiceOrderDto {
         'dateInstalled': dateInstalled!.toUtc().toIso8601String(),
       'repairCategory': repairCategory,
       'connectionRemarks': connectionRemarks,
+      if (supportRemarks != null) 'supportRemarks': supportRemarks,
       'newRouterModemSN': newRouterModemSN,
       'newLCP': newLCP,
       'newNAP': newNAP,
@@ -849,7 +995,8 @@ class ServiceOrderDto {
       if (startTimestamp != null &&
           stopTimestamp != null &&
           stopTimestamp!.isAfter(startTimestamp!))
-        'duration': formatTimingDurationMinutes(startTimestamp!, stopTimestamp!),
+        'duration':
+            formatTimingDurationMinutes(startTimestamp!, stopTimestamp!),
       'modifiedBy': modifiedBy,
       if (modifiedDate != null)
         'modifiedDate': modifiedDate!.toUtc().toIso8601String(),

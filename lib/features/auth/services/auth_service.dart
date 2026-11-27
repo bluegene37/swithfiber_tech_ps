@@ -1,11 +1,23 @@
+import '../../../core/constants/app_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/secure_storage_service.dart';
+import '../../../core/sync/powersync_gateway_client.dart';
 import '../models/user_model.dart';
 
 /// Authentication service for field technician login and session management.
 class AuthService {
-  final ApiClient _api = ApiClient.instance;
-  final SecureStorageService _storage = SecureStorageService.instance;
+  final ApiClient _api;
+  final SecureStorageService _storage;
+  // Gene - Nov, 27, 2026: Optional PowerSyncGatewayClient to acquire RS256 gateway/PowerSync tokens and canonical lowercase email on login.
+  final PowerSyncGatewayClient _gateway;
+
+  AuthService({
+    ApiClient? api,
+    SecureStorageService? storage,
+    PowerSyncGatewayClient? gatewayClient,
+  })  : _api = api ?? ApiClient.instance,
+        _storage = storage ?? SecureStorageService.instance,
+        _gateway = gatewayClient ?? PowerSyncGatewayClient();
 
   /// Authenticate a technician with their account username and password.
   Future<UserModel> login({
@@ -34,7 +46,7 @@ class AuthService {
       throw Exception('Invalid user data returned from authentication server.');
     }
 
-    final user = UserModel.fromJson(rawUser);
+    var user = UserModel.fromJson(rawUser);
 
     if (!user.active) {
       throw Exception(
@@ -47,6 +59,63 @@ class AuthService {
 
     if (token.toString().isNotEmpty) {
       await _storage.saveToken(token.toString());
+    }
+
+    // Best-effort PowerSync Gateway auth so RS256 tokens and canonical email
+    // are persisted immediately when POWERSYNC_GATEWAY_URL is configured.
+    if (_gateway.hasBaseUrl) {
+      try {
+        final gwResult = await _gateway.login(
+          username: username.trim(),
+          password: password,
+        );
+        if (gwResult.sessionToken.isNotEmpty) {
+          await _storage.write(
+            AppConstants.keyPowerSyncGatewayToken,
+            gwResult.sessionToken,
+          );
+        }
+        final ps = gwResult.powerSync;
+        if (ps != null) {
+          if (ps.token.isNotEmpty) {
+            await _storage.write(AppConstants.keyPowerSyncToken, ps.token);
+          }
+          if (ps.expiresAt != null) {
+            await _storage.write(
+              AppConstants.keyPowerSyncTokenExpiresAt,
+              ps.expiresAt!.toUtc().toIso8601String(),
+            );
+          }
+          if (ps.userId.isNotEmpty) {
+            await _storage.write(AppConstants.keyPowerSyncUserId, ps.userId);
+          }
+          if (ps.endpoint.isNotEmpty) {
+            await _storage.write(
+              AppConstants.keyPowerSyncEndpoint,
+              ps.endpoint,
+            );
+          }
+        }
+        final resolvedEmail = gwResult.email ?? ps?.userId;
+        if (user.email.trim().isEmpty &&
+            resolvedEmail != null &&
+            resolvedEmail.isNotEmpty) {
+          user = UserModel(
+            id: user.id,
+            username: user.username,
+            fname: user.fname,
+            lname: user.lname,
+            email: resolvedEmail,
+            accessLevelId: user.accessLevelId,
+            active: user.active,
+            menus: user.menus,
+            contactNumber: user.contactNumber,
+            address: user.address,
+          );
+        }
+      } catch (_) {
+        // Non-fatal: PowerSyncBackendConnector will mint via legacy Bearer token if needed.
+      }
     }
 
     await _storage.saveUserSession(user.toRawJson());

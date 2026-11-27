@@ -435,6 +435,23 @@ class JobOrdersDao {
       updatedRawJson = jsonEncode(rawMap);
     }
 
+    // Gene - Nov, 27, 2026: Also write connection_type, visit_by, visit_with, and item_name1..10 / item_quantity1..10 directly to job_orders columns for PowerSync ps_crud capture.
+    final materialFields = <String, Object?>{};
+    if (materialsUsed != null) {
+      int idx = 1;
+      materialsUsed.forEach((name, qty) {
+        if (idx <= 10) {
+          materialFields['item_name$idx'] = name;
+          materialFields['item_quantity$idx'] = qty.toString();
+          idx++;
+        }
+      });
+      for (int i = idx; i <= 10; i++) {
+        materialFields['item_name$i'] = '';
+        materialFields['item_quantity$i'] = '';
+      }
+    }
+
     await _patch(id, {
       if (status != null) 'status': status,
       'onsite_status': onsiteStatus,
@@ -447,6 +464,10 @@ class JobOrdersDao {
       if (vlanId != null) 'vlan_id': vlanId,
       if (planId != null) 'plan_id': planId,
       if (planName != null) 'plan_name': planName,
+      if (connectionType != null) 'connection_type': connectionType,
+      if (visitBy != null) 'visit_by': visitBy,
+      if (visitWith != null) 'visit_with': visitWith,
+      ...materialFields,
       'date_installed': dateText(DateTime.now()),
       'box_reading_image': boxReadingImage,
       'router_reading_image': routerReadingImage,

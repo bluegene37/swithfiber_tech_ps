@@ -1,24 +1,19 @@
 import 'package:powersync/powersync.dart';
 
+import '../constants/app_constants.dart';
+
 /// PowerSync client schema for Switch Fiber Tech.
 ///
-/// PowerSync's SQLite database is the app's only local store. Every table
-/// below is declared `localOnly` for now: the Switch Fiber REST API is still
-/// the transport that pulls records down and pushes technician edits back
-/// (see the sync workers), and the PowerSync Cloud instance is not yet
-/// replicating the backend database. A local-only table records nothing in
-/// PowerSync's upload queue, which keeps a REST pull of 900 rows from being
-/// queued straight back to the server as 900 uploads.
-///
-/// Once sync rules exist for a table, change its `Table.localOnly(...)` to
-/// `Table(...)`, drop the matching REST pull, and route its edits through
-/// [SwitchFiberBackendConnector.uploadData]. Nothing else in the app needs
-/// to change: reads already go through `watch` on these views.
+/// PowerSync's SQLite database is the app's only local store. When
+/// `POWERSYNC_ENDPOINT` is configured, [activePowerSyncSchema] returns
+/// [powerSyncReplicatedSchema] where `job_orders`, `service_orders`, and
+/// `lcp_nap_locations` sync directly from the self-hosted PowerSync service
+/// and enqueue outbound edits in `ps_crud`. When unconfigured, it uses
+/// [powerSyncSchema] (`localOnly`) with REST sync workers.
 ///
 /// Conventions: PowerSync manages `id` as TEXT, so the API's integer ids are
 /// stored as their decimal string. Dates are ISO-8601 text, booleans are
-/// 0/1 integers, and `raw_json` keeps the untouched API record so an update
-/// can replay every field the app does not model.
+/// 0/1 integers, and `raw_json` keeps the untouched API record when present.
 /*
 const Schema powerSyncSchema = Schema([
   jobOrdersTable,
@@ -27,6 +22,7 @@ const Schema powerSyncSchema = Schema([
   syncErrorLogsTable,
 ]);
 */
+/*
 // Gene - Nov, 26, 2026: Added workTimingHistoryTable to store every Start/Finish/Stop session per user ID and date.
 const Schema powerSyncSchema = Schema([
   jobOrdersTable,
@@ -35,9 +31,9 @@ const Schema powerSyncSchema = Schema([
   syncErrorLogsTable,
   workTimingHistoryTable,
 ]);
-
-/// Installations: Scheduled, Rescheduled, Activated, Completed.
-const Table jobOrdersTable = Table.localOnly('job_orders', [
+*/
+// Gene - Nov, 27, 2026: Added Server v11 columns and exported both local-only powerSyncSchema and replicated powerSyncReplicatedSchema via activePowerSyncSchema().
+const List<Column> _jobOrdersColumns = [
   Column.text('ticket_number'),
   Column.text('customer_name'),
   Column.text('contact_number'),
@@ -70,76 +66,64 @@ const Table jobOrdersTable = Table.localOnly('job_orders', [
   Column.text('signed_contract_image'),
   Column.text('house_front'),
   Column.text('assigned_email'),
-  // Gene - Nov, 25, 2026: Added start_timestamp and end_timestamp columns for Job Order Start/Finish timing tracking.
   Column.text('start_timestamp'),
   Column.text('end_timestamp'),
   Column.text('modified_date'),
+  // Server v11 replicated columns beyond the original local schema:
+  Column.text('address_coordinates'),
+  Column.text('installation_landmark'),
+  Column.text('usage_type'),
+  Column.text('renter'),
+  Column.text('duration'),
+  Column.text('applicant_email'),
+  Column.text('username'),
+  Column.text('connection_type'),
+  Column.text('visit_by'),
+  Column.text('visit_with'),
+  Column.text('visit_with_other'),
+  Column.text('remarks'),
+  Column.text('jo_remarks'),
+  Column.text('application_id'),
+  Column.text('lcp'),
+  Column.text('port'),
+  Column.text('vlan'),
+  Column.text('provider'),
+  Column.text('region'),
+  Column.text('location'),
+  Column.text('modified_by'),
+  Column.text('item_name1'),
+  Column.text('item_quantity1'),
+  Column.text('item_name2'),
+  Column.text('item_quantity2'),
+  Column.text('item_name3'),
+  Column.text('item_quantity3'),
+  Column.text('item_name4'),
+  Column.text('item_quantity4'),
+  Column.text('item_name5'),
+  Column.text('item_quantity5'),
+  Column.text('item_name6'),
+  Column.text('item_quantity6'),
+  Column.text('item_name7'),
+  Column.text('item_quantity7'),
+  Column.text('item_name8'),
+  Column.text('item_quantity8'),
+  Column.text('item_name9'),
+  Column.text('item_quantity9'),
+  Column.text('item_name10'),
+  Column.text('item_quantity10'),
+  // Client metadata columns (null on server-replicated rows):
   Column.text('raw_json'),
   Column.integer('is_synced'),
   Column.text('updated_at'),
-], indexes: [
+];
+
+const List<Index> _jobOrdersIndexes = [
   Index('job_status_idx', [IndexedColumn('status')]),
   Index('job_assigned_email_idx', [IndexedColumn('assigned_email')]),
   Index('job_is_synced_idx', [IndexedColumn('is_synced')]),
-]);
+];
 
-/*
-/// Repairs, relocations, swaps and pullouts.
-const Table serviceOrdersTable = Table.localOnly('service_orders', [
-  Column.text('account_number'),
-  Column.text('full_name'),
-  Column.text('contact_number'),
-  Column.text('email_address'),
-  Column.text('address'),
-  Column.text('barangay'),
-  Column.text('city'),
-  Column.text('provider'),
-  Column.text('plan'),
-  Column.text('username'),
-  Column.text('connection_type'),
-  Column.text('router_modem_sn'),
-  Column.text('lcp'),
-  Column.text('nap'),
-  Column.text('port'),
-  Column.text('vlan'),
-  Column.text('support_status'),
-  Column.text('concern'),
-  Column.text('priority_level'),
-  Column.text('visit_status'),
-  Column.text('visit_by'),
-  Column.text('visit_remarks'),
-  Column.text('assigned_email'),
-  Column.text('created_date'),
-  Column.text('date_installed'),
-  Column.text('new_router_modem_sn'),
-  Column.text('new_lcp'),
-  Column.text('new_nap'),
-  Column.text('new_port'),
-  Column.text('new_vlan'),
-  Column.text('router_model'),
-  Column.text('pullout_router_model'),
-  Column.text('pullout_router_model_sn'),
-  Column.text('pullout_remarks'),
-  Column.text('materials_used_json'),
-  Column.text('client_signature'),
-  Column.text('image1'),
-  Column.text('image2'),
-  Column.text('image3'),
-  Column.text('house_front_picture'),
-  Column.text('address_coordinates'),
-  Column.real('service_charge'),
-  Column.text('raw_json'),
-  Column.integer('is_synced'),
-  Column.text('updated_at'),
-], indexes: [
-  Index('so_support_status_idx', [IndexedColumn('support_status')]),
-  Index('so_assigned_email_idx', [IndexedColumn('assigned_email')]),
-  Index('so_is_synced_idx', [IndexedColumn('is_synced')]),
-]);
-*/
-// Gene - Nov, 25, 2026: Added full Service Order repair report columns (crew, repair category, pullout CPE SN, timestamps, connection remarks, audit fields) to PowerSync schema.
-/// Repairs, relocations, swaps and pullouts.
-const Table serviceOrdersTable = Table.localOnly('service_orders', [
+const List<Column> _serviceOrdersColumns = [
   Column.text('account_number'),
   Column.text('full_name'),
   Column.text('contact_number'),
@@ -194,18 +178,47 @@ const Table serviceOrdersTable = Table.localOnly('service_orders', [
   Column.text('house_front_picture'),
   Column.text('address_coordinates'),
   Column.real('service_charge'),
+  // Server v11 replicated columns beyond the original local schema:
+  Column.text('support_remarks'),
+  Column.text('assigned_by'),
+  Column.text('assigned_date'),
+  Column.text('requested_by'),
+  Column.text('duration'),
+  Column.text('item_name'),
+  Column.text('item_quantity'),
+  Column.text('item_name1'),
+  Column.text('item_quantity1'),
+  Column.text('item_name2'),
+  Column.text('item_quantity2'),
+  Column.text('item_name3'),
+  Column.text('item_quantity3'),
+  Column.text('item_name4'),
+  Column.text('item_quantity4'),
+  Column.text('item_name5'),
+  Column.text('item_quantity5'),
+  Column.text('item_name6'),
+  Column.text('item_quantity6'),
+  Column.text('item_name7'),
+  Column.text('item_quantity7'),
+  Column.text('item_name8'),
+  Column.text('item_quantity8'),
+  Column.text('item_name9'),
+  Column.text('item_quantity9'),
+  Column.text('item_name10'),
+  Column.text('item_quantity10'),
+  // Client metadata columns (null on server-replicated rows):
   Column.text('raw_json'),
   Column.integer('is_synced'),
   Column.text('updated_at'),
-], indexes: [
+];
+
+const List<Index> _serviceOrdersIndexes = [
   Index('so_support_status_idx', [IndexedColumn('support_status')]),
   Index('so_assigned_email_idx', [IndexedColumn('assigned_email')]),
   Index('so_is_synced_idx', [IndexedColumn('is_synced')]),
-]);
+];
 
-/// Plant records: LCP cabinets and NAP distribution boxes. Read-only mirror
-/// of the server.
-const Table lcpNapLocationsTable = Table.localOnly('lcp_nap_locations', [
+const List<Column> _lcpNapColumns = [
   Column.text('lcp'),
   Column.text('nap'),
   Column.text('lcp_nap'),
@@ -223,17 +236,80 @@ const Table lcpNapLocationsTable = Table.localOnly('lcp_nap_locations', [
   Column.text('modified_date'),
   Column.integer('is_synced'),
   Column.text('updated_at'),
-], indexes: [
-/*
-  Index('lcp_idx', [IndexedColumn('lcp')]),
-  Index('nap_idx', [IndexedColumn('nap')]),
-]);
-*/
-  // Gene - Nov, 11, 2026: Added lcp_nap_is_synced_idx index to accelerate pending offline photo & GPS auto-sync queries.
+];
+
+const List<Index> _lcpNapIndexes = [
   Index('lcp_idx', [IndexedColumn('lcp')]),
   Index('nap_idx', [IndexedColumn('nap')]),
   Index('lcp_nap_is_synced_idx', [IndexedColumn('is_synced')]),
+];
+
+/// Local-only PowerSync schema used when `POWERSYNC_ENDPOINT` is unconfigured.
+const Schema powerSyncSchema = Schema([
+  jobOrdersTable,
+  serviceOrdersTable,
+  lcpNapLocationsTable,
+  syncErrorLogsTable,
+  workTimingHistoryTable,
 ]);
+
+/// Replicated PowerSync schema used when connected to the self-hosted PowerSync service.
+const Schema powerSyncReplicatedSchema = Schema([
+  jobOrdersReplicatedTable,
+  serviceOrdersReplicatedTable,
+  lcpNapLocationsReplicatedTable,
+  syncErrorLogsTable,
+  workTimingHistoryTable,
+]);
+
+/// Returns [powerSyncReplicatedSchema] when PowerSync cloud sync is active,
+/// or [powerSyncSchema] (`localOnly`) otherwise.
+Schema activePowerSyncSchema({bool? replicated}) =>
+    (replicated ?? AppConstants.isPowerSyncConfigured)
+        ? powerSyncReplicatedSchema
+        : powerSyncSchema;
+
+/// Installations: Scheduled, Rescheduled, Activated, Completed (local-only table).
+const Table jobOrdersTable = Table.localOnly(
+  'job_orders',
+  _jobOrdersColumns,
+  indexes: _jobOrdersIndexes,
+);
+
+/// Installations: Scheduled, Rescheduled, Activated, Completed (replicated table).
+const Table jobOrdersReplicatedTable = Table(
+  'job_orders',
+  _jobOrdersColumns,
+  indexes: _jobOrdersIndexes,
+);
+
+/// Repairs, relocations, swaps and pullouts (local-only table).
+const Table serviceOrdersTable = Table.localOnly(
+  'service_orders',
+  _serviceOrdersColumns,
+  indexes: _serviceOrdersIndexes,
+);
+
+/// Repairs, relocations, swaps and pullouts (replicated table).
+const Table serviceOrdersReplicatedTable = Table(
+  'service_orders',
+  _serviceOrdersColumns,
+  indexes: _serviceOrdersIndexes,
+);
+
+/// Plant records: LCP cabinets and NAP distribution boxes (local-only table).
+const Table lcpNapLocationsTable = Table.localOnly(
+  'lcp_nap_locations',
+  _lcpNapColumns,
+  indexes: _lcpNapIndexes,
+);
+
+/// Plant records: LCP cabinets and NAP distribution boxes (replicated table).
+const Table lcpNapLocationsReplicatedTable = Table(
+  'lcp_nap_locations',
+  _lcpNapColumns,
+  indexes: _lcpNapIndexes,
+);
 
 /// Every push the server refused, kept on the phone that hit it. Never
 /// leaves the device, so it stays local-only whatever the other tables do.

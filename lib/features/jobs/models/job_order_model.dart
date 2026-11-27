@@ -264,6 +264,13 @@ class JobOrderDto {
   final String? _visitWith;
   // Gene - Oct 13, 2026: Added _addressCoordinates backing field for direct job order coordinates.
   final String? _addressCoordinates;
+  // Gene - Nov, 27, 2026: Added backing fields for Server v11 columns so hydrated rows do not depend on raw_json.
+  final String? _installationLandmark;
+  final String? _remarks;
+  final String? _joRemarks;
+  final String? _applicationId;
+  final String? _visitWithOther;
+  final String? _duration;
   final String status;
   final String? onsiteStatus;
 
@@ -366,6 +373,13 @@ class JobOrderDto {
     String? visitWith,
     // Gene - Oct 13, 2026: Added optional addressCoordinates parameter.
     String? addressCoordinates,
+    // Gene - Nov, 27, 2026: Added optional Server v11 column backing parameters.
+    String? installationLandmark,
+    String? remarks,
+    String? joRemarks,
+    String? applicationId,
+    String? visitWithOther,
+    String? duration,
     this.status = 'pending',
     this.onsiteStatus,
     this.rawJson,
@@ -402,7 +416,13 @@ class JobOrderDto {
         _connectionType = connectionType,
         _visitBy = visitBy,
         _visitWith = visitWith,
-        _addressCoordinates = addressCoordinates {
+        _addressCoordinates = addressCoordinates,
+        _installationLandmark = installationLandmark,
+        _remarks = remarks,
+        _joRemarks = joRemarks,
+        _applicationId = applicationId,
+        _visitWithOther = visitWithOther,
+        _duration = duration {
     if (planName != null && planName.trim().isNotEmpty) {
       _planNameCache[id] = planName.trim();
     }
@@ -596,13 +616,20 @@ class JobOrderDto {
   }
 
   // Gene - Oct 12, 2026: Added installationLandmark and landmarkRemarks getters to display landmark photo & notes.
+  // Gene - Nov, 27, 2026: Prefer hydrated Server v11 column values before falling back to rawJson.
   /// Landmark photo attachment or Google Drive link from installation.
   String? get installationLandmark =>
-      _rawText('installationLandmark') ?? houseFront;
+      _cleanValue(_installationLandmark) ??
+      _rawText('installationLandmark') ??
+      houseFront;
 
   /// Human notes or landmark instructions for locating the site.
   String? get landmarkRemarks {
-    final rem = _rawText('remarks') ?? _rawText('landmark') ?? onsiteRemarks;
+    final rem = _cleanValue(_remarks) ??
+        _cleanValue(_joRemarks) ??
+        _rawText('remarks') ??
+        _rawText('landmark') ??
+        onsiteRemarks;
     if (rem != null && rem.trim().isNotEmpty && rem.trim() != '0') {
       return rem.trim();
     }
@@ -611,6 +638,8 @@ class JobOrderDto {
 
   // Gene - Oct 24, 2026: Added applicationId getter to resolve customer application ID for image and document retrieval.
   String? get applicationId {
+    final direct = _cleanValue(_applicationId);
+    if (direct != null) return direct;
     final raw = _rawText('applicationId') ??
         _rawText('applicationIdValue') ??
         _rawText('application_id') ??
@@ -618,6 +647,14 @@ class JobOrderDto {
     if (raw != null && raw.trim().isNotEmpty) return raw.trim();
     return null;
   }
+
+  String? get visitWithOther =>
+      _cleanValue(_visitWithOther) ??
+      _rawText('visitWithOther') ??
+      _rawText('visit_with_other');
+
+  String? get duration =>
+      _cleanValue(_duration) ?? _rawText('duration') ?? _rawText('Duration');
 
   // Gene - Oct 13, 2026: Added username and radiusUsername getters to resolve subscriber PPPoE / RADIUS account identity.
   /// The explicit subscriber account username or PPPoE username if assigned.
@@ -944,6 +981,20 @@ class JobOrderDto {
       visitWith: cleanVisitWith,
       // Gene - Oct 13, 2026: Passed addressCoordinates parameter to fromJson.
       addressCoordinates: cleanCoords,
+      // Gene - Nov, 27, 2026: Populate Server v11 column backing fields from API JSON.
+      installationLandmark: _cleanValue(
+          (json['installationLandmark'] ?? json['installation_landmark'])
+              ?.toString()),
+      remarks: _cleanValue((json['remarks'] ?? json['Remarks'])?.toString()),
+      joRemarks:
+          _cleanValue((json['joRemarks'] ?? json['jo_remarks'])?.toString()),
+      applicationId: _cleanValue((json['applicationId'] ??
+              json['applicationIdValue'] ??
+              json['application_id'])
+          ?.toString()),
+      visitWithOther: _cleanValue(
+          (json['visitWithOther'] ?? json['visit_with_other'])?.toString()),
+      duration: _cleanValue((json['duration'] ?? json['Duration'])?.toString()),
       // Preserved verbatim: the API's office-side vocabulary is 'Applied' /
       // 'Confirmed', and lowercasing it silently broke every status comparison.
       status: json['status']?.toString().trim() ?? 'pending',
@@ -1044,13 +1095,32 @@ class JobOrderDto {
       } catch (_) {}
     }
 
+    // Gene - Nov, 27, 2026: Hydrate materials from row columns (item_name1..10 / item_name_1..10) when raw_json is absent (PowerSync replicated rows).
+    if (materials.isEmpty) {
+      for (var i = 1; i <= 10; i++) {
+        final name =
+            (rowText(row['item_name$i']) ?? rowText(row['item_name_$i']))
+                ?.trim();
+        final qtyRaw = row['item_quantity$i'] ?? row['item_quantity_$i'];
+        if (name != null && name.isNotEmpty) {
+          final qty = qtyRaw is int
+              ? qtyRaw
+              : int.tryParse(qtyRaw?.toString() ?? '0') ?? 0;
+          if (qty > 0) materials[name] = qty;
+        }
+      }
+    }
+
     final photos = PhotoStorageService.instance;
     String? photo(String column) => photos.resolveToDataUrlSync(
           rowText(row[column]),
         );
 
     // Gene - Oct 13, 2026: Extract connectionType from rawJson for JobOrderDto.fromRow.
+    // Gene - Nov, 27, 2026: Prefer direct Server v11 columns before falling back to rawJson.
     final String? rowConnectionType = () {
+      final direct = rowText(row['connection_type'])?.trim();
+      if (direct != null && direct.isNotEmpty) return direct;
       if (rawJson != null && rawJson.trim().isNotEmpty) {
         try {
           final decoded = jsonDecode(rawJson);
@@ -1069,6 +1139,8 @@ class JobOrderDto {
 
     // Gene - Oct 13, 2026: Extract visitBy and visitWith from rawJson for JobOrderDto.fromRow.
     final String? rowVisitBy = () {
+      final direct = rowText(row['visit_by'])?.trim();
+      if (direct != null && direct.isNotEmpty) return direct;
       if (rawJson != null && rawJson.trim().isNotEmpty) {
         try {
           final decoded = jsonDecode(rawJson);
@@ -1085,6 +1157,8 @@ class JobOrderDto {
     }();
 
     final String? rowVisitWith = () {
+      final direct = rowText(row['visit_with'])?.trim();
+      if (direct != null && direct.isNotEmpty) return direct;
       if (rawJson != null && rawJson.trim().isNotEmpty) {
         try {
           final decoded = jsonDecode(rawJson);
@@ -1116,7 +1190,8 @@ class JobOrderDto {
       secondContactNumber: rowText(row['second_contact_number']),
       status: rowText(row['status']) ?? 'pending',
 */
-      subscriberEmail: rowText(row['subscriber_email']),
+      subscriberEmail:
+          rowText(row['subscriber_email']) ?? rowText(row['applicant_email']),
       secondContactNumber: rowText(row['second_contact_number']),
       // Gene - Oct 13, 2026: Passed row username for subscriber PPPoE / RADIUS account.
       username: rowText(row['username']),
@@ -1127,6 +1202,12 @@ class JobOrderDto {
       // Gene - Oct 13, 2026: Passed addressCoordinates parsed from table row.
       addressCoordinates:
           rowText(row['address_coordinates']) ?? rowText(row['coordinates']),
+      installationLandmark: rowText(row['installation_landmark']),
+      remarks: rowText(row['remarks']),
+      joRemarks: rowText(row['jo_remarks']),
+      applicationId: rowText(row['application_id']),
+      visitWithOther: rowText(row['visit_with_other']),
+      duration: rowText(row['duration']),
       status: rowText(row['status']) ?? 'pending',
       onsiteStatus: rowText(row['onsite_status']),
       rawJson: rawJson,
@@ -1267,6 +1348,28 @@ class JobOrderDto {
       rawJsonWithMaterials = jsonEncode(rawMap);
     }
 
+    // Gene - Nov, 27, 2026: Include Server v11 columns and item_name1..10 / item_quantity1..10 in toRow().
+    final materialRow = <String, Object?>{};
+    if (materialsUsed.isNotEmpty) {
+      int idx = 1;
+      materialsUsed.forEach((name, qty) {
+        if (idx <= 10) {
+          materialRow['item_name$idx'] = name;
+          materialRow['item_quantity$idx'] = qty.toString();
+          idx++;
+        }
+      });
+      for (int i = idx; i <= 10; i++) {
+        materialRow['item_name$i'] = '';
+        materialRow['item_quantity$i'] = '';
+      }
+    } else {
+      for (int i = 1; i <= 10; i++) {
+        materialRow['item_name$i'] = synced ? null : '';
+        materialRow['item_quantity$i'] = synced ? null : '';
+      }
+    }
+
     return {
       'id': idText(id),
       'ticket_number': ticketNumber,
@@ -1278,7 +1381,28 @@ class JobOrderDto {
       'plan_name': planName,
       'plan_id': planId,
       'subscriber_email': subscriberEmail,
+      'applicant_email': subscriberEmail,
       'second_contact_number': secondContactNumber,
+      'username': username,
+      'connection_type': _connectionType ?? _rawText('connectionType'),
+      'visit_by': _visitBy ?? _rawText('visitBy'),
+      'visit_with': _visitWith ?? _rawText('visitWith'),
+      'visit_with_other': visitWithOther,
+      'address_coordinates': _addressCoordinates ??
+          _rawText('addressCoordinates') ??
+          _rawText('coordinates'),
+      'installation_landmark':
+          _installationLandmark ?? _rawText('installationLandmark'),
+      'remarks': _remarks ?? _rawText('remarks'),
+      'jo_remarks': _joRemarks ?? _rawText('joRemarks'),
+      'application_id': applicationId,
+      'duration': _duration ??
+          ((startTimeStamp != null &&
+                  endTimeStamp != null &&
+                  endTimeStamp!.isAfter(startTimeStamp!))
+              ? formatTimingDurationMinutes(startTimeStamp!, endTimeStamp!)
+              : _rawText('duration')),
+      ...materialRow,
       'status': status,
       'onsite_status': onsiteStatus,
       'onsite_remarks': onsiteRemarks,
@@ -1445,6 +1569,32 @@ class JobOrderDto {
           (server._visitWith != null && server._visitWith.trim().isNotEmpty)
               ? server._visitWith
               : _visitWith,
+      addressCoordinates: (server._addressCoordinates != null &&
+              server._addressCoordinates.trim().isNotEmpty)
+          ? server._addressCoordinates
+          : _addressCoordinates,
+      installationLandmark: (server._installationLandmark != null &&
+              server._installationLandmark.trim().isNotEmpty)
+          ? server._installationLandmark
+          : _installationLandmark,
+      remarks: (server._remarks != null && server._remarks.trim().isNotEmpty)
+          ? server._remarks
+          : _remarks,
+      joRemarks:
+          (server._joRemarks != null && server._joRemarks.trim().isNotEmpty)
+              ? server._joRemarks
+              : _joRemarks,
+      applicationId: (server._applicationId != null &&
+              server._applicationId.trim().isNotEmpty)
+          ? server._applicationId
+          : _applicationId,
+      visitWithOther: (server._visitWithOther != null &&
+              server._visitWithOther.trim().isNotEmpty)
+          ? server._visitWithOther
+          : _visitWithOther,
+      duration: (server._duration != null && server._duration.trim().isNotEmpty)
+          ? server._duration
+          : _duration,
       status: server.status,
       onsiteStatus: (server.onsiteStatus != null &&
               server.onsiteStatus!.trim().isNotEmpty)

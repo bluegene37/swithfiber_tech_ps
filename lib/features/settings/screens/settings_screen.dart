@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:powersync/powersync.dart' show SyncStatus;
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/database/models/sync_error_log.dart';
@@ -52,18 +54,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool? _pingSuccess;
   // Gene - Nov, 23, 2026: Track manual Sync Now execution state and offline map tile cache status.
   bool _isSyncingAll = false;
+  int _crudPendingCount = 0;
+  StreamSubscription<SyncStatus>? _syncStatusSub;
   int _tileCacheBytes = 0;
   bool _isPrefetchingTiles = false;
   int _tileDone = 0;
   int _tileTotal = 0;
 
+  /*
   @override
   void initState() {
     super.initState();
     _loadUrl();
     _refreshTileCacheSize();
+    _refreshCrudPendingCount();
     // Login returns only name and access level; pull contact details too.
     widget.authSignals.refreshProfile();
+  }
+  */
+  // Gene - Nov, 28, 2026: Subscribe to PowerSync statusStream in replicated mode so ps_crud pending badge updates live after sync uploads.
+  @override
+  void initState() {
+    super.initState();
+    _loadUrl();
+    _refreshTileCacheSize();
+    _refreshCrudPendingCount();
+    if (PowerSyncService.instance.isReplicatedMode) {
+      _syncStatusSub = PowerSyncService.instance.statusStream?.listen((_) {
+        _refreshCrudPendingCount();
+      });
+    }
+    // Login returns only name and access level; pull contact details too.
+    widget.authSignals.refreshProfile();
+  }
+
+  @override
+  void dispose() {
+    _syncStatusSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshCrudPendingCount() async {
+    if (!PowerSyncService.instance.isReplicatedMode) return;
+    final count = await PowerSyncService.instance.countPendingCrud();
+    if (mounted) setState(() => _crudPendingCount = count);
   }
 
   Future<void> _refreshTileCacheSize() async {
@@ -474,6 +508,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<int> _flushAllQueues() async {
     if (mounted) setState(() => _isSyncingAll = true);
     try {
+      // Gene - Nov, 27, 2026: In replicated PowerSync mode, reconnect stream & refresh ps_crud queue count instead of running legacy REST sync workers.
+      if (PowerSyncService.instance.isReplicatedMode) {
+        await PowerSyncService.instance.connectIfConfigured();
+        widget.jobsSignals.repository.clearImagesCache();
+        widget.serviceOrdersSignals?.clearImagesCache();
+        widget.lcpNapSignals?.repository.invalidateImagesCache();
+        final crudCount = await PowerSyncService.instance.countPendingCrud();
+        if (mounted) setState(() => _crudPendingCount = crudCount);
+        return math.max(_pendingBreakdown().total, crudCount);
+      }
       await widget.jobsSignals.repository.syncWorker.syncPendingJobs();
       await widget.serviceOrdersSignals?.syncWorker?.syncPendingOrders();
       await widget.lcpNapSignals?.syncPending();
@@ -976,136 +1020,177 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               */
               // Gene - Nov, 23, 2026: Show combined Jobs + Repairs + Plant pending queue and manual Sync Now button.
+              // Gene - Nov, 27, 2026: Observe PowerSync statusStream and include ps_crud queue count when replicated mode is active.
               SignalBuilder(
                 builder: (context) {
                   final totalJobs = jobs.totalCount.value;
                   final counts = _pendingBreakdown();
+                  final isReplicated =
+                      PowerSyncService.instance.isReplicatedMode;
+                  final effectivePending = isReplicated
+                      ? math.max(counts.total, _crudPendingCount)
+                      : counts.total;
                   final isSyncing = _isSyncingAll ||
                       syncWorker.isSyncing.value ||
                       (widget.serviceOrdersSignals?.syncWorker?.isSyncing
                               .value ??
                           false);
-                  final cloud = PowerSyncService.instance.isConnected;
+                  final statusStream = PowerSyncService.instance.isInitialized
+                      ? PowerSyncService.instance.statusStream
+                      : null;
 
-                  return Column(
-                    children: [
-                      _buildMetricRow(
-                        'Total Cached Job Orders',
-                        '$totalJobs records',
-                        CupertinoIcons.folder,
-                      ),
-                      const SizedBox(height: 8),
-                      _buildMetricRow(
-                        'Pending Sync Queue',
-                        '${counts.total} offline updates',
-                        CupertinoIcons.cloud_upload,
-                        badgeColor: counts.total > 0
-                            ? AppTheme.warning
-                            : AppTheme.success,
-                      ),
-                      if (counts.total > 0 ||
-                          widget.serviceOrdersSignals != null ||
-                          widget.lcpNapSignals != null) ...[
-                        const SizedBox(height: 6),
-                        _buildMetricRow(
-                          'Queue Breakdown',
-                          'Jobs ${counts.jobs} · Repairs ${counts.repairs} · Plant ${counts.plant}',
-                          CupertinoIcons.list_bullet,
-                        ),
-                      ],
-                      const SizedBox(height: 8),
-                      // Honest about the cloud side: every table is local
-                      // only until the PowerSync service replicates the
-                      // backend, so pushes still go through the REST API.
-                      _buildMetricRow(
-                        'PowerSync Engine Status',
-                        isSyncing
-                            ? 'Pushing to API...'
-                            : cloud
-                                ? 'Cloud sync connected'
-                                : 'Local only',
-                        CupertinoIcons.layers_alt,
-                        badgeColor: isSyncing
-                            ? AppTheme.primary
-                            : cloud
-                                ? AppTheme.success
-                                : null,
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          key: const ValueKey('settings_sync_now_button'),
-                          onPressed: isSyncing ? null : _handleSyncNow,
-                          icon: isSyncing
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.sync_rounded, size: 20),
-                          label: Text(isSyncing ? 'Syncing…' : 'Sync Now'),
-                        ),
-                      ),
-                      // Gene - Nov, 23, 2026: Added Offline Map Tiles cache size display, area prefetch, and cache clear controls.
-                      const SizedBox(height: 14),
-                      Divider(
-                        height: 1,
-                        color:
-                            isDark ? AppTheme.borderDark : AppTheme.borderLight,
-                      ),
-                      const SizedBox(height: 12),
-                      Column(
-                        key: const ValueKey('settings_map_tiles_row'),
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                  return StreamBuilder<SyncStatus>(
+                    stream: statusStream,
+                    initialData: PowerSyncService.instance.isInitialized
+                        ? PowerSyncService.instance.currentStatus
+                        : null,
+                    builder: (context, snapshot) {
+                      final syncStatus = snapshot.data;
+                      final cloud = syncStatus?.connected ??
+                          PowerSyncService.instance.isConnected;
+                      final uploading = syncStatus?.uploading ?? false;
+                      final downloading = syncStatus?.downloading ?? false;
+
+                      /*
+                      final legacyStatusText = isSyncing
+                          ? 'Pushing to API...'
+                          : cloud
+                              ? 'Cloud sync connected'
+                              : 'Local only';
+                      */
+                      final String engineLabel;
+                      final Color? engineColor;
+                      if (isSyncing || uploading) {
+                        engineLabel = isReplicated
+                            ? 'Syncing changes…'
+                            : 'Pushing to API...';
+                        engineColor = AppTheme.primary;
+                      } else if (downloading) {
+                        engineLabel = 'Downloading updates…';
+                        engineColor = AppTheme.primary;
+                      } else if (cloud) {
+                        engineLabel = 'Cloud sync connected';
+                        engineColor = AppTheme.success;
+                      } else if (isReplicated) {
+                        engineLabel = 'Connecting to PowerSync…';
+                        engineColor = AppTheme.warning;
+                      } else {
+                        engineLabel = 'Local only';
+                        engineColor = null;
+                      }
+
+                      return Column(
                         children: [
                           _buildMetricRow(
-                            'Offline Map Tiles',
-                            _isPrefetchingTiles && _tileTotal > 0
-                                ? '$_tileDone / $_tileTotal tiles'
-                                : '${(_tileCacheBytes / (1024 * 1024)).toStringAsFixed(1)} MB cached',
-                            CupertinoIcons.map_pin_ellipse,
+                            'Total Cached Job Orders',
+                            '$totalJobs records',
+                            CupertinoIcons.folder,
                           ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
+                          const SizedBox(height: 8),
+                          _buildMetricRow(
+                            'Pending Sync Queue',
+                            '$effectivePending offline updates',
+                            CupertinoIcons.cloud_upload,
+                            badgeColor: effectivePending > 0
+                                ? AppTheme.warning
+                                : AppTheme.success,
+                          ),
+                          if (effectivePending > 0 ||
+                              widget.serviceOrdersSignals != null ||
+                              widget.lcpNapSignals != null) ...[
+                            const SizedBox(height: 6),
+                            _buildMetricRow(
+                              'Queue Breakdown',
+                              'Jobs ${counts.jobs} · Repairs ${counts.repairs} · Plant ${counts.plant}',
+                              CupertinoIcons.list_bullet,
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          _buildMetricRow(
+                            'PowerSync Engine Status',
+                            engineLabel,
+                            CupertinoIcons.layers_alt,
+                            badgeColor: engineColor,
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              key: const ValueKey('settings_sync_now_button'),
+                              onPressed: isSyncing ? null : _handleSyncNow,
+                              icon: isSyncing
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.sync_rounded, size: 20),
+                              label: Text(isSyncing ? 'Syncing…' : 'Sync Now'),
+                            ),
+                          ),
+                          // Gene - Nov, 23, 2026: Added Offline Map Tiles cache size display, area prefetch, and cache clear controls.
+                          const SizedBox(height: 14),
+                          Divider(
+                            height: 1,
+                            color: isDark
+                                ? AppTheme.borderDark
+                                : AppTheme.borderLight,
+                          ),
+                          const SizedBox(height: 12),
+                          Column(
+                            key: const ValueKey('settings_map_tiles_row'),
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              OutlinedButton.icon(
-                                key: const ValueKey(
-                                    'settings_download_map_tiles_button'),
-                                onPressed: _isPrefetchingTiles
-                                    ? null
-                                    : _handlePrefetchMapTiles,
-                                icon: _isPrefetchingTiles
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                            strokeWidth: 2),
-                                      )
-                                    : const Icon(
-                                        Icons.download_for_offline_outlined,
-                                        size: 20),
-                                label: const Text('Download Area'),
+                              _buildMetricRow(
+                                'Offline Map Tiles',
+                                _isPrefetchingTiles && _tileTotal > 0
+                                    ? '$_tileDone / $_tileTotal tiles'
+                                    : '${(_tileCacheBytes / (1024 * 1024)).toStringAsFixed(1)} MB cached',
+                                CupertinoIcons.map_pin_ellipse,
                               ),
-                              TextButton.icon(
-                                key: const ValueKey(
-                                    'settings_clear_map_tiles_button'),
-                                onPressed: (_isPrefetchingTiles ||
-                                        _tileCacheBytes == 0)
-                                    ? null
-                                    : _handleClearTileCache,
-                                icon: const Icon(Icons.delete_outline_rounded,
-                                    size: 20),
-                                label: const Text('Clear'),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  OutlinedButton.icon(
+                                    key: const ValueKey(
+                                        'settings_download_map_tiles_button'),
+                                    onPressed: _isPrefetchingTiles
+                                        ? null
+                                        : _handlePrefetchMapTiles,
+                                    icon: _isPrefetchingTiles
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2),
+                                          )
+                                        : const Icon(
+                                            Icons.download_for_offline_outlined,
+                                            size: 20),
+                                    label: const Text('Download Area'),
+                                  ),
+                                  TextButton.icon(
+                                    key: const ValueKey(
+                                        'settings_clear_map_tiles_button'),
+                                    onPressed: (_isPrefetchingTiles ||
+                                            _tileCacheBytes == 0)
+                                        ? null
+                                        : _handleClearTileCache,
+                                    icon: const Icon(
+                                        Icons.delete_outline_rounded,
+                                        size: 20),
+                                    label: const Text('Clear'),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                         ],
-                      ),
-                    ],
+                      );
+                    },
                   );
                 },
               ),

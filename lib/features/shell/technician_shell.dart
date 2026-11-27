@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../core/network/network_connectivity_service.dart';
 import '../../core/services/badge_service.dart';
+// Gene - Nov, 27, 2026: Added PowerSyncService import to skip legacy REST polling timer when replicated sync is active.
+import '../../core/sync/powersync_service.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/signals/auth_signals.dart';
@@ -140,6 +142,14 @@ class _TechnicianShellState extends State<TechnicianShell>
     // Gene - Nov, 11, 2026: Flush pending offline LCP NAP photo/GPS edits and refresh remote plant records automatically whenever network connectivity returns.
     _removeOnlineListener =
         NetworkConnectivityService.instance.addOnlineListener(() async {
+      // Gene - Nov, 27, 2026: When PowerSync replicated mode is active, reconnect PowerSync & clear photo caches instead of legacy REST pulls/pushes.
+      if (PowerSyncService.instance.isReplicatedMode) {
+        unawaited(PowerSyncService.instance.connectIfConfigured());
+        widget.jobsSignals.repository.clearImagesCache();
+        _serviceOrdersSignals.clearImagesCache();
+        widget.lcpNapSignals.repository.invalidateImagesCache();
+        return;
+      }
       await widget.jobsSignals.repository.syncWorker.syncPendingJobs();
       await _serviceOrdersSignals.syncWorker?.syncPendingOrders();
       await widget.lcpNapSignals.syncPending();
@@ -166,7 +176,8 @@ class _TechnicianShellState extends State<TechnicianShell>
     }
     */
     // Gene - Oct, 3, 2026: Periodic auto-sync runs every 15s guarded by try-catch so network drops don't halt the timer, ensuring status hide/show transitions reflect automatically without manual refresh.
-    if (widget.enableAutoSync) {
+    // Gene - Nov, 27, 2026: Skip periodic 15s REST polling when live PowerSync streaming is active.
+    if (widget.enableAutoSync && !PowerSyncService.instance.isReplicatedMode) {
       _autoSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
         await _triggerBackgroundSync();
       });
@@ -252,6 +263,15 @@ class _TechnicianShellState extends State<TechnicianShell>
     }
     _isBackgroundSyncing = true;
     try {
+      // Gene - Nov, 27, 2026: In replicated PowerSync mode, verify stream connection & clear image caches instead of pulling via legacy REST APIs.
+      if (PowerSyncService.instance.isReplicatedMode) {
+        unawaited(PowerSyncService.instance.connectIfConfigured());
+        widget.jobsSignals.repository.clearImagesCache();
+        _serviceOrdersSignals.clearImagesCache();
+        widget.lcpNapSignals.repository.invalidateImagesCache();
+        _lastSyncCompletedAt = DateTime.now();
+        return;
+      }
       if (!widget.jobsSignals.isRefreshing.value) {
         await widget.jobsSignals.fetchRemote();
       }
