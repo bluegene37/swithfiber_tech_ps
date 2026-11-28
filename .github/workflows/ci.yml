@@ -18,7 +18,9 @@ jobs:
     name: Analyze, format, test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Gene - Nov, 28, 2026: Upgraded checkout to v7 for native Node.js 24 runner support (clears Node.js 20 deprecation warning).
+      # - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         with:
@@ -40,7 +42,9 @@ jobs:
       - name: Test
         run: flutter test --coverage
 
-      - uses: actions/upload-artifact@v4
+      # Gene - Nov, 28, 2026: Upgraded upload-artifact to v7 for native Node.js 24 runner support (clears Node.js 20 deprecation warning).
+      # - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage/lcov.info
@@ -51,7 +55,9 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Gene - Nov, 28, 2026: Upgraded checkout to v7 for native Node.js 24 runner support (clears Node.js 20 deprecation warning).
+      # - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Gene - Nov, 12, 2026: Upgraded setup-java to v5 to clear GitHub Actions deprecation notice.
       # - uses: actions/setup-java@v4
@@ -75,7 +81,9 @@ jobs:
       - name: Build
         run: flutter build apk --debug
 
-      - uses: actions/upload-artifact@v4
+      # Gene - Nov, 28, 2026: Upgraded upload-artifact to v7 for native Node.js 24 runner support (clears Node.js 20 deprecation warning).
+      # - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: app-debug.apk
           path: build/app/outputs/flutter-apk/app-debug.apk

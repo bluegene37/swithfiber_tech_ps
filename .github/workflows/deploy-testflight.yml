@@ -39,7 +39,9 @@ jobs:
     runs-on: xcode-27
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        # Gene - Nov, 28, 2026: Upgraded checkout to v7 for native Node.js 24 runner support (clears Node.js 20 deprecation warning).
+        # uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -56,7 +58,9 @@ jobs:
         run: flutter test
 
       - name: Import Apple Distribution Certificate
-        uses: apple-actions/import-codesign-certs@v3
+        # Gene - Nov, 28, 2026: Upgraded import-codesign-certs to v7 for native Node.js 24 runner support (clears Node.js 20 deprecation warning).
+        # uses: apple-actions/import-codesign-certs@v3
+        uses: apple-actions/import-codesign-certs@v7
         with:
           p12-file-base64: ${{ secrets.BUILD_CERTIFICATE_BASE64 || secrets.APPLE_CERTIFICATE_BASE64 }}
           p12-password: ${{ secrets.P12_PASSWORD || secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -201,7 +205,9 @@ jobs:
 
       - name: Upload Build Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        # Gene - Nov, 28, 2026: Upgraded upload-artifact to v7 for native Node.js 24 runner support (clears Node.js 20 deprecation warning).
+        # uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ios-testflight-build
           path: |
