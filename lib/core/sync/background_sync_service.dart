@@ -41,10 +41,21 @@ class BackgroundSyncService {
     if (_initialized || !_canUsePlatformScheduler) return;
     try {
       await Workmanager().initialize(switchFiberWorkmanagerDispatcher);
+      /*
       await Workmanager().registerPeriodicTask(
         switchfiberBackgroundSyncTask,
         switchfiberBackgroundSyncTask,
         frequency: const Duration(minutes: 15),
+        constraints: Constraints(networkType: NetworkType.connected),
+        existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+      );
+      */
+      // Gene - Nov, 28, 2026: Pass initialDelay so iOS BGAppRefreshTaskRequest sets earliestBeginDate 15 minutes out instead of defaulting to 0 seconds.
+      await Workmanager().registerPeriodicTask(
+        switchfiberBackgroundSyncTask,
+        switchfiberBackgroundSyncTask,
+        frequency: const Duration(minutes: 15),
+        initialDelay: const Duration(minutes: 15),
         constraints: Constraints(networkType: NetworkType.connected),
         existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
       );
