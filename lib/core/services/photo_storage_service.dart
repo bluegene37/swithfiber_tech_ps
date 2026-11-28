@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 import '../utils/data_url.dart';
 
 /// Manages filesystem persistence for photo proofs and subscriber signatures.
@@ -185,7 +186,89 @@ class PhotoStorageService {
         trimmed.contains(':\\');
   }
 
-  /// Delete a stored local file if it exists in the photos directory.
+  /// Get the directory where pending offline upload photos are stored (`pending_media`).
+  // Gene - Nov, 28, 2026: Added pending_media UUID file storage helpers so compressed photos stay out of SQLite/ps_crud.
+  Future<Directory> get pendingMediaDirectory async {
+    if (_customDirectory != null) {
+      final dir = Directory(p.join(_customDirectory!.path, 'pending_media'));
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+      return dir;
+    }
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory(p.join(docs.path, 'pending_media'));
+      if (!dir.existsSync()) {
+        await dir.create(recursive: true);
+      }
+      return dir;
+    } catch (_) {
+      final temp = Directory.systemTemp;
+      final dir = Directory(p.join(temp.path, 'pending_media'));
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+      return dir;
+    }
+  }
+
+  Future<String> savePendingMediaBytes(
+    Uint8List bytes, {
+    String extension = 'jpg',
+  }) async {
+    final dir = await pendingMediaDirectory;
+    final cleanExt = extension.replaceAll('.', '').trim();
+    final filename =
+        '${const Uuid().v4()}.${cleanExt.isEmpty ? 'jpg' : cleanExt}';
+    final file = File(p.join(dir.path, filename));
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  /// Resolves a data URL or existing local file path into `<appDocumentsDir>/pending_media/<uuid>.<ext>`.
+  /// Returns `''` when [value] is empty string (deletion request), or `null` for unchanged server paths/null.
+  Future<String?> savePendingMediaFromValue(
+    String? value, {
+    bool isSignature = false,
+  }) async {
+    if (value == null) return null;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+
+    if (DataUrl.isDataUrl(trimmed)) {
+      final bytes = DataUrl.decode(trimmed);
+      if (bytes == null || bytes.isEmpty) return null;
+      final mime = DataUrl.mimeTypeOf(trimmed) ??
+          (isSignature ? 'image/png' : 'image/jpeg');
+      final ext = mime == 'image/png' ? 'png' : 'jpg';
+      return savePendingMediaBytes(bytes, extension: ext);
+    }
+
+    if (trimmed.startsWith('/') ||
+        trimmed.startsWith('file://') ||
+        trimmed.contains(':\\')) {
+      final localPath = trimmed.startsWith('file://')
+          ? Uri.parse(trimmed).toFilePath()
+          : trimmed;
+      if (localPath.contains('pending_media')) {
+        return localPath;
+      }
+      final bytes = resolveBytes(localPath);
+      if (bytes != null && bytes.isNotEmpty) {
+        final ext = (localPath.toLowerCase().endsWith('.png') || isSignature)
+            ? 'png'
+            : 'jpg';
+        return savePendingMediaBytes(bytes, extension: ext);
+      }
+      return localPath;
+    }
+
+    // Server path / filename (unchanged remote photo).
+    return null;
+  }
+
+  /// Delete a stored local file if it exists in the photos or pending_media directory.
   Future<void> deletePhotoFile(String? filePath) async {
     if (filePath == null || filePath.trim().isEmpty) return;
     try {

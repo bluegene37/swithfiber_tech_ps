@@ -80,6 +80,7 @@ class _TimingRecordingJobApi extends JobOrdersApi {
     required String techId,
     required DateTime startTime,
     DateTime? endTime,
+    String? idempotencyKey,
   }) async {
     created.add({
       'joId': joId,
@@ -95,6 +96,7 @@ class _TimingRecordingJobApi extends JobOrdersApi {
     required String techId,
     required DateTime startTime,
     required DateTime endTime,
+    String? idempotencyKey,
   }) async {
     updated.add({
       'joId': joId,
@@ -118,6 +120,7 @@ class _TimingRecordingServiceOrdersApi extends ServiceOrdersApi {
     required String techId,
     required DateTime startTime,
     DateTime? endTime,
+    String? idempotencyKey,
   }) async {
     created.add({
       'joId': joId,
@@ -134,6 +137,7 @@ class _TimingRecordingServiceOrdersApi extends ServiceOrdersApi {
     required String techId,
     required DateTime startTime,
     required DateTime endTime,
+    String? idempotencyKey,
   }) async {
     updated.add({
       'joId': joId,

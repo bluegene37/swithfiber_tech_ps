@@ -20,12 +20,10 @@ void main() {
       expect(AppConstants.devSecretKey, isEmpty);
     });
 
-    test('PowerSync schema defines core tables and valid structure', () {
-      /*
-      expect(powerSyncSchema.tables.length, 4);
-      */
-      // Gene - Nov, 26, 2026: Updated expected table count to 5 to include work_timing_history.
-      expect(powerSyncSchema.tables.length, 5);
+    test('PowerSync schema v12 defines core, lookup, and operational tables',
+        () {
+      // Gene - Nov, 28, 2026: Schema v12 includes 3 business + 2 operational/history + 11 lookup + 3 v12 operational tables (19 total).
+      expect(powerSyncSchema.tables.length, 19);
 
       final tableNames = powerSyncSchema.tables.map((t) => t.name).toList();
       expect(tableNames, contains('job_orders'));
@@ -33,8 +31,22 @@ void main() {
       expect(tableNames, contains('lcp_nap_locations'));
       expect(tableNames, contains('sync_error_logs'));
       expect(tableNames, contains('work_timing_history'));
+      expect(tableNames, contains('inventory_items'));
+      expect(tableNames, contains('inventory_categories'));
+      expect(tableNames, contains('inventory_logs'));
+      expect(tableNames, contains('plans'));
+      expect(tableNames, contains('lcp'));
+      expect(tableNames, contains('nap'));
+      expect(tableNames, contains('vlans'));
+      expect(tableNames, contains('lcpnap'));
+      expect(tableNames, contains('ports'));
+      expect(tableNames, contains('lcpnap_ports'));
+      expect(tableNames, contains('routers'));
+      expect(tableNames, contains('pending_attachments'));
+      expect(tableNames, contains('sync_conflicts'));
+      expect(tableNames, contains('local_id_map'));
 
-      // Local-only tables while the Switch Fiber REST API handles transport
+      // Local-only tables while REST handles fallback transport
       final jobOrders =
           powerSyncSchema.tables.firstWhere((t) => t.name == 'job_orders');
       final serviceOrders =
@@ -57,18 +69,14 @@ void main() {
     });
 
     test(
-        'SwitchFiberBackendConnector returns dev token fallback when no token exists',
+        'SwitchFiberBackendConnector enforces RS256-only and returns null for HS256 dev-key fallback',
         () async {
       final connector = SwitchFiberBackendConnector(
         endpoint: 'https://powersync.example.com',
         devSecretKey: 'test-dev-secret-key',
       );
       final creds = await connector.fetchCredentials();
-      expect(creds, isNotNull);
-      expect(creds!.token.startsWith('eyJ'), isTrue);
-      expect(creds.userId, 'technician@switchfiber.ph');
-      expect(creds.expiresAt, isNotNull);
-      expect(creds.endpoint, 'https://powersync.example.com');
+      expect(creds, isNull);
     });
 
     test('SwitchFiberBackendConnector returns credentials when token exists',
@@ -87,16 +95,16 @@ void main() {
     });
 
     test(
-        'SwitchFiberBackendConnector extracts logged-in technician email from session',
+        'SwitchFiberBackendConnector extracts logged-in technician email from session with stored token',
         () async {
       FlutterSecureStorage.setMockInitialValues({
+        AppConstants.keyPowerSyncToken: 'test-rs256-token',
         AppConstants.keyUserSession:
             '{"id":42,"username":"tech_juan","email":"juan.delacruz@switchfiber.ph"}',
       });
 
       final connector = SwitchFiberBackendConnector(
         endpoint: 'https://powersync.example.com',
-        devSecretKey: 'test-dev-secret-key',
       );
       final creds = await connector.fetchCredentials();
       expect(creds, isNotNull);

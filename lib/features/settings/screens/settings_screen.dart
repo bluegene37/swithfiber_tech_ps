@@ -14,12 +14,15 @@ import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/server_display.dart';
 import '../../../core/widgets/adaptive_dialogs.dart';
+import '../../../core/sync/lookups_sync_service.dart';
 import '../../../core/sync/powersync_service.dart';
 import '../../auth/signals/auth_signals.dart';
 import '../signals/settings_signals.dart';
+import '../../diagnostics/screens/sync_conflicts_screen.dart';
 import '../../diagnostics/screens/sync_error_log_screen.dart';
 // Gene - Nov, 26, 2026: Added WorkTimingHistoryScreen import for Start/Finish/Stop timing history access in Settings.
 import '../../diagnostics/screens/work_timing_history_screen.dart';
+import '../../diagnostics/signals/sync_conflicts_signals.dart';
 import '../../jobs/signals/jobs_signals.dart';
 import '../../lcp_nap/services/map_tiles.dart';
 import '../../lcp_nap/signals/lcp_nap_signals.dart';
@@ -32,6 +35,9 @@ class SettingsScreen extends StatefulWidget {
   // Gene - Nov, 23, 2026: Optional ServiceOrdersSignals and LcpNapSignals for combined queue visibility, Sync Now, per-item retry, and logout safety.
   final ServiceOrdersSignals? serviceOrdersSignals;
   final LcpNapSignals? lcpNapSignals;
+  // Gene - Nov, 28, 2026: Optional SyncConflictsSignals and LookupsSyncService for Needs Review & ETag lookups refresh.
+  final SyncConflictsSignals? syncConflictsSignals;
+  final LookupsSyncService? lookupsSyncService;
 
   const SettingsScreen({
     super.key,
@@ -39,6 +45,8 @@ class SettingsScreen extends StatefulWidget {
     required this.jobsSignals,
     this.serviceOrdersSignals,
     this.lcpNapSignals,
+    this.syncConflictsSignals,
+    this.lookupsSyncService,
   });
 
   @override
@@ -96,7 +104,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _refreshCrudPendingCount() async {
     if (!PowerSyncService.instance.isReplicatedMode) return;
+    /*
     final count = await PowerSyncService.instance.countPendingCrud();
+    */
+    // Gene - Nov, 28, 2026: Include both ps_crud and pending_attachments in pending upload counts.
+    final count = await PowerSyncService.instance.countPendingUploads();
     if (mounted) setState(() => _crudPendingCount = count);
   }
 
@@ -513,15 +525,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         /*
         await PowerSyncService.instance.connectIfConfigured();
         */
-        // Gene - Nov, 28, 2026: Force credential refresh & stream reconnect on manual Settings sync even if already marked connected.
+        // Gene - Nov, 28, 2026: Force credential refresh, ETag lookups pull, and stream reconnect on manual Settings sync.
         await PowerSyncService.instance.reconnect();
+        await widget.lookupsSyncService?.sync(ignoreEtag: true);
         widget.jobsSignals.repository.clearImagesCache();
         widget.serviceOrdersSignals?.clearImagesCache();
         widget.lcpNapSignals?.repository.invalidateImagesCache();
-        final crudCount = await PowerSyncService.instance.countPendingCrud();
+        final crudCount = await PowerSyncService.instance.countPendingUploads();
         if (mounted) setState(() => _crudPendingCount = crudCount);
         return math.max(_pendingBreakdown().total, crudCount);
       }
+      await widget.lookupsSyncService?.sync(ignoreEtag: true);
       await widget.jobsSignals.repository.syncWorker.syncPendingJobs();
       await widget.serviceOrdersSignals?.syncWorker?.syncPendingOrders();
       await widget.lcpNapSignals?.syncPending();
@@ -570,7 +584,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _handleLogout() async {
     final counts = _pendingBreakdown();
-    if (counts.total <= 0) {
+    final replicatedPending = PowerSyncService.instance.isReplicatedMode
+        ? await PowerSyncService.instance.countPendingUploads()
+        : 0;
+    final effectiveTotal = math.max(counts.total, replicatedPending);
+    if (effectiveTotal <= 0) {
+      if (!mounted) return;
       final confirm = await showConfirmDialog(
         context,
         title: 'Sign Out',
@@ -584,12 +603,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
+    if (!mounted) return;
     final choice = await showAdaptiveDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog.adaptive(
         title: const Text('Unsynced work on phone'),
         content: Text(
-          '${counts.total} offline update(s) have not synced yet '
+          '$effectiveTotal offline update(s) or queued photo(s) have not synced yet '
           '(Jobs: ${counts.jobs} · Repairs: ${counts.repairs} · Plant: ${counts.plant}). '
           'Sync before signing out so no field work is stranded.',
         ),
@@ -943,6 +963,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: AppTheme.secondaryInkOf(context),
                 ),
               ),
+              if (widget.syncConflictsSignals != null)
+                SignalBuilder(
+                  builder: (context) {
+                    final count =
+                        widget.syncConflictsSignals!.unresolvedCount.value;
+                    return _buildIosSettingRow(
+                      rowKey: const ValueKey('settings_needs_review_row'),
+                      icon: CupertinoIcons.exclamationmark_octagon_fill,
+                      iconBg: AppTheme.danger,
+                      title: 'Needs Review',
+                      subtitle: count > 0
+                          ? '$count conflicted or reassigned order(s)'
+                          : 'Reassigned or cancelled server conflicts',
+                      isDark: isDark,
+                      showDivider: true,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => SyncConflictsScreen(
+                              signals: widget.syncConflictsSignals!,
+                            ),
+                          ),
+                        );
+                      },
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (count > 0) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.dangerSubtle,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '$count',
+                                style: context.text.labelSmall!.copyWith(
+                                  color: AppTheme.dangerInkOf(context),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Icon(
+                            CupertinoIcons.chevron_forward,
+                            size: 24,
+                            color: AppTheme.secondaryInkOf(context),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               _buildIosSettingRow(
                 icon: CupertinoIcons.exclamationmark_triangle,
                 iconBg: AppTheme.warning,

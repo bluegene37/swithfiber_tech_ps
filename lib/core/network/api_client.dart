@@ -107,8 +107,13 @@ class ApiClient {
             options.headers.remove('Authorization');
             return handler.next(options);
           }
-          // Attach Bearer token from secure storage if present
-          final token = await _storage.getToken();
+          // Gene - Nov, 28, 2026: Prefer RS256 gateway session token when present so all API calls carry valid Bearer auth.
+          final gatewayToken =
+              await _storage.read(AppConstants.keyPowerSyncGatewayToken);
+          final legacyToken = await _storage.getToken();
+          final token = (gatewayToken != null && gatewayToken.trim().isNotEmpty)
+              ? gatewayToken
+              : legacyToken;
           if (token != null && token.trim().isNotEmpty) {
             options.headers['Authorization'] = 'Bearer ${token.trim()}';
           }
@@ -119,9 +124,14 @@ class ApiClient {
         },
         onError: (DioException error, handler) async {
           if (error.response?.statusCode == 401) {
+            /*
             // Clear credentials on 401 Unauthorized, but keep the configured
             // base URL so the app still points at the right server afterwards.
             await _storage.clearCredentials();
+            onUnauthorized?.call();
+            */
+            // Gene - Nov, 28, 2026: Preserve user_session and local SQLite/ps_crud on 401; clear only tokens and prompt in-place re-authentication.
+            await _storage.clearTokensOnly();
             onUnauthorized?.call();
           }
 

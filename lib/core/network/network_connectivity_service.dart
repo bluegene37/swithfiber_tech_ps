@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
 import '../sync/powersync_service.dart';
@@ -30,6 +32,7 @@ class NetworkConnectivityService {
   }
 
   StreamSubscription<dynamic>? _subscription;
+  StreamSubscription<List<ConnectivityResult>>? _osSubscription;
   final List<OnlineCallback> _listeners = [];
   bool _isConnected = false;
   bool _isInitialized = false;
@@ -51,26 +54,28 @@ class NetworkConnectivityService {
   /// If [connectionStream] is provided, initializes immediately with that stream.
   NetworkConnectivityService({
     Stream<bool>? connectionStream,
+    Stream<List<ConnectivityResult>>? osConnectivityStream,
     bool initialConnected = false,
   }) {
-    if (connectionStream != null) {
+    if (connectionStream != null || osConnectivityStream != null) {
       initialize(
         connectionStream: connectionStream,
+        osConnectivityStream: osConnectivityStream,
         initialConnected: initialConnected,
       );
     }
   }
 
-  /// Initializes the service to monitor connection transitions.
-  ///
-  /// If [connectionStream] is omitted, attempts to listen to
-  /// [PowerSyncService.instance.db.statusStream] if the database is initialized.
+  /// Initializes the service to monitor OS network & PowerSync connection transitions.
   void initialize({
     Stream<bool>? connectionStream,
+    Stream<List<ConnectivityResult>>? osConnectivityStream,
     bool? initialConnected,
   }) {
     _subscription?.cancel();
     _subscription = null;
+    _osSubscription?.cancel();
+    _osSubscription = null;
     _isInitialized = true;
 
     if (connectionStream != null) {
@@ -84,7 +89,10 @@ class NetworkConnectivityService {
         },
         cancelOnError: false,
       );
-    } else if (PowerSyncService.instance.isInitialized) {
+      return;
+    }
+
+    if (PowerSyncService.instance.isInitialized) {
       _isConnected = initialConnected ?? PowerSyncService.instance.isConnected;
       _subscription = PowerSyncService.instance.db.statusStream
           .map((status) => status.connected)
@@ -99,6 +107,29 @@ class NetworkConnectivityService {
       );
     } else {
       _isConnected = initialConnected ?? false;
+    }
+
+    // Gene - Nov, 28, 2026: Also monitor OS connectivity via connectivity_plus so offline -> online restoration wakes lookups & PowerSync sync immediately (skipped in headless tests unless osConnectivityStream is injected).
+    if (osConnectivityStream != null ||
+        !Platform.environment.containsKey('FLUTTER_TEST')) {
+      try {
+        final Stream<List<ConnectivityResult>> source =
+            osConnectivityStream ?? Connectivity().onConnectivityChanged;
+        _osSubscription = source.listen(
+          (results) {
+            final online = results.any((r) => r != ConnectivityResult.none);
+            _handleConnectionChange(online);
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            debugPrint(
+              'NetworkConnectivityService: OS connectivity stream error: $error\n$stackTrace',
+            );
+          },
+          cancelOnError: false,
+        );
+      } catch (_) {
+        // Safe fallback in headless environments without platform plugins.
+      }
     }
   }
 
@@ -157,6 +188,8 @@ class NetworkConnectivityService {
   void dispose() {
     _subscription?.cancel();
     _subscription = null;
+    _osSubscription?.cancel();
+    _osSubscription = null;
     _listeners.clear();
     _isConnected = false;
     _isInitialized = false;

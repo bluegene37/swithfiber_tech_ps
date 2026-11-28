@@ -381,6 +381,7 @@ class ServiceOrderDto {
         }
       } catch (_) {}
     }
+    /*
     // Gene - Nov, 27, 2026: Hydrate materials from Server v11 item_name / item_name1..10 columns when materials_used_json is absent.
     if (materials.isEmpty) {
       final colMaterials = <String, int>{};
@@ -407,6 +408,24 @@ class ServiceOrderDto {
           'item_name_$i',
           'item_quantity_$i',
         );
+      }
+      if (colMaterials.isNotEmpty) {
+        materials = colMaterials;
+      }
+    }
+    */
+    // Gene - Nov, 28, 2026: Hydrate materials strictly from canonical PowerSync v12 columns item_name_1..10 and item_quantity_1..10.
+    if (materials.isEmpty) {
+      final colMaterials = <String, int>{};
+      for (int i = 1; i <= 10; i++) {
+        final name = rowText(row['item_name_$i'])?.trim();
+        final qtyRaw = row['item_quantity_$i'];
+        if (name != null && name.isNotEmpty) {
+          final qty = qtyRaw is int
+              ? qtyRaw
+              : int.tryParse(qtyRaw?.toString() ?? '0') ?? 0;
+          if (qty > 0) colMaterials[name] = qty;
+        }
       }
       if (colMaterials.isNotEmpty) {
         materials = colMaterials;
@@ -563,6 +582,7 @@ class ServiceOrderDto {
         'updated_at': dateText(updatedAt ?? DateTime.now()),
       };
   */
+  /*
   // Gene - Nov, 27, 2026: Emit Server v11 columns (support_remarks, duration, item_name/item_quantity 1..10) in toRow().
   Map<String, Object?> toRow({bool synced = true}) {
     final materialCols = <String, Object?>{
@@ -586,6 +606,32 @@ class ServiceOrderDto {
       for (int i = 1; i <= 10; i++) {
         materialCols['item_name$i'] = synced ? null : '';
         materialCols['item_quantity$i'] = synced ? null : '';
+      }
+    }
+  */
+  // Gene - Nov, 28, 2026: Emit canonical v12 material columns item_name_1..10 / item_quantity_1..10 and support omitPhotoColumns when writing disk-backed pending_attachments.
+  Map<String, Object?> toRow({
+    bool synced = true,
+    bool omitPhotoColumns = false,
+  }) {
+    final materialCols = <String, Object?>{};
+    if (materialsUsed.isNotEmpty) {
+      int index = 1;
+      materialsUsed.forEach((name, qty) {
+        if (index <= 10) {
+          materialCols['item_name_$index'] = name;
+          materialCols['item_quantity_$index'] = qty.toString();
+          index++;
+        }
+      });
+      for (int i = index; i <= 10; i++) {
+        materialCols['item_name_$i'] = '';
+        materialCols['item_quantity_$i'] = '';
+      }
+    } else {
+      for (int i = 1; i <= 10; i++) {
+        materialCols['item_name_$i'] = synced ? null : '';
+        materialCols['item_quantity_$i'] = synced ? null : '';
       }
     }
 
@@ -648,11 +694,18 @@ class ServiceOrderDto {
       'materials_used_json':
           materialsUsed.isNotEmpty ? jsonEncode(materialsUsed) : null,
       ...materialCols,
+      /*
       'client_signature': clientSignature,
       'image1': image1,
       'image2': image2,
       'image3': image3,
       'house_front_picture': houseFrontPicture,
+      */
+      if (!omitPhotoColumns) 'client_signature': clientSignature,
+      if (!omitPhotoColumns) 'image1': image1,
+      if (!omitPhotoColumns) 'image2': image2,
+      if (!omitPhotoColumns) 'image3': image3,
+      if (!omitPhotoColumns) 'house_front_picture': houseFrontPicture,
       'address_coordinates': addressCoordinates,
       'service_charge': serviceCharge,
       'raw_json': rawJson,

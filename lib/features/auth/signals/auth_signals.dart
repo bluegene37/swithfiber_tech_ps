@@ -17,6 +17,9 @@ class AuthSignals {
   final authLoading = signal<bool>(false);
   final authError = signal<String?>(null);
   final rememberMe = signal<bool>(true);
+  // Gene - Nov, 28, 2026: Non-destructive in-place re-authentication signals so expired tokens NEVER wipe ps_crud or pending_attachments.
+  final reauthRequired = signal<bool>(false);
+  final reauthReason = signal<String?>(null);
 
   // Computed state
   late final ReadonlySignal<bool> isAuthenticated = computed(
@@ -52,6 +55,8 @@ class AuthSignals {
         password: password,
       );
       currentUser.value = user;
+      reauthRequired.value = false;
+      reauthReason.value = null;
       if (PowerSyncService.instance.isInitialized) {
         unawaited(PowerSyncService.instance.reconnect());
       }
@@ -63,6 +68,25 @@ class AuthSignals {
       authLoading.value = false;
     }
   }
+
+  // Gene - Nov, 28, 2026: Trigger in-place re-login on 401 without calling logout() or disconnectAndClear(), preserving local SQLite & ps_crud.
+  void requireReauth({String? reason}) {
+    if (currentUser.value == null) return;
+    reauthReason.value = reason ??
+        'Your sync session expired. Sign in again to resume uploading.';
+    reauthRequired.value = true;
+  }
+
+  void clearReauthPrompt() {
+    reauthRequired.value = false;
+    reauthReason.value = null;
+  }
+
+  Future<bool> reauthenticate({
+    required String username,
+    required String password,
+  }) =>
+      login(username: username, password: password);
 
   /// Refresh the signed-in technician's profile from the server.
   /// Silently keeps the cached profile when offline.
@@ -106,6 +130,8 @@ class AuthSignals {
     await _authService.logout();
     currentUser.value = null;
     authError.value = reason;
+    reauthRequired.value = false;
+    reauthReason.value = null;
     if (PowerSyncService.instance.isInitialized) {
       unawaited(PowerSyncService.instance.disconnectAndClear());
     }

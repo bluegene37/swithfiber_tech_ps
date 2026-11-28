@@ -256,14 +256,19 @@ class ServiceOrdersApi {
   }
 
   // Gene - Nov, 25, 2026: Added POST /ServiceOrders/createtiming and PUT /ServiceOrders/updatetiming for Start/Finish tracking.
+  // Gene - Nov, 28, 2026: Include deterministic Idempotency-Key headers on ServiceOrders timing mutations per hardened gateway contract.
   Future<bool> createTiming({
     required int joId,
     required String techId,
     required DateTime startTime,
     DateTime? endTime,
+    String? idempotencyKey,
   }) async {
     final startIso = startTime.toUtc().toIso8601String();
     final endIso = (endTime ?? startTime).toUtc().toIso8601String();
+    final key = (idempotencyKey != null && idempotencyKey.trim().isNotEmpty)
+        ? idempotencyKey.trim()
+        : 'so_${joId}_create_${startTime.toUtc().millisecondsSinceEpoch}';
     final response = await _api.post(
       '/ServiceOrders/createtiming',
       data: {
@@ -272,6 +277,7 @@ class ServiceOrdersApi {
         'startTime': startIso,
         'endTime': endIso,
       },
+      options: Options(headers: {'Idempotency-Key': key}),
     );
     return response.statusCode == 200 ||
         response.statusCode == 201 ||
@@ -283,7 +289,11 @@ class ServiceOrdersApi {
     required String techId,
     required DateTime startTime,
     required DateTime endTime,
+    String? idempotencyKey,
   }) async {
+    final key = (idempotencyKey != null && idempotencyKey.trim().isNotEmpty)
+        ? idempotencyKey.trim()
+        : 'so_${joId}_update_${endTime.toUtc().millisecondsSinceEpoch}';
     final response = await _api.put(
       '/ServiceOrders/updatetiming',
       data: {
@@ -292,6 +302,7 @@ class ServiceOrdersApi {
         'startTime': startTime.toUtc().toIso8601String(),
         'endTime': endTime.toUtc().toIso8601String(),
       },
+      options: Options(headers: {'Idempotency-Key': key}),
     );
     return response.statusCode == 200 || response.statusCode == 204;
   }

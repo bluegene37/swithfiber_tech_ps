@@ -78,6 +78,7 @@ class _StubServiceOrdersApi extends ServiceOrdersApi {
     required String techId,
     required DateTime startTime,
     DateTime? endTime,
+    String? idempotencyKey,
   }) async =>
       true;
 
@@ -87,6 +88,7 @@ class _StubServiceOrdersApi extends ServiceOrdersApi {
     required String techId,
     required DateTime startTime,
     required DateTime endTime,
+    String? idempotencyKey,
   }) async =>
       true;
 }

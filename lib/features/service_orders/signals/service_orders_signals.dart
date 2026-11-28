@@ -1,16 +1,23 @@
 import 'dart:async';
+// Gene - Nov, 28, 2026: Added convert/io, sqlite_async, PendingAttachmentsDao, and RemotePhotoCacheService for PowerSync v12 disk-backed photos.
+import 'dart:convert';
+import 'dart:io';
 // Gene - Oct 3, 2026: Commented out unused services.dart import now that sound and haptics are encapsulated in SoundService.
 // import 'package:flutter/services.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+import 'package:sqlite_async/sqlite_async.dart' show SqliteWriteContext;
 // Gene - Nov, 20, 2026: Added app_constants and secure_storage_service imports for persisting read service order IDs.
 import '../../../core/constants/app_constants.dart';
 // Gene - Nov, 23, 2026: Added LocationService for Nearest-first repair sorting.
 import '../../../core/services/location_service.dart';
+import '../../../core/services/remote_photo_cache_service.dart';
 import '../../../core/services/sound_service.dart';
+import '../../../core/database/daos/pending_attachments_dao.dart';
 import '../../../core/database/daos/service_orders_dao.dart';
 import '../../../core/database/daos/sync_error_logs_dao.dart';
 // Gene - Nov, 26, 2026: Added WorkTimingHistoryDao and WorkTimingEntry imports for logging Service Order Start/Stop sessions.
 import '../../../core/database/daos/work_timing_history_dao.dart';
+import '../../../core/database/models/pending_attachment.dart';
 import '../../../core/database/models/work_timing_entry.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/storage/secure_storage_service.dart';
@@ -103,19 +110,13 @@ class ServiceOrdersSignals {
   // Gene - Nov, 23, 2026: Added optional errorLog parameter passed into ServiceOrdersSyncWorker.
   // Gene - Nov, 26, 2026: Added optional timingHistory parameter for recording Start/Stop sessions.
   final WorkTimingHistoryDao? timingHistory;
+  final PendingAttachmentsDao? pendingAttachments;
+  final Future<T> Function<T>(Future<T> Function(SqliteWriteContext tx))?
+      runInTransaction;
   // Gene - Nov, 27, 2026: Flag callback indicating live PowerSync replication is active.
   final bool Function() _isReplicatedMode;
 
-  /*
-  ServiceOrdersSignals({
-    ServiceOrdersApi? api,
-    this.dao,
-    this.onNewOrderAlert,
-    SecureStorageService? storage,
-    SyncErrorLogsDao? errorLog,
-  })  : api = api ?? ServiceOrdersApi(),
-        _storage = storage ?? SecureStorageService.instance {
-  */
+  // Gene - Nov, 28, 2026: Accept optional PendingAttachmentsDao and transaction runner for atomic photo queuing.
   ServiceOrdersSignals({
     ServiceOrdersApi? api,
     this.dao,
@@ -123,6 +124,8 @@ class ServiceOrdersSignals {
     SecureStorageService? storage,
     SyncErrorLogsDao? errorLog,
     this.timingHistory,
+    this.pendingAttachments,
+    this.runInTransaction,
     bool Function()? isReplicatedMode,
   })  : api = api ?? ServiceOrdersApi(),
         _storage = storage ?? SecureStorageService.instance,
@@ -152,13 +155,16 @@ class ServiceOrdersSignals {
   // Gene - Nov, 25, 2026: In-memory cache and fetch helper for GET /api/ServiceOrders/{id}/GetServiceOrderImage.
   final Map<int, ServiceOrderImagesDto> _imagesCache = {};
 
-  /// Clear in-memory service order photos cache (for tests, sync, or manual refresh).
+  /// Clear in-memory and disk service order photo caches (for tests, sync, or manual refresh).
   void clearImagesCache([int? id]) {
     if (id != null) {
       _imagesCache.remove(id);
     } else {
       _imagesCache.clear();
     }
+    unawaited(
+      RemotePhotoCacheService.instance.invalidate('service_orders', id),
+    );
   }
 
   /// Fetches photo proofs and signature for a Service Order from GET /api/ServiceOrders/{id}/GetServiceOrderImage.
@@ -166,6 +172,7 @@ class ServiceOrdersSignals {
     int orderId, {
     bool forceRefresh = false,
   }) async {
+    /*
     if (forceRefresh) {
       _imagesCache.remove(orderId);
     } else if (_imagesCache.containsKey(orderId)) {
@@ -183,6 +190,118 @@ class ServiceOrdersSignals {
       // Offline fallback or test mock
     }
     return _imagesCache[orderId];
+    */
+    // Gene - Nov, 28, 2026: Lazy disk cache + pending_attachments overlay for offline Service Order photo previews.
+    ServiceOrderImagesDto? baseDto;
+    if (forceRefresh) {
+      _imagesCache.remove(orderId);
+    } else if (_imagesCache.containsKey(orderId)) {
+      baseDto = _imagesCache[orderId];
+    } else {
+      final diskJson = await RemotePhotoCacheService.instance
+          .readCachedJson('service_orders', orderId);
+      if (diskJson != null) {
+        baseDto = ServiceOrderImagesDto.fromJson(diskJson);
+        _imagesCache[orderId] = baseDto;
+      }
+    }
+
+    if (baseDto == null || forceRefresh) {
+      try {
+        final data = await api.fetchServiceOrderImages(orderId);
+        if (data != null) {
+          final dto = ServiceOrderImagesDto.fromJson(data);
+          baseDto = dto;
+          _imagesCache[orderId] = dto;
+          unawaited(
+            RemotePhotoCacheService.instance
+                .writeCachedJson('service_orders', orderId, dto.toJson()),
+          );
+        }
+      } catch (_) {
+        if (baseDto == null) {
+          final diskJson = await RemotePhotoCacheService.instance
+              .readCachedJson('service_orders', orderId);
+          if (diskJson != null) {
+            baseDto = ServiceOrderImagesDto.fromJson(diskJson);
+          }
+        }
+      }
+    }
+
+    final merged = await _overlayPendingServiceOrderImages(orderId, baseDto);
+    if (merged != null) {
+      _imagesCache[orderId] = merged;
+    }
+    return merged;
+  }
+
+  Future<ServiceOrderImagesDto?> _overlayPendingServiceOrderImages(
+    int orderId,
+    ServiceOrderImagesDto? baseDto,
+  ) async {
+    final attDao = pendingAttachments;
+    if (attDao == null) return baseDto;
+    final items = await attDao.getAllForEntity('service_orders', '$orderId');
+    if (items.isEmpty) return baseDto;
+
+    var sig = baseDto?.clientSignature;
+    var img1 = baseDto?.image1;
+    var img2 = baseDto?.image2;
+    var img3 = baseDto?.image3;
+    var hf = baseDto?.houseFrontPicture;
+
+    Future<ServiceOrderImageFileDto?> decodeAttachment(
+      PendingAttachment att,
+    ) async {
+      if (att.deleteFlag) return null;
+      final path = att.filePath?.trim();
+      if (path == null || path.isEmpty) return null;
+      try {
+        final f = File(path);
+        if (!await f.exists()) return null;
+        final bytes = await f.readAsBytes();
+        if (bytes.isEmpty) return null;
+        final isPng = path.toLowerCase().endsWith('.png') ||
+            att.slotName == 'client_signature';
+        return ServiceOrderImageFileDto(
+          fileContents: base64Encode(bytes),
+          contentType: isPng ? 'image/png' : 'image/jpeg',
+          fileDownloadName: '${att.slotName}.${isPng ? 'png' : 'jpg'}',
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+
+    for (final att in items) {
+      final overrideFile = await decodeAttachment(att);
+      switch (att.slotName) {
+        case 'client_signature':
+          sig = att.deleteFlag ? null : (overrideFile ?? sig);
+          break;
+        case 'image1':
+          img1 = att.deleteFlag ? null : (overrideFile ?? img1);
+          break;
+        case 'image2':
+          img2 = att.deleteFlag ? null : (overrideFile ?? img2);
+          break;
+        case 'image3':
+          img3 = att.deleteFlag ? null : (overrideFile ?? img3);
+          break;
+        case 'house_front_picture':
+          hf = att.deleteFlag ? null : (overrideFile ?? hf);
+          break;
+      }
+    }
+
+    return ServiceOrderImagesDto(
+      clientSignature: sig,
+      image1: img1,
+      image2: img2,
+      image3: img3,
+      houseFrontPicture: hf,
+    );
   }
 
   /// Surfaced when a new open Service Order is synced or assigned to the technician.
@@ -439,6 +558,33 @@ class ServiceOrdersSignals {
       unawaited(_storage.writeIntSet(key, merged));
     }
   }
+
+  // Gene - Nov, 28, 2026: Expose completed/closed Service Orders for the on-demand assigned_service_orders_history view.
+  late final ReadonlySignal<List<ServiceOrderDto>> completedOrders =
+      computed(() {
+    final query = searchQuery.value.trim().toLowerCase();
+    final onlyMe = onlyAssignedToMe.value;
+    final email = technicianEmail.value?.trim();
+    return allOrders.value.where((order) {
+      if (order.isOpen) return false;
+      if (onlyMe &&
+          (email != null && email.isNotEmpty) &&
+          !order.isAssignedTo(email)) {
+        return false;
+      }
+      if (query.isNotEmpty) {
+        final matchAccount = order.accountNumber.toLowerCase().contains(query);
+        final matchName = order.fullName.toLowerCase().contains(query);
+        final matchAddress = order.address.toLowerCase().contains(query);
+        final matchConcern = order.concern.toLowerCase().contains(query);
+        if (!matchAccount && !matchName && !matchAddress && !matchConcern) {
+          return false;
+        }
+      }
+      return true;
+    }).toList()
+      ..sort((a, b) => b.id.compareTo(a.id));
+  });
 
   /// Urgent service orders count
   late final ReadonlySignal<int> urgentCount =
@@ -706,6 +852,151 @@ class ServiceOrdersSignals {
 
     // Offload Base64 photos & signatures to disk files before SQLite write
     final photoStorage = PhotoStorageService.instance;
+    /*
+    final savedSig = await photoStorage.savePhotoLocally(
+      updated.clientSignature,
+      tag: 'sig',
+      entityId: updated.id,
+    );
+    final savedImg1 = await photoStorage.savePhotoLocally(
+      updated.image1,
+      tag: 'img1',
+      entityId: updated.id,
+    );
+    final savedImg2 = await photoStorage.savePhotoLocally(
+      updated.image2,
+      tag: 'img2',
+      entityId: updated.id,
+    );
+    final savedImg3 = await photoStorage.savePhotoLocally(
+      updated.image3,
+      tag: 'img3',
+      entityId: updated.id,
+    );
+    final savedHf = await photoStorage.savePhotoLocally(
+      updated.houseFrontPicture,
+      tag: 'house_front',
+      entityId: updated.id,
+    );
+
+    final prepared = updated.copyWith(
+      clientSignature: savedSig,
+      image1: savedImg1,
+      image2: savedImg2,
+      image3: savedImg3,
+      houseFrontPicture: savedHf,
+      isSynced: false,
+      updatedAt: DateTime.now(),
+    );
+    // Gene - Nov, 25, 2026: Invalidate cached remote photos for this order so UI reflects local edits/clears immediately.
+    _imagesCache.remove(updated.id);
+
+    if (dao != null) {
+      // Optimistic local persist; PowerSync or the sync worker pushes it to the server.
+      await dao!.insertOrUpdateOrder(prepared, synced: false);
+      if (_isReplicatedMode()) {
+        isSyncing.value = false;
+        return true;
+      }
+      // Gene - Nov, 8, 2026: Update pendingCount before triggering background sync worker.
+      await syncWorker?.refreshPendingCount();
+      // Proactively trigger background sync
+      unawaited(syncWorker?.syncPendingOrders());
+      isSyncing.value = false;
+      return true;
+    }
+    */
+    // Gene - Nov, 28, 2026: In replicated PowerSync v12 mode, stage compressed photos strictly in pending_attachments atomically inside the same writeTransaction as scalar fields.
+    if (dao != null && _isReplicatedMode() && pendingAttachments != null) {
+      final existing = await dao!.getOrderById(updated.id);
+      final stagedAttachments =
+          <({String slotName, String? filePath, bool deleteFlag})>[];
+
+      Future<void> stageSlot(
+        String slotName,
+        String? incoming,
+        String? previous,
+      ) async {
+        if (incoming == null) return;
+        final clean = incoming.trim();
+        if (clean.isEmpty) {
+          if (previous != null && previous.trim().isNotEmpty) {
+            stagedAttachments
+                .add((slotName: slotName, filePath: null, deleteFlag: true));
+          }
+          return;
+        }
+        if (previous != null && clean == previous.trim()) return;
+        final savedPath = await photoStorage.savePendingMediaFromValue(
+          clean,
+          isSignature: slotName == 'client_signature',
+        );
+        if (savedPath != null && savedPath.isNotEmpty) {
+          stagedAttachments.add(
+            (slotName: slotName, filePath: savedPath, deleteFlag: false),
+          );
+        }
+      }
+
+      await stageSlot('client_signature', updated.clientSignature,
+          existing?.clientSignature);
+      await stageSlot('image1', updated.image1, existing?.image1);
+      await stageSlot('image2', updated.image2, existing?.image2);
+      await stageSlot('image3', updated.image3, existing?.image3);
+      await stageSlot('house_front_picture', updated.houseFrontPicture,
+          existing?.houseFrontPicture);
+
+      final prepared = updated.copyWith(
+        isSynced: false,
+        updatedAt: DateTime.now(),
+      );
+
+      Future<void> writeAtomic(SqliteWriteContext? tx) async {
+        if (tx != null) {
+          await dao!.insertOrUpdateOrderInTx(
+            tx,
+            prepared,
+            synced: false,
+            omitPhotoColumns: true,
+          );
+          for (final item in stagedAttachments) {
+            await pendingAttachments!.upsertInTx(
+              tx,
+              entityType: 'service_orders',
+              entityId: '${updated.id}',
+              slotName: item.slotName,
+              filePath: item.filePath,
+              deleteFlag: item.deleteFlag,
+            );
+          }
+        } else {
+          await dao!.insertOrUpdateOrder(
+            prepared,
+            synced: false,
+            omitPhotoColumns: true,
+          );
+          for (final item in stagedAttachments) {
+            await pendingAttachments!.upsert(
+              entityType: 'service_orders',
+              entityId: '${updated.id}',
+              slotName: item.slotName,
+              filePath: item.filePath,
+              deleteFlag: item.deleteFlag,
+            );
+          }
+        }
+      }
+
+      if (runInTransaction != null) {
+        await runInTransaction!((tx) => writeAtomic(tx));
+      } else {
+        await writeAtomic(null);
+      }
+      _imagesCache.remove(updated.id);
+      isSyncing.value = false;
+      return true;
+    }
+
     final savedSig = await photoStorage.savePhotoLocally(
       updated.clientSignature,
       tag: 'sig',
@@ -994,6 +1285,8 @@ class ServiceOrdersSignals {
         techId: resolvedTechId,
         startTime: now,
         endTime: now,
+        idempotencyKey:
+            'so_${order.id}_create_${now.toUtc().millisecondsSinceEpoch}',
       );
       if (entryId != null) {
         await timingHistory?.markSynced(entryId, isSynced: true);
@@ -1059,6 +1352,8 @@ class ServiceOrdersSignals {
         techId: resolvedTechId,
         startTime: start,
         endTime: end,
+        idempotencyKey:
+            'so_${order.id}_update_${end.toUtc().millisecondsSinceEpoch}',
       );
       if (entryId != null) {
         await timingHistory?.markSynced(entryId, isSynced: true);

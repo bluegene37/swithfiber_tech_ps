@@ -1,16 +1,26 @@
 import 'dart:convert';
+// Gene - Nov, 28, 2026: Added dart:io and package:path for streaming multipart files from pending_attachments, and disabled legacy crypto HS256 dev-key signing (RS256-only).
+import 'dart:io';
 import 'dart:typed_data';
+/*
 import 'package:crypto/crypto.dart';
+*/
 import 'package:dio/dio.dart';
+import 'package:path/path.dart' as p;
 import 'package:powersync/powersync.dart';
 import 'package:swithfiber_tech_ps/core/constants/app_constants.dart';
+import 'package:swithfiber_tech_ps/core/database/daos/local_id_map_dao.dart';
+import 'package:swithfiber_tech_ps/core/database/daos/pending_attachments_dao.dart';
+import 'package:swithfiber_tech_ps/core/database/daos/sync_conflicts_dao.dart';
 import 'package:swithfiber_tech_ps/core/database/daos/sync_error_logs_dao.dart';
+import 'package:swithfiber_tech_ps/core/database/models/pending_attachment.dart';
 import 'package:swithfiber_tech_ps/core/network/request_snapshot.dart';
 import 'package:swithfiber_tech_ps/core/services/photo_storage_service.dart';
 import 'package:swithfiber_tech_ps/core/storage/secure_storage_service.dart';
 import 'package:swithfiber_tech_ps/core/sync/powersync_gateway_client.dart';
 import 'package:swithfiber_tech_ps/core/utils/data_url.dart';
 import 'package:swithfiber_tech_ps/core/widgets/work_timing_bar.dart';
+import 'package:swithfiber_tech_ps/features/auth/services/auth_service.dart';
 import 'package:swithfiber_tech_ps/features/auth/signals/auth_signals.dart';
 
 /// Backend connector that supplies PowerSync authentication tokens
@@ -18,13 +28,21 @@ import 'package:swithfiber_tech_ps/features/auth/signals/auth_signals.dart';
 class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
   final SecureStorageService _storage;
   final String _endpoint;
+  /*
   // Gene - Nov, 23, 2026: Accept configurable devSecretKey and expose hasEndpoint for clean local-only fallback.
   final String _devSecretKey;
+  */
+  // Gene - Nov, 28, 2026: Removed unused _devSecretKey field (RS256-only auth on PowerSync v12).
   // Gene - Nov, 27, 2026: Added PowerSync Gateway client, SyncErrorLogsDao hook, and post-upload invalidation callback.
   final PowerSyncGatewayClient? _gatewayClient;
   SyncErrorLogsDao? errorLog;
+  // Gene - Nov, 28, 2026: Added v12 PendingAttachmentsDao, SyncConflictsDao, LocalIdMapDao, and AuthService for coalesced multipart uploads, non-blocking 409 conflicts, and proactive RS256 token refresh.
+  PendingAttachmentsDao? pendingAttachments;
+  SyncConflictsDao? syncConflicts;
+  LocalIdMapDao? localIdMap;
+  AuthService? authService;
   void Function(String table, int entityId)? onEntityUploaded;
-  // Gene - Nov, 28, 2026: Notify auth layer when gateway credentials are permanently rejected (401) so stale sessions recover cleanly to Login.
+  // Gene - Nov, 28, 2026: Notify auth layer when gateway credentials are permanently rejected (401) so in-place re-login runs without wiping local SQLite.
   void Function()? onUnauthorized;
 
   /// Optional upload handler callback for intercepting or forwarding CRUD transactions.
@@ -33,57 +51,26 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
   /// Optional per-entry upload handler callback for individual CRUD mutations.
   Future<void> Function(CrudEntry entry)? onEntryUpload;
 
-  /*
-  SwitchFiberBackendConnector({
-    SecureStorageService? storage,
-    String? endpoint,
-    this.onUpload,
-    this.onEntryUpload,
-  })  : _storage = storage ?? SecureStorageService(),
-        _endpoint = endpoint ?? AppConstants.defaultPowerSyncEndpoint;
-  */
-  /*
-  SwitchFiberBackendConnector({
-    SecureStorageService? storage,
-    String? endpoint,
-    String? devSecretKey,
-    this.onUpload,
-    this.onEntryUpload,
-  })  : _storage = storage ?? SecureStorageService(),
-        _endpoint = endpoint ?? AppConstants.defaultPowerSyncEndpoint,
-        _devSecretKey = devSecretKey ?? AppConstants.devSecretKey;
-  */
-  /*
+  // Gene - Nov, 28, 2026: Accept v12 DAOs and AuthService while preserving optional devSecretKey constructor compatibility.
   SwitchFiberBackendConnector({
     SecureStorageService? storage,
     String? endpoint,
     String? gatewayUrl,
     PowerSyncGatewayClient? gatewayClient,
+    @Deprecated(
+        'HS256 dev tokens are removed on PowerSync v12; use RS256 Gateway auth.')
     String? devSecretKey,
     this.errorLog,
-    this.onEntityUploaded,
-    this.onUpload,
-    this.onEntryUpload,
-  })  : _storage = storage ?? SecureStorageService(),
-        _endpoint = endpoint ?? AppConstants.defaultPowerSyncEndpoint,
-        _devSecretKey = devSecretKey ?? AppConstants.devSecretKey,
-        _gatewayClient = _resolveGatewayClient(gatewayClient, gatewayUrl);
-  */
-  // Gene - Nov, 28, 2026: Accept onUnauthorized callback for 401 credential recovery.
-  SwitchFiberBackendConnector({
-    SecureStorageService? storage,
-    String? endpoint,
-    String? gatewayUrl,
-    PowerSyncGatewayClient? gatewayClient,
-    String? devSecretKey,
-    this.errorLog,
+    this.pendingAttachments,
+    this.syncConflicts,
+    this.localIdMap,
+    this.authService,
     this.onEntityUploaded,
     this.onUnauthorized,
     this.onUpload,
     this.onEntryUpload,
   })  : _storage = storage ?? SecureStorageService(),
         _endpoint = endpoint ?? AppConstants.defaultPowerSyncEndpoint,
-        _devSecretKey = devSecretKey ?? AppConstants.devSecretKey,
         _gatewayClient = _resolveGatewayClient(gatewayClient, gatewayUrl);
 
   static PowerSyncGatewayClient? _resolveGatewayClient(
@@ -103,13 +90,15 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
 
   bool get hasGateway => _gatewayClient?.hasBaseUrl ?? false;
 
+  bool get canConnect => hasEndpoint || hasGateway;
+
   @override
   Future<PowerSyncCredentials?> fetchCredentials() async {
     final storedEndpoint =
         (await _storage.read(AppConstants.keyPowerSyncEndpoint))?.trim() ?? '';
     final effectiveEndpoint =
         _endpoint.trim().isNotEmpty ? _endpoint.trim() : storedEndpoint;
-    if (effectiveEndpoint.isEmpty) {
+    if (effectiveEndpoint.isEmpty && !hasGateway) {
       return null;
     }
 
@@ -161,7 +150,7 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
       }
     } catch (_) {}
 
-    // 1. Gateway Mode: reuse unexpired RS256 PowerSync JWT or mint via GET /api/Auth/powersync-token
+    // 1. Gateway Mode: proactive POST /api/Auth/refresh + RS256 PowerSync token minting (never clears local SQLite on 401/offline).
     if (hasGateway) {
       final cachedToken = await _storage.read(AppConstants.keyPowerSyncToken);
       final cachedExpStr =
@@ -171,17 +160,57 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
           .toLowerCase();
       final cachedExp =
           cachedExpStr == null ? null : DateTime.tryParse(cachedExpStr);
+      final gwToken =
+          (await _storage.read(AppConstants.keyPowerSyncGatewayToken))?.trim();
+      final gwExpStr =
+          await _storage.read(AppConstants.keyPowerSyncGatewayTokenExpiresAt);
+      final gwExp = gwExpStr == null ? null : DateTime.tryParse(gwExpStr);
       final nowUtc = DateTime.now().toUtc();
       final matchesUser = cachedUser == null ||
           cachedUser.isEmpty ||
           !hasKnownUser ||
           cachedUser == currentUserId;
 
+      final needsSessionRefresh = gwToken != null &&
+          gwToken.isNotEmpty &&
+          gwExp != null &&
+          gwExp.isBefore(nowUtc.add(const Duration(minutes: 15)));
+
+      if (needsSessionRefresh) {
+        try {
+          final refreshed = await (authService != null
+              ? authService!.refreshGatewaySession()
+              : _gatewayClient!.refreshSession(bearerToken: gwToken));
+          if (refreshed != null) {
+            await _persistGatewaySessionResult(refreshed);
+            final ps = refreshed.powerSync;
+            final nextEndpoint =
+                _resolveTargetEndpoint(ps?.endpoint, effectiveEndpoint);
+            if (ps != null && ps.token.isNotEmpty && nextEndpoint.isNotEmpty) {
+              return PowerSyncCredentials(
+                endpoint: nextEndpoint,
+                token: ps.token,
+                userId: ps.userId.isNotEmpty ? ps.userId : currentUserId,
+                expiresAt: ps.expiresAt,
+              );
+            }
+          }
+        } on PowerSyncUploadException catch (e) {
+          if (e.isUnauthorized) {
+            await _storage.delete(AppConstants.keyPowerSyncGatewayToken);
+            await _storage
+                .delete(AppConstants.keyPowerSyncGatewayTokenExpiresAt);
+          }
+          // Fall through cleanly to fallback bearers or cached valid token.
+        } catch (_) {}
+      }
+
       if (cachedToken != null &&
           cachedToken.isNotEmpty &&
           cachedExp != null &&
           cachedExp.isAfter(nowUtc.add(const Duration(minutes: 5))) &&
-          matchesUser) {
+          matchesUser &&
+          effectiveEndpoint.isNotEmpty) {
         return PowerSyncCredentials(
           endpoint: effectiveEndpoint,
           token: cachedToken,
@@ -192,63 +221,12 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
         );
       }
 
-      /*
-      final bearer =
-          await _storage.read(AppConstants.keyPowerSyncGatewayToken) ??
-              cachedToken ??
-              await _storage.read(AppConstants.keyJwtToken);
-      if (bearer == null || bearer.trim().isEmpty) {
-        return null;
-      }
-
-      try {
-        final minted = await _gatewayClient!.fetchPowerSyncToken(
-          bearerToken: bearer,
-        );
-        await _persistPowerSyncToken(minted);
-        final targetEndpoint = _endpoint.trim().isNotEmpty
-            ? _endpoint.trim()
-            : (minted.endpoint.isNotEmpty
-                ? minted.endpoint
-                : effectiveEndpoint);
-        final targetUserId =
-            minted.userId.isNotEmpty ? minted.userId : currentUserId;
-        return PowerSyncCredentials(
-          endpoint: targetEndpoint,
-          token: minted.token,
-          userId: targetUserId,
-          expiresAt: minted.expiresAt,
-        );
-      } on PowerSyncUploadException catch (e) {
-        if (e.isUnauthorized) {
-          await _storage.delete(AppConstants.keyPowerSyncToken);
-          await _storage.delete(AppConstants.keyPowerSyncTokenExpiresAt);
-          return null;
-        }
-        if (cachedToken != null &&
-            cachedToken.isNotEmpty &&
-            cachedExp != null &&
-            cachedExp.isAfter(nowUtc) &&
-            matchesUser) {
-          return PowerSyncCredentials(
-            endpoint: effectiveEndpoint,
-            token: cachedToken,
-            userId: (cachedUser != null && cachedUser.isNotEmpty)
-                ? cachedUser
-                : currentUserId,
-            expiresAt: cachedExp,
-          );
-        }
-        rethrow;
-      }
-      */
-      // Gene - Nov, 28, 2026: Try deduplicated bearer candidates (gateway, legacy JWT, cached PS token) in order, purge any 401-rejected token, and notify onUnauthorized if all fail.
-      final gatewayToken =
+      final latestGwToken =
           (await _storage.read(AppConstants.keyPowerSyncGatewayToken))?.trim();
       final jwtToken = (await _storage.read(AppConstants.keyJwtToken))?.trim();
       final cachedBearer = cachedToken?.trim();
       final uniqueCandidates = <String>[];
-      for (final candidate in [gatewayToken, jwtToken, cachedBearer]) {
+      for (final candidate in [latestGwToken, jwtToken, cachedBearer]) {
         if (candidate != null &&
             candidate.isNotEmpty &&
             !uniqueCandidates.contains(candidate)) {
@@ -269,11 +247,9 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
             bearerToken: bearer,
           );
           await _persistPowerSyncToken(minted);
-          final targetEndpoint = _endpoint.trim().isNotEmpty
-              ? _endpoint.trim()
-              : (minted.endpoint.isNotEmpty
-                  ? minted.endpoint
-                  : effectiveEndpoint);
+          final targetEndpoint =
+              _resolveTargetEndpoint(minted.endpoint, effectiveEndpoint);
+          if (targetEndpoint.isEmpty) return null;
           final targetUserId =
               minted.userId.isNotEmpty ? minted.userId : currentUserId;
           return PowerSyncCredentials(
@@ -284,9 +260,32 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
           );
         } on PowerSyncUploadException catch (e) {
           if (e.isUnauthorized) {
+            // Try POST /api/Auth/refresh once before retiring this bearer.
+            try {
+              final refreshed = await _gatewayClient!.refreshSession(
+                bearerToken: bearer,
+              );
+              await _persistGatewaySessionResult(refreshed);
+              final ps = refreshed.powerSync;
+              if (ps != null && ps.token.isNotEmpty) {
+                final targetEndpoint =
+                    _resolveTargetEndpoint(ps.endpoint, effectiveEndpoint);
+                if (targetEndpoint.isEmpty) return null;
+                return PowerSyncCredentials(
+                  endpoint: targetEndpoint,
+                  token: ps.token,
+                  userId: ps.userId.isNotEmpty ? ps.userId : currentUserId,
+                  expiresAt: ps.expiresAt,
+                );
+              }
+            } on PowerSyncUploadException catch (refreshErr) {
+              if (!refreshErr.isUnauthorized) rethrow;
+            }
             sawUnauthorized = true;
-            if (bearer == gatewayToken) {
+            if (bearer == latestGwToken) {
               await _storage.delete(AppConstants.keyPowerSyncGatewayToken);
+              await _storage
+                  .delete(AppConstants.keyPowerSyncGatewayTokenExpiresAt);
             }
             if (bearer == cachedBearer) {
               await _storage.delete(AppConstants.keyPowerSyncToken);
@@ -301,7 +300,8 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
               cachedToken.isNotEmpty &&
               cachedExp != null &&
               cachedExp.isAfter(nowUtc) &&
-              matchesUser) {
+              matchesUser &&
+              effectiveEndpoint.isNotEmpty) {
             return PowerSyncCredentials(
               endpoint: effectiveEndpoint,
               token: cachedToken,
@@ -316,16 +316,14 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
       }
 
       if (sawUnauthorized) {
-        await _storage.delete(AppConstants.keyPowerSyncGatewayToken);
-        await _storage.delete(AppConstants.keyPowerSyncToken);
-        await _storage.delete(AppConstants.keyPowerSyncTokenExpiresAt);
-        await _storage.delete(AppConstants.keyJwtToken);
+        await _storage.clearTokensOnly();
         onUnauthorized?.call();
       }
       return null;
     }
 
-    // 2. Legacy / Non-Gateway Mode: Check for a dedicated PowerSync token or user session JWT
+    // 2. Non-Gateway Mode: reuse explicit RS256 PowerSync token if available.
+    if (effectiveEndpoint.isEmpty) return null;
     final storedToken = await _storage.read(AppConstants.keyPowerSyncToken) ??
         await _storage.read(AppConstants.keyJwtToken);
 
@@ -337,45 +335,42 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
       );
     }
 
-    // 3. Direct Development Mode: Generate a fresh valid JWT only when devSecretKey is configured.
+    // 3. Legacy HS256 Dev-Key Signing REMOVED (PowerSync v12 backend enforces RS256-only).
+    /*
     if (_devSecretKey.trim().isEmpty) {
       return null;
     }
     final now = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
-    // PowerSync requires token lifetime <= 86400 seconds (24 hours). We set 23 hours.
     final exp = now + 82800;
-
-    String b64Url(String s) =>
-        base64Url.encode(utf8.encode(s)).replaceAll('=', '');
-
-    final header = jsonEncode({'alg': 'HS256', 'typ': 'JWT', 'kid': 'dev-key'});
-    final payload = jsonEncode({
-      'sub': currentUserId,
-      'aud': 'powersync',
-      'iat': now,
-      'exp': exp,
-    });
-
-    final h = b64Url(header);
-    final p = b64Url(payload);
-    final signingInput = '$h.$p';
-
-    /*
-    final hmacSha256 = Hmac(sha256, utf8.encode(AppConstants.devSecretKey));
+    ...
     */
-    // Gene - Nov, 23, 2026: Sign with injected _devSecretKey instead of static hardcoded key.
-    final hmacSha256 = Hmac(sha256, utf8.encode(_devSecretKey));
-    final digest = hmacSha256.convert(utf8.encode(signingInput));
-    final s = base64Url.encode(digest.bytes).replaceAll('=', '');
+    return null;
+  }
 
-    final devToken = '$signingInput.$s';
+  String _resolveTargetEndpoint(String? dynamicEndpoint, String fallback) {
+    final dyn = dynamicEndpoint?.trim() ?? '';
+    if (_endpoint.trim().isNotEmpty) return _endpoint.trim();
+    if (dyn.isNotEmpty) return dyn;
+    return fallback;
+  }
 
-    return PowerSyncCredentials(
-      endpoint: effectiveEndpoint,
-      token: devToken,
-      userId: currentUserId,
-      expiresAt: DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true),
-    );
+  Future<void> _persistGatewaySessionResult(GatewayLoginResult result) async {
+    if (result.sessionToken.trim().isNotEmpty) {
+      await _storage.write(
+        AppConstants.keyPowerSyncGatewayToken,
+        result.sessionToken.trim(),
+      );
+      await _storage.saveToken(result.sessionToken.trim());
+    }
+    if (result.tokenExpiresAt != null) {
+      await _storage.write(
+        AppConstants.keyPowerSyncGatewayTokenExpiresAt,
+        result.tokenExpiresAt!.toUtc().toIso8601String(),
+      );
+    }
+    if (result.powerSync != null) {
+      await _persistPowerSyncToken(result.powerSync!);
+    }
   }
 
   Future<void> _persistPowerSyncToken(PowerSyncTokenResult result) async {
@@ -402,69 +397,42 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
 
   @override
   Future<void> uploadData(PowerSyncDatabase database) async {
-    // Called when there are local mutations queued for upload
-    final transaction = await database.getNextCrudTransaction();
-    if (transaction == null) {
-      return;
-    }
-
     final handler = onUpload;
     final entryHandler = onEntryUpload;
 
-    if (handler != null) {
-      await handler(transaction);
-    } else if (entryHandler != null) {
-      for (var op in transaction.crud) {
-        // Table recognition for core business tables
-/*
-        switch (op.table) {
-          case 'job_orders':
-          case 'service_orders':
-            switch (op.op) {
-              case UpdateType.put:
-              case UpdateType.patch:
-              case UpdateType.delete:
-                break;
-            }
-            break;
-          default:
-            break;
+    // Preserve getNextCrudTransaction() hook behavior for legacy/mock unit tests.
+    if (handler != null || entryHandler != null) {
+      final transaction = await database.getNextCrudTransaction();
+      if (transaction == null) return;
+
+      if (handler != null) {
+        await handler(transaction);
+      } else if (entryHandler != null) {
+        for (var op in transaction.crud) {
+          await entryHandler(op);
         }
-*/
-        // Gene - Nov, 11, 2026: Added lcp_nap_locations recognition alongside job_orders and service_orders for PowerSync outbound CRUD routing.
-        switch (op.table) {
-          case 'job_orders':
-          case 'service_orders':
-          case 'lcp_nap_locations':
-            switch (op.op) {
-              case UpdateType.put:
-              case UpdateType.patch:
-              case UpdateType.delete:
-                break;
-            }
-            break;
-          default:
-            break;
-        }
-        await entryHandler(op);
       }
-    } else if (hasGateway) {
-      // Gene - Nov, 27, 2026: Upload queued PowerSync CRUD mutations through the authenticated PowerSync Gateway.
-      await _uploadViaGateway(transaction);
+      await transaction.complete();
       return;
-    } else {
-      // Prevent silently completing transactions and dropping unhandled mutations.
-      // Throwing StateError ensures the transaction is preserved in ps_crud for retry.
-      throw StateError(
-        'No upload handler registered to process outbound CRUD transaction '
-        '(${transaction.crud.length} mutations). Queue preserved.',
-      );
     }
 
-    // Only complete the transaction when the upload handler succeeds.
-    // If an exception was thrown above, it bubbles up to PowerSync,
-    // preserving the transaction in ps_crud for retry on reconnect.
-    await transaction.complete();
+    if (hasGateway) {
+      // Gene - Nov, 28, 2026: Drain up to 100 ps_crud mutations coalesced per (table, id) + pending_attachments via PATCH/POST multipart with Idempotency-Key & non-blocking 409 handling.
+      final batch = await database.getCrudBatch(limit: 100);
+      if (batch == null) {
+        await _uploadStandalonePendingAttachments();
+        return;
+      }
+      await _uploadCoalescedBatch(batch);
+      return;
+    }
+
+    final transaction = await database.getNextCrudTransaction();
+    if (transaction == null) return;
+    throw StateError(
+      'No upload handler registered to process outbound CRUD transaction '
+      '(${transaction.crud.length} mutations). Queue preserved.',
+    );
   }
 
   static const Set<String> _strippedClientColumns = {
@@ -475,27 +443,31 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
     'materials_used_json',
   };
 
-  static const Map<String, Map<String, String>> _photoColumnMappings = {
+  static final RegExp _legacyMaterialColumnRegex =
+      RegExp(r'^item_(name|quantity)([1-9]|10)$');
+
+  // Gene - Nov, 28, 2026: Canonical v12 multipart photo slot field names (speedtest_image excluded: remains scalar text on job_orders).
+  static const Map<String, Set<String>> _photoSlotNames = {
     'job_orders': {
-      'setup_image': 'SetupImage',
-      'client_signature': 'ClientSignature',
-      'signed_contract_image': 'SignedContractImage',
-      'box_reading_image': 'BoxReadingImage',
-      'router_reading_image': 'RouterReadingImage',
-      'port_label_image': 'PortLabelImage',
-      'house_front': 'HouseFront',
+      'setup_image',
+      'client_signature',
+      'signed_contract_image',
+      'box_reading_image',
+      'router_reading_image',
+      'port_label_image',
+      'house_front',
     },
     'service_orders': {
-      'client_signature': 'ClientSignature',
-      'image1': 'Image1',
-      'image2': 'Image2',
-      'image3': 'Image3',
-      'house_front_picture': 'HouseFrontPicture',
+      'client_signature',
+      'image1',
+      'image2',
+      'image3',
+      'house_front_picture',
     },
     'lcp_nap_locations': {
-      'image': 'Image',
-      'image2': 'Image2',
-      'reading_image': 'ReadingImage',
+      'image',
+      'image2',
+      'reading_image',
     },
   };
 
@@ -518,17 +490,20 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
 
   Future<String> _resolveUploadBearerToken() async {
     final token = await _storage.read(AppConstants.keyPowerSyncGatewayToken) ??
-        await _storage.read(AppConstants.keyPowerSyncToken) ??
-        await _storage.read(AppConstants.keyJwtToken);
+        await _storage.read(AppConstants.keyJwtToken) ??
+        await _storage.read(AppConstants.keyPowerSyncToken);
     if (token == null || token.trim().isEmpty) {
-      throw StateError(
-        'No authentication token available to upload PowerSync changes.',
+      onUnauthorized?.call();
+      throw const PowerSyncUploadException(
+        statusCode: 401,
+        message:
+            'No authentication token available to upload PowerSync changes.',
       );
     }
     return token.trim();
   }
 
-  Future<String?> _refreshUploadBearerToken(String failedToken) async {
+  Future<String?> _refreshSessionBearerForUpload() async {
     final candidates = <String?>[
       await _storage.read(AppConstants.keyPowerSyncGatewayToken),
       await _storage.read(AppConstants.keyJwtToken),
@@ -537,11 +512,28 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
       final clean = candidate?.trim() ?? '';
       if (clean.isEmpty) continue;
       try {
-        final refreshed = await _gatewayClient!.fetchPowerSyncToken(
+        final refreshed = await (authService != null
+            ? authService!.refreshGatewaySession()
+            : _gatewayClient!.refreshSession(bearerToken: clean));
+        if (refreshed != null) {
+          await _persistGatewaySessionResult(refreshed);
+          if (refreshed.sessionToken.trim().isNotEmpty) {
+            return refreshed.sessionToken.trim();
+          }
+          if (refreshed.powerSync != null &&
+              refreshed.powerSync!.token.trim().isNotEmpty) {
+            return refreshed.powerSync!.token.trim();
+          }
+        }
+      } on PowerSyncUploadException catch (e) {
+        if (!e.isUnauthorized) rethrow;
+      }
+      try {
+        final minted = await _gatewayClient!.fetchPowerSyncToken(
           bearerToken: clean,
         );
-        await _persistPowerSyncToken(refreshed);
-        return refreshed.token;
+        await _persistPowerSyncToken(minted);
+        return clean;
       } on PowerSyncUploadException catch (e) {
         if (!e.isUnauthorized) rethrow;
       }
@@ -549,85 +541,472 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
     return null;
   }
 
-  Future<void> _uploadViaGateway(CrudTransaction transaction) async {
+  Future<void> _uploadCoalescedBatch(CrudBatch batch) async {
     var bearerToken = await _resolveUploadBearerToken();
-    CrudEntry? currentEntry;
-    try {
-      final touched = await _executeGatewayUpload(
-        transaction,
-        bearerToken,
-        onCurrentEntry: (e) => currentEntry = e,
-      );
-      await transaction.complete();
-      await _markTouchedResolved(touched);
-      for (final item in touched) {
-        onEntityUploaded?.call(item.$1, item.$2);
+    final storage = PhotoStorageService.instance;
+
+    final groups = <String, _CoalescedEntityGroup>{};
+    for (final entry in batch.crud) {
+      final slotSet = _photoSlotNames[entry.table];
+      if (slotSet == null) continue;
+      if (entry.op == UpdateType.delete) {
+        // Mobile clients do not delete live server work orders or plant sites.
+        continue;
       }
-    } on PowerSyncUploadException catch (e) {
-      if (e.isUnauthorized) {
-        final refreshed = await _refreshUploadBearerToken(bearerToken);
-        if (refreshed != null && refreshed.isNotEmpty) {
-          bearerToken = refreshed;
-          try {
-            final touched = await _executeGatewayUpload(
-              transaction,
-              bearerToken,
-              onCurrentEntry: (e) => currentEntry = e,
-            );
-            await transaction.complete();
-            await _markTouchedResolved(touched);
-            for (final item in touched) {
-              onEntityUploaded?.call(item.$1, item.$2);
+
+      final groupKey = '${entry.table}::${entry.id}';
+      final group = groups.putIfAbsent(
+        groupKey,
+        () => _CoalescedEntityGroup(
+          table: entry.table,
+          rawId: entry.id,
+          firstClientId: entry.clientId,
+          lastClientId: entry.clientId,
+          representativeEntry: entry,
+        ),
+      );
+      group.lastClientId = entry.clientId;
+      group.representativeEntry = entry;
+      if (entry.op == UpdateType.put) {
+        group.hasPut = true;
+      }
+
+      final rawData = Map<String, dynamic>.from(entry.opData ?? const {});
+      for (final kv in rawData.entries) {
+        final key = kv.key;
+        final value = kv.value;
+        if (key == 'id' ||
+            _strippedClientColumns.contains(key) ||
+            _legacyMaterialColumnRegex.hasMatch(key)) {
+          continue;
+        }
+        if (slotSet.contains(key)) {
+          if (value == null) continue;
+          final strVal = value.toString().trim();
+          if (strVal.isEmpty) {
+            group.inlineDeleteFlags[key] = true;
+            group.inlineFiles.remove(key);
+          } else if (storage.isCapturedImage(strVal)) {
+            final bytes =
+                storage.resolveBytes(strVal) ?? DataUrl.decode(strVal);
+            if (bytes != null && bytes.isNotEmpty) {
+              final isPng = DataUrl.mimeTypeOf(strVal) == 'image/png' ||
+                  strVal.toLowerCase().endsWith('.png') ||
+                  key == 'client_signature';
+              group.inlineFiles[key] = (
+                bytes: bytes,
+                filename: '$key.${isPng ? 'png' : 'jpg'}',
+              );
+              group.inlineDeleteFlags.remove(key);
             }
-            return;
-          } on PowerSyncUploadException catch (retryErr) {
-            await _handleUploadFailure(
-              retryErr,
-              entry: currentEntry ?? transaction.crud.first,
-              transaction: transaction,
-            );
-            return;
           }
+          continue;
+        }
+        if (value == null && entry.op == UpdateType.put) {
+          // Omit unset nulls from INSERT OR REPLACE so existing server columns stand.
+          continue;
+        }
+        if (value != null) {
+          group.dirtyScalarData[key] = value;
         }
       }
-      await _handleUploadFailure(
-        e,
-        entry: currentEntry ?? transaction.crud.first,
-        transaction: transaction,
+    }
+
+    final resolvedPlantIds = <String, String>{};
+    final handledAttachmentKeys = <String>{};
+
+    for (final group in groups.values) {
+      String targetId = group.rawId;
+      var isOfflineCreate = false;
+
+      if (group.table == 'lcp_nap_locations' &&
+          int.tryParse(targetId) == null) {
+        final mapped = resolvedPlantIds[group.rawId] ??
+            await localIdMap?.resolveServerId(
+              entityType: 'lcp_nap_locations',
+              localId: group.rawId,
+            );
+        if (mapped != null && mapped.trim().isNotEmpty) {
+          targetId = mapped.trim();
+        } else {
+          isOfflineCreate = true;
+        }
+      }
+
+      handledAttachmentKeys.add('${group.table}::${group.rawId}');
+      handledAttachmentKeys.add('${group.table}::$targetId');
+
+      final pendingList = <PendingAttachment>[];
+      if (pendingAttachments != null) {
+        pendingList.addAll(
+          await pendingAttachments!.getPendingForEntity(
+            group.table,
+            group.rawId,
+          ),
+        );
+        if (targetId != group.rawId) {
+          pendingList.addAll(
+            await pendingAttachments!.getPendingForEntity(
+              group.table,
+              targetId,
+            ),
+          );
+        }
+      }
+
+      final attBySlot = <String, PendingAttachment>{};
+      for (final att in pendingList) {
+        attBySlot[att.slotName] = att;
+      }
+
+      _injectDurationIfMissing(group.table, group.dirtyScalarData);
+
+      final outcome = await _sendEntityMultipartGroup(
+        table: group.table,
+        rawId: group.rawId,
+        targetId: targetId,
+        isOfflineCreate: isOfflineCreate,
+        idempotencyKey: isOfflineCreate
+            ? group.rawId
+            : 'psv12-${group.table}-$targetId-${group.firstClientId}-${group.lastClientId}',
+        dirtyScalarData: group.dirtyScalarData,
+        inlineFiles: group.inlineFiles,
+        inlineDeleteFlags: group.inlineDeleteFlags,
+        attachments: attBySlot.values.toList(),
+        bearerToken: bearerToken,
+        representativeEntry: group.representativeEntry,
+        onTokenRefreshed: (nextToken) => bearerToken = nextToken,
+        onOfflineCreatedId: (serverId) {
+          resolvedPlantIds[group.rawId] = serverId;
+          handledAttachmentKeys.add('lcp_nap_locations::$serverId');
+        },
       );
+      if (outcome == _GroupUploadOutcome.transientFailure) {
+        // Rethrown inside _sendEntityMultipartGroup, unreachable safeguard.
+        return;
+      }
+    }
+
+    await _uploadStandalonePendingAttachments(
+      bearerToken: bearerToken,
+      skipEntityKeys: handledAttachmentKeys,
+    );
+
+    await batch.complete();
+  }
+
+  Future<void> _uploadStandalonePendingAttachments({
+    String? bearerToken,
+    Set<String> skipEntityKeys = const {},
+  }) async {
+    final attDao = pendingAttachments;
+    if (attDao == null) return;
+    final allPending = await attDao.getAllPending();
+    if (allPending.isEmpty) return;
+
+    var activeToken = bearerToken ?? await _resolveUploadBearerToken();
+    final grouped = <String, List<PendingAttachment>>{};
+    for (final att in allPending) {
+      final key = '${att.entityType}::${att.entityId}';
+      if (skipEntityKeys.contains(key)) continue;
+      grouped.putIfAbsent(key, () => []).add(att);
+    }
+
+    for (final entry in grouped.entries) {
+      final first = entry.value.first;
+      final table = first.entityType;
+      var rawId = first.entityId;
+      var targetId = rawId;
+      var isOfflineCreate = false;
+
+      if (table == 'lcp_nap_locations' && int.tryParse(rawId) == null) {
+        final mapped = await localIdMap?.resolveServerId(
+          entityType: 'lcp_nap_locations',
+          localId: rawId,
+        );
+        if (mapped != null && mapped.trim().isNotEmpty) {
+          targetId = mapped.trim();
+        } else {
+          // Wait for associated ps_crud create row unless offline row lacks ps_crud.
+          isOfflineCreate = true;
+        }
+      }
+
+      final syntheticEntry = CrudEntry(
+        0,
+        UpdateType.patch,
+        table,
+        targetId,
+        null,
+        const {},
+      );
+
+      await _sendEntityMultipartGroup(
+        table: table,
+        rawId: rawId,
+        targetId: targetId,
+        isOfflineCreate: isOfflineCreate,
+        idempotencyKey: isOfflineCreate
+            ? rawId
+            : 'psv12-att-$table-$targetId-${first.updatedAt.microsecondsSinceEpoch}',
+        dirtyScalarData: const {},
+        inlineFiles: const {},
+        inlineDeleteFlags: const {},
+        attachments: entry.value,
+        bearerToken: activeToken,
+        representativeEntry: syntheticEntry,
+        onTokenRefreshed: (nextToken) => activeToken = nextToken,
+      );
+    }
+  }
+
+  Future<_GroupUploadOutcome> _sendEntityMultipartGroup({
+    required String table,
+    required String rawId,
+    required String targetId,
+    required bool isOfflineCreate,
+    required String idempotencyKey,
+    required Map<String, dynamic> dirtyScalarData,
+    required Map<String, ({Uint8List bytes, String filename})> inlineFiles,
+    required Map<String, bool> inlineDeleteFlags,
+    required List<PendingAttachment> attachments,
+    required String bearerToken,
+    required CrudEntry representativeEntry,
+    required void Function(String refreshedToken) onTokenRefreshed,
+    void Function(String serverId)? onOfflineCreatedId,
+  }) async {
+    final slotNames = _photoSlotNames[table] ?? const <String>{};
+    final attachmentSlots = {for (final a in attachments) a.slotName};
+    final attachmentIdsToDelete = <String>[];
+
+    Future<FormData?> buildFormData() async {
+      attachmentIdsToDelete.clear();
+      final formMap = <String, dynamic>{};
+
+      dirtyScalarData.forEach((k, v) {
+        if (v != null) formMap[k] = v.toString();
+      });
+
+      for (final slot in inlineDeleteFlags.keys) {
+        if (attachmentSlots.contains(slot)) continue;
+        formMap['delete_$slot'] = 'true';
+      }
+      for (final kv in inlineFiles.entries) {
+        if (attachmentSlots.contains(kv.key)) continue;
+        formMap[kv.key] = MultipartFile.fromBytes(
+          kv.value.bytes,
+          filename: kv.value.filename,
+        );
+      }
+
+      for (final att in attachments) {
+        if (slotNames.isNotEmpty && !slotNames.contains(att.slotName)) {
+          continue;
+        }
+        if (att.deleteFlag) {
+          formMap['delete_${att.slotName}'] = 'true';
+          attachmentIdsToDelete.add(att.id);
+          continue;
+        }
+        final path = att.filePath?.trim();
+        if (path == null || path.isEmpty) {
+          attachmentIdsToDelete.add(att.id);
+          continue;
+        }
+        final file = File(path);
+        if (!file.existsSync()) {
+          attachmentIdsToDelete.add(att.id);
+          continue;
+        }
+        formMap[att.slotName] = await MultipartFile.fromFile(
+          path,
+          filename: p.basename(path),
+        );
+        attachmentIdsToDelete.add(att.id);
+      }
+
+      if (formMap.isEmpty) return null;
+      return FormData.fromMap(formMap);
+    }
+
+    final initialForm = await buildFormData();
+    if (initialForm == null) {
+      if (attachmentIdsToDelete.isNotEmpty && pendingAttachments != null) {
+        await pendingAttachments!.deleteByIds(
+          attachmentIdsToDelete,
+          deleteFiles: false,
+        );
+      }
+      return _GroupUploadOutcome.succeeded;
+    }
+
+    final (String method, String apiPath) = switch (table) {
+      'job_orders' => ('PATCH', '/api/JobOrders/$targetId'),
+      'service_orders' => ('PATCH', '/api/ServiceOrders/$targetId'),
+      'lcp_nap_locations' when isOfflineCreate => (
+          'POST',
+          '/api/LCPNapLocations'
+        ),
+      'lcp_nap_locations' => ('PATCH', '/api/LCPNapLocations/$targetId'),
+      _ => throw StateError('Unsupported table: $table'),
+    };
+
+    final summaryMap = <String, dynamic>{
+      ...dirtyScalarData,
+      for (final att in attachments)
+        att.slotName: att.deleteFlag
+            ? '<delete>'
+            : (att.filePath != null ? p.basename(att.filePath!) : ''),
+      for (final k in inlineDeleteFlags.keys) k: '<delete>',
+      for (final k in inlineFiles.keys) k: inlineFiles[k]!.filename,
+    };
+
+    Future<Map<String, dynamic>?> execute(
+      FormData formData,
+      String token,
+    ) =>
+        _gatewayClient!.uploadMultipart(
+          method: method,
+          apiPath: apiPath,
+          formData: formData,
+          bearerToken: token,
+          idempotencyKey: idempotencyKey,
+          requestBodySummary: RequestSnapshot.body(summaryMap),
+        );
+
+    try {
+      Map<String, dynamic>? responseJson;
+      try {
+        responseJson = await execute(initialForm, bearerToken);
+      } on PowerSyncUploadException catch (e) {
+        if (!e.isUnauthorized) rethrow;
+        final refreshed = await _refreshSessionBearerForUpload();
+        if (refreshed == null || refreshed.isEmpty) rethrow;
+        onTokenRefreshed(refreshed);
+        final retryForm = await buildFormData();
+        if (retryForm != null) {
+          responseJson = await execute(retryForm, refreshed);
+        }
+      }
+
+      if (isOfflineCreate) {
+        final serverId = _extractServerId(responseJson);
+        if (serverId != null && serverId.isNotEmpty) {
+          await localIdMap?.putMapping(
+            entityType: 'lcp_nap_locations',
+            localId: rawId,
+            serverId: serverId,
+          );
+          onOfflineCreatedId?.call(serverId);
+          if (pendingAttachments != null && attachmentIdsToDelete.isNotEmpty) {
+            await pendingAttachments!.deleteByIds(
+              attachmentIdsToDelete,
+              deleteFiles: true,
+            );
+          }
+          await pendingAttachments?.remapEntityId(
+            entityType: 'lcp_nap_locations',
+            oldEntityId: rawId,
+            newEntityId: serverId,
+          );
+          final parsedServerId = int.tryParse(serverId);
+          if (parsedServerId != null && parsedServerId > 0) {
+            await _markTouchedResolved([(table, parsedServerId)]);
+            onEntityUploaded?.call(table, parsedServerId);
+          }
+          return _GroupUploadOutcome.succeeded;
+        }
+      }
+
+      if (pendingAttachments != null && attachmentIdsToDelete.isNotEmpty) {
+        await pendingAttachments!.deleteByIds(
+          attachmentIdsToDelete,
+          deleteFiles: true,
+        );
+      }
+      final numericId = int.tryParse(targetId);
+      if (numericId != null && numericId > 0) {
+        await _markTouchedResolved([(table, numericId)]);
+        onEntityUploaded?.call(table, numericId);
+      }
+      return _GroupUploadOutcome.succeeded;
+    } on PowerSyncUploadException catch (e) {
+      if (e.isConflict) {
+        await syncConflicts?.recordConflict(
+          entityType: table,
+          entityId: targetId,
+          reason: e.conflictCode,
+          statusCode: 409,
+          message: e.message,
+          serverSnapshot: jsonEncode(e.serverRecord ?? const {}),
+          localPayload: jsonEncode(summaryMap),
+        );
+        if (pendingAttachments != null) {
+          await pendingAttachments!.markStatus(
+            table,
+            rawId,
+            PendingAttachment.statusConflict,
+          );
+          if (targetId != rawId) {
+            await pendingAttachments!.markStatus(
+              table,
+              targetId,
+              PendingAttachment.statusConflict,
+            );
+          }
+        }
+        return _GroupUploadOutcome.conflictRecorded;
+      }
+
+      await _recordSyncError(
+        entry: representativeEntry,
+        statusCode: e.statusCode,
+        message: e.message,
+        requestMethod: e.requestMethod,
+        requestUrl: e.requestUrl,
+        requestBody: RequestSnapshot.body(summaryMap),
+        responseBody: RequestSnapshot.response(e.responseBody),
+      );
+
+      if (e.isUnauthorized) {
+        await _storage.clearTokensOnly();
+        onUnauthorized?.call();
+        rethrow;
+      }
+
+      if (e.isPermanent) {
+        // Permanent 4xx rejections (excluding 401/408/409/429) must not stall FIFO.
+        return _GroupUploadOutcome.permanentErrorSkipped;
+      }
+      rethrow;
     } catch (e) {
       await _recordSyncError(
-        entry: currentEntry ?? transaction.crud.first,
+        entry: representativeEntry,
         statusCode: null,
         message: e.toString(),
+        requestMethod: method,
+        requestUrl: apiPath,
+        requestBody: RequestSnapshot.body(summaryMap),
       );
       rethrow;
     }
   }
 
-  Future<void> _handleUploadFailure(
-    PowerSyncUploadException err, {
-    required CrudEntry entry,
-    required CrudTransaction transaction,
-  }) async {
-    await _recordSyncError(
-      entry: entry,
-      statusCode: err.statusCode,
-      message: err.message,
-      requestMethod: err.requestMethod,
-      requestUrl: err.requestUrl,
-      requestBody: err.requestBody is Map<String, dynamic>
-          ? RequestSnapshot.body(err.requestBody as Map<String, dynamic>)
-          : err.requestBody?.toString(),
-      responseBody: RequestSnapshot.response(err.responseBody),
-    );
-    if (err.isPermanent) {
-      // Permanent 4xx rejections (bad payload, missing record) would otherwise
-      // block every subsequent queued mutation in ps_crud forever.
-      await transaction.complete();
-      return;
+  static String? _extractServerId(Map<String, dynamic>? response) {
+    if (response == null) return null;
+    final candidates = [
+      response['id'],
+      response['Id'],
+      response['locationId'],
+      if (response['data'] is Map) (response['data'] as Map)['id'],
+      if (response['record'] is Map) (response['record'] as Map)['id'],
+    ];
+    for (final c in candidates) {
+      if (c == null) continue;
+      final str = c.toString().trim();
+      if (str.isNotEmpty) return str;
     }
-    throw err;
+    return null;
   }
 
   Future<void> _markTouchedResolved(List<(String, int)> touched) async {
@@ -659,162 +1038,12 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
         operation: entry.op.name,
         statusCode: statusCode,
         message: message,
-        requestMethod: requestMethod ?? 'POST',
-        requestUrl: requestUrl ?? '/api/powersync/upload',
+        requestMethod: requestMethod ?? 'PATCH',
+        requestUrl: requestUrl ?? '/api/${entry.table}/${entry.id}',
         requestBody: requestBody,
         responseBody: responseBody,
       );
     } catch (_) {}
-  }
-
-  Future<List<(String, int)>> _executeGatewayUpload(
-    CrudTransaction transaction,
-    String bearerToken, {
-    required void Function(CrudEntry entry) onCurrentEntry,
-  }) async {
-    final pendingBatchOps = <Map<String, dynamic>>[];
-    final touched = <(String, int)>[];
-
-    Future<void> flushBatch() async {
-      if (pendingBatchOps.isEmpty) return;
-      await _gatewayClient!.uploadBatch(
-        operations: List<Map<String, dynamic>>.from(pendingBatchOps),
-        bearerToken: bearerToken,
-      );
-      pendingBatchOps.clear();
-    }
-
-    for (final entry in transaction.crud) {
-      onCurrentEntry(entry);
-      if (!_photoColumnMappings.containsKey(entry.table)) {
-        continue;
-      }
-      if (entry.op == UpdateType.delete) {
-        // Mobile clients do not delete live server work orders or plant sites.
-        continue;
-      }
-
-      final photoMap = _photoColumnMappings[entry.table]!;
-      final rawData = Map<String, dynamic>.from(entry.opData ?? const {});
-      final cleanData = <String, dynamic>{};
-      final deleteFlags = <String, bool>{};
-      final capturedFiles = <String, ({Uint8List bytes, String filename})>{};
-      final storage = PhotoStorageService.instance;
-
-      for (final kv in rawData.entries) {
-        final key = kv.key;
-        final value = kv.value;
-        if (key == 'id' || _strippedClientColumns.contains(key)) {
-          continue;
-        }
-
-        if (photoMap.containsKey(key)) {
-          if (value == null) continue;
-          final strVal = value.toString().trim();
-          if (strVal.isEmpty) {
-            deleteFlags['delete_$key'] = true;
-            continue;
-          }
-          if (storage.isCapturedImage(strVal)) {
-            final bytes =
-                storage.resolveBytes(strVal) ?? DataUrl.decode(strVal);
-            if (bytes != null && bytes.isNotEmpty) {
-              final paramName = photoMap[key]!;
-              final isPng = DataUrl.mimeTypeOf(strVal) == 'image/png' ||
-                  strVal.toLowerCase().endsWith('.png') ||
-                  key == 'client_signature';
-              final ext = isPng ? 'png' : 'jpg';
-              capturedFiles[paramName] = (
-                bytes: bytes,
-                filename: '${paramName.toLowerCase()}.$ext',
-              );
-            }
-          }
-          // Existing server filenames/URLs are omitted so Gateway preserves them.
-          continue;
-        }
-
-        if (key == 'speedtest_image' &&
-            value != null &&
-            storage.isCapturedImage(value.toString())) {
-          continue;
-        }
-
-        if (value == null && entry.op == UpdateType.put) {
-          // Omit null columns from INSERT OR REPLACE so untouched server values stand.
-          continue;
-        }
-        cleanData[key] = value;
-      }
-
-      _injectDurationIfMissing(entry.table, cleanData);
-
-      final parsedId = int.tryParse(entry.id);
-      final isNewOfflinePlant = entry.table == 'lcp_nap_locations' &&
-          (parsedId == null || parsedId <= 0);
-      final effectiveId = isNewOfflinePlant
-          ? (parsedId != null ? 'offline-${parsedId.abs()}' : entry.id)
-          : entry.id;
-
-      if (parsedId != null && parsedId > 0) {
-        touched.add((entry.table, parsedId));
-      }
-
-      if (capturedFiles.isNotEmpty) {
-        await flushBatch();
-        final formMap = <String, dynamic>{};
-        cleanData.forEach((k, v) {
-          if (v != null) formMap[k] = v.toString();
-        });
-        for (final flagKey in deleteFlags.keys) {
-          formMap[flagKey] = 'true';
-        }
-        for (final fileEntry in capturedFiles.entries) {
-          formMap[fileEntry.key] = MultipartFile.fromBytes(
-            fileEntry.value.bytes,
-            filename: fileEntry.value.filename,
-          );
-        }
-
-        final (String method, String apiPath, String? idempotencyKey) =
-            switch (entry.table) {
-          'job_orders' => ('PUT', '/api/JobOrders/${entry.id}', null),
-          'service_orders' => ('PUT', '/api/ServiceOrders/${entry.id}', null),
-          'lcp_nap_locations' when isNewOfflinePlant => (
-              'POST',
-              '/api/LCPNapLocations',
-              effectiveId,
-            ),
-          'lcp_nap_locations' => (
-              'PUT',
-              '/api/LCPNapLocations/${entry.id}',
-              null,
-            ),
-          _ => throw StateError('Unsupported table: ${entry.table}'),
-        };
-
-        await _gatewayClient!.uploadMultipart(
-          method: method,
-          apiPath: apiPath,
-          formData: FormData.fromMap(formMap),
-          bearerToken: bearerToken,
-          idempotencyKey: idempotencyKey,
-        );
-      } else {
-        cleanData.addAll(deleteFlags);
-        if (cleanData.isNotEmpty) {
-          pendingBatchOps.add({
-            'op': isNewOfflinePlant ? 'PUT' : 'PATCH',
-            'table': entry.table,
-            'id': effectiveId,
-            'data': cleanData,
-          });
-        }
-      }
-    }
-
-    await flushBatch();
-    return touched;
   }
 
   static void _injectDurationIfMissing(
@@ -832,4 +1061,31 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
       data['duration'] = formatTimingDurationMinutes(start, end);
     }
   }
+}
+
+class _CoalescedEntityGroup {
+  final String table;
+  final String rawId;
+  final int firstClientId;
+  int lastClientId;
+  CrudEntry representativeEntry;
+  bool hasPut = false;
+  final Map<String, dynamic> dirtyScalarData = {};
+  final Map<String, ({Uint8List bytes, String filename})> inlineFiles = {};
+  final Map<String, bool> inlineDeleteFlags = {};
+
+  _CoalescedEntityGroup({
+    required this.table,
+    required this.rawId,
+    required this.firstClientId,
+    required this.lastClientId,
+    required this.representativeEntry,
+  });
+}
+
+enum _GroupUploadOutcome {
+  succeeded,
+  conflictRecorded,
+  permanentErrorSkipped,
+  transientFailure,
 }

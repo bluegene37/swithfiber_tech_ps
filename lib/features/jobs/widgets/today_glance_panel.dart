@@ -72,6 +72,45 @@ class TodayGlancePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final date = dateLabel(now ?? DateTime.now());
+    final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+    final stackActionsBelow = scale > 1.3 && actions.length > 3;
+
+    final headerInfo = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          date.toUpperCase(),
+          style: context.text.labelMedium!.copyWith(
+            color: AppTheme.secondaryInkOf(context),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(
+              '$jobCount',
+              style: context.text.displaySmall!.copyWith(
+                color: countColor,
+              ),
+              semanticsLabel:
+                  '$jobCount ${jobCount == 1 ? singularLabel : pluralLabel}',
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                jobCount == 1 ? singularLabel : pluralLabel,
+                style: context.text.titleMedium!.copyWith(
+                  color: AppTheme.secondaryInkOf(context),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 8, 8, typeBadge != null ? 8 : 12),
       child: Column(
@@ -82,58 +121,24 @@ class TodayGlancePanel extends StatelessWidget {
             typeBadge!,
             const SizedBox(height: 4),
           ],
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      date.toUpperCase(),
-                      style: context.text.labelMedium!.copyWith(
-                        color: AppTheme.secondaryInkOf(context),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          '$jobCount',
-                          /*
-                          style: context.text.displaySmall,
-                          semanticsLabel: '$jobCount jobs today',
-                          */
-                          style: context.text.displaySmall!.copyWith(
-                            color: countColor,
-                          ),
-                          semanticsLabel:
-                              '$jobCount ${jobCount == 1 ? singularLabel : pluralLabel}',
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            /*
-                            jobCount == 1 ? 'job today' : 'jobs today',
-                            */
-                            jobCount == 1 ? singularLabel : pluralLabel,
-                            style: context.text.titleMedium!.copyWith(
-                              color: AppTheme.secondaryInkOf(context),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+          // Gene - Nov, 28, 2026: Stack icon actions cleanly below count when large text scale + multiple actions would squeeze date/count vertically.
+          if (stackActionsBelow) ...[
+            headerInfo,
+            if (actions.isNotEmpty)
+              Align(
+                alignment: Alignment.centerRight,
+                child: Wrap(children: actions),
               ),
-              // Actions stay in a Wrap so a large text setting never pushes
-              // them off the row.
-              Wrap(children: actions),
-            ],
-          ),
+          ] else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: headerInfo),
+                // Actions stay in a Wrap so a large text setting never pushes
+                // them off the row.
+                Wrap(children: actions),
+              ],
+            ),
           const SizedBox(height: 4),
           Padding(
             padding: const EdgeInsets.only(right: 8),

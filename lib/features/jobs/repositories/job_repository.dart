@@ -1,10 +1,17 @@
 import 'dart:async';
+// Gene - Nov, 28, 2026: Added convert/io, sqlite_async, PendingAttachmentsDao, and RemotePhotoCacheService for PowerSync v12 disk-backed photos.
+import 'dart:convert';
+import 'dart:io';
+import 'package:sqlite_async/sqlite_async.dart' show SqliteWriteContext;
 import '../../../core/database/daos/job_orders_dao.dart';
+import '../../../core/database/daos/pending_attachments_dao.dart';
 import '../../../core/database/daos/sync_error_logs_dao.dart';
 // Gene - Nov, 26, 2026: Added WorkTimingHistoryDao and WorkTimingEntry imports for recording restartable Job Order timing sessions.
 import '../../../core/database/daos/work_timing_history_dao.dart';
+import '../../../core/database/models/pending_attachment.dart';
 import '../../../core/database/models/work_timing_entry.dart';
 import '../../../core/services/photo_storage_service.dart';
+import '../../../core/services/remote_photo_cache_service.dart';
 // Gene - Nov, 27, 2026: Added PowerSyncService import to detect replicated PowerSync mode.
 import '../../../core/sync/powersync_service.dart';
 // Gene - Nov, 25, 2026: Added shared timing helpers for Job Order Start/Finish tracking.
@@ -35,11 +42,18 @@ class JobRepository {
     syncWorker = SyncWorker(_dao, api: _api, errorLog: errorLog);
   }
   */
+  final PendingAttachmentsDao? pendingAttachments;
+  final Future<T> Function<T>(Future<T> Function(SqliteWriteContext tx))?
+      runInTransaction;
+
+  // Gene - Nov, 28, 2026: Accept optional PendingAttachmentsDao and write-transaction runner for atomic zero-Base64 photo queuing.
   JobRepository(
     this._dao, {
     JobOrdersApi? api,
     this.errorLog,
     this.timingHistory,
+    this.pendingAttachments,
+    this.runInTransaction,
     bool Function()? isReplicatedMode,
   })  : _api = api ?? DioJobOrdersApi(),
         _isReplicatedMode = isReplicatedMode ??
@@ -50,13 +64,14 @@ class JobRepository {
   // Gene - Nov 5, 2026: Cached Job Order site photo proofs and customer signature by job ID.
   final Map<int, JobOrderImagesDto> _imagesCache = {};
 
-  /// Clear in-memory photos cache (useful for tests or refresh).
+  /// Clear in-memory and disk photo caches (useful for tests, uploads, or manual refresh).
   void clearImagesCache([int? id]) {
     if (id != null) {
       _imagesCache.remove(id);
     } else {
       _imagesCache.clear();
     }
+    unawaited(RemotePhotoCacheService.instance.invalidate('job_orders', id));
   }
 
   /// Fetches photo proofs and signature for a Job Order from GET /api/JobOrders/{id}/GetJobOrderImage.
@@ -65,11 +80,6 @@ class JobRepository {
     bool forceRefresh = false,
   }) async {
     /*
-    if (!forceRefresh && _imagesCache.containsKey(jobId)) {
-      return _imagesCache[jobId];
-    }
-    */
-    // Gene - Nov, 8, 2026: Evict stale cached entry when forceRefresh is true so deleted/updated job photos are always refreshed.
     if (forceRefresh) {
       _imagesCache.remove(jobId);
     } else if (_imagesCache.containsKey(jobId)) {
@@ -87,6 +97,128 @@ class JobRepository {
       // Offline fallback or test mock
     }
     return _imagesCache[jobId];
+    */
+    // Gene - Nov, 28, 2026: Use lazy disk cache + pending_attachments local overlay so photos work offline without polling or Base64 in ps_crud.
+    JobOrderImagesDto? baseDto;
+    if (forceRefresh) {
+      _imagesCache.remove(jobId);
+    } else if (_imagesCache.containsKey(jobId)) {
+      baseDto = _imagesCache[jobId];
+    } else {
+      final diskJson = await RemotePhotoCacheService.instance
+          .readCachedJson('job_orders', jobId);
+      if (diskJson != null) {
+        baseDto = JobOrderImagesDto.fromJson(diskJson);
+        _imagesCache[jobId] = baseDto;
+      }
+    }
+
+    if (baseDto == null || forceRefresh) {
+      try {
+        final data = await _api.fetchImages(jobId);
+        if (data != null) {
+          final dto = JobOrderImagesDto.fromJson(data);
+          baseDto = dto;
+          _imagesCache[jobId] = dto;
+          unawaited(
+            RemotePhotoCacheService.instance
+                .writeCachedJson('job_orders', jobId, dto.toJson()),
+          );
+        }
+      } catch (_) {
+        if (baseDto == null) {
+          final diskJson = await RemotePhotoCacheService.instance
+              .readCachedJson('job_orders', jobId);
+          if (diskJson != null) {
+            baseDto = JobOrderImagesDto.fromJson(diskJson);
+          }
+        }
+      }
+    }
+
+    final merged = await _overlayPendingJobImages(jobId, baseDto);
+    if (merged != null) {
+      _imagesCache[jobId] = merged;
+    }
+    return merged;
+  }
+
+  Future<JobOrderImagesDto?> _overlayPendingJobImages(
+    int jobId,
+    JobOrderImagesDto? baseDto,
+  ) async {
+    final attDao = pendingAttachments;
+    if (attDao == null) return baseDto;
+    final items = await attDao.getAllForEntity('job_orders', '$jobId');
+    if (items.isEmpty) return baseDto;
+
+    var setup = baseDto?.setupImage;
+    var sig = baseDto?.clientSignature;
+    var contract = baseDto?.signedContractImage;
+    var box = baseDto?.boxReadingImage;
+    var router = baseDto?.routerReadingImage;
+    var portLabel = baseDto?.portLabelImage;
+    var house = baseDto?.houseFront;
+
+    Future<JobOrderImageFileDto?> decodeAttachment(
+      PendingAttachment att,
+    ) async {
+      if (att.deleteFlag) return null;
+      final path = att.filePath?.trim();
+      if (path == null || path.isEmpty) return null;
+      try {
+        final f = File(path);
+        if (!await f.exists()) return null;
+        final bytes = await f.readAsBytes();
+        if (bytes.isEmpty) return null;
+        final isPng = path.toLowerCase().endsWith('.png') ||
+            att.slotName == 'client_signature';
+        return JobOrderImageFileDto(
+          fileContents: base64Encode(bytes),
+          contentType: isPng ? 'image/png' : 'image/jpeg',
+          fileDownloadName: '${att.slotName}.${isPng ? 'png' : 'jpg'}',
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+
+    for (final att in items) {
+      final overrideFile = await decodeAttachment(att);
+      switch (att.slotName) {
+        case 'setup_image':
+          setup = att.deleteFlag ? null : (overrideFile ?? setup);
+          break;
+        case 'client_signature':
+          sig = att.deleteFlag ? null : (overrideFile ?? sig);
+          break;
+        case 'signed_contract_image':
+          contract = att.deleteFlag ? null : (overrideFile ?? contract);
+          break;
+        case 'box_reading_image':
+          box = att.deleteFlag ? null : (overrideFile ?? box);
+          break;
+        case 'router_reading_image':
+          router = att.deleteFlag ? null : (overrideFile ?? router);
+          break;
+        case 'port_label_image':
+          portLabel = att.deleteFlag ? null : (overrideFile ?? portLabel);
+          break;
+        case 'house_front':
+          house = att.deleteFlag ? null : (overrideFile ?? house);
+          break;
+      }
+    }
+
+    return JobOrderImagesDto(
+      setupImage: setup,
+      clientSignature: sig,
+      signedContractImage: contract,
+      boxReadingImage: box,
+      routerReadingImage: router,
+      portLabelImage: portLabel,
+      houseFront: house,
+    );
   }
 
   /// Watch reactive stream of all jobs directly from the local database
@@ -333,6 +465,7 @@ class JobRepository {
         techId: techId,
         startTime: now,
         endTime: now,
+        idempotencyKey: 'jo_${id}_create_${now.toUtc().millisecondsSinceEpoch}',
       );
     } catch (_) {
       // Keep local unlock and queue via syncPendingJobs on failure.
@@ -365,6 +498,8 @@ class JobRepository {
         techId: techId,
         startTime: start,
         endTime: end,
+        idempotencyKey:
+            'jo_${job.id}_update_${end.toUtc().millisecondsSinceEpoch}',
       );
     } catch (_) {
       await _dao.updateJobTiming(
@@ -411,6 +546,7 @@ class JobRepository {
         techId: techId,
         startTime: now,
         endTime: now,
+        idempotencyKey: 'jo_${id}_create_${now.toUtc().millisecondsSinceEpoch}',
       );
       if (entryId != null) {
         await timingHistory?.markSynced(entryId, isSynced: true);
@@ -466,6 +602,8 @@ class JobRepository {
         techId: techId,
         startTime: start,
         endTime: end,
+        idempotencyKey:
+            'jo_${job.id}_update_${end.toUtc().millisecondsSinceEpoch}',
       );
       if (entryId != null) {
         await timingHistory?.markSynced(entryId, isSynced: true);
@@ -721,6 +859,160 @@ class JobRepository {
     Map<String, int>? materialsUsed,
   }) async {
     final photoStorage = PhotoStorageService.instance;
+    /*
+    final savedBox = await photoStorage.savePhotoLocally(boxReadingImage,
+        tag: 'box_reading', entityId: id);
+    final savedRouter = await photoStorage.savePhotoLocally(routerReadingImage,
+        tag: 'router_reading', entityId: id);
+    final savedSig = await photoStorage.savePhotoLocally(clientSignature,
+        tag: 'signature', entityId: id);
+    final savedSetup = await photoStorage.savePhotoLocally(setupImage,
+        tag: 'setup', entityId: id);
+    final savedSpeed = await photoStorage.savePhotoLocally(speedtestImage,
+        tag: 'speedtest', entityId: id);
+    final savedPort = await photoStorage.savePhotoLocally(portLabelImage,
+        tag: 'port_label', entityId: id);
+    final savedContract = await photoStorage.savePhotoLocally(
+        signedContractImage,
+        tag: 'signed_contract',
+        entityId: id);
+    final savedHouse = await photoStorage.savePhotoLocally(houseFront,
+        tag: 'house_front', entityId: id);
+
+    await _dao.updateJobCompletion(
+      id: id,
+      status: status,
+      onsiteStatus: onsiteStatus,
+      onsiteRemarks: onsiteRemarks,
+      opticalPower: opticalPower,
+      modemRouterSN: modemRouterSN,
+      routerModel: routerModel,
+      nap: nap,
+      vlanId: vlanId,
+      planId: planId,
+      planName: planName,
+      connectionType: connectionType,
+      visitBy: visitBy,
+      visitWith: visitWith,
+      boxReadingImage: savedBox,
+      routerReadingImage: savedRouter,
+      clientSignature: savedSig,
+      setupImage: savedSetup,
+      speedtestImage: savedSpeed,
+      portLabelImage: savedPort,
+      signedContractImage: savedContract,
+      houseFront: savedHouse,
+      assignedEmail: assignedEmail,
+      materialsUsed: materialsUsed,
+      isSynced: false,
+    );
+
+    // Gene - Nov 5, 2026: Invalidate cached photos so subsequent views fetch fresh server uploads.
+    _imagesCache.remove(id);
+
+    if (_isReplicatedMode()) return;
+    */
+    // Gene - Nov, 28, 2026: In replicated PowerSync v12 mode, write compressed photos strictly to pending_attachments inside the same writeTransaction as scalar order fields (keeping speedtest_image scalar).
+    if (_isReplicatedMode() && pendingAttachments != null) {
+      final existing = await _dao.getJobById(id);
+      final stagedAttachments =
+          <({String slotName, String? filePath, bool deleteFlag})>[];
+
+      Future<void> stageSlot(
+        String slotName,
+        String? incoming,
+        String? previous,
+      ) async {
+        if (incoming == null) return;
+        final clean = incoming.trim();
+        if (clean.isEmpty) {
+          if (previous != null && previous.trim().isNotEmpty) {
+            stagedAttachments
+                .add((slotName: slotName, filePath: null, deleteFlag: true));
+          }
+          return;
+        }
+        if (previous != null && clean == previous.trim()) return;
+        final savedPath = await photoStorage.savePendingMediaFromValue(
+          clean,
+          isSignature: slotName == 'client_signature',
+        );
+        if (savedPath != null && savedPath.isNotEmpty) {
+          stagedAttachments.add(
+            (slotName: slotName, filePath: savedPath, deleteFlag: false),
+          );
+        }
+      }
+
+      await stageSlot(
+          'box_reading_image', boxReadingImage, existing?.boxReadingImage);
+      await stageSlot('router_reading_image', routerReadingImage,
+          existing?.routerReadingImage);
+      await stageSlot(
+          'client_signature', clientSignature, existing?.clientSignature);
+      await stageSlot('setup_image', setupImage, existing?.setupImage);
+      await stageSlot(
+          'port_label_image', portLabelImage, existing?.portLabelImage);
+      await stageSlot('signed_contract_image', signedContractImage,
+          existing?.signedContractImage);
+      await stageSlot('house_front', houseFront, existing?.houseFront);
+
+      Future<void> writeAtomic(SqliteWriteContext? tx) async {
+        await _dao.updateJobCompletion(
+          id: id,
+          status: status,
+          onsiteStatus: onsiteStatus,
+          onsiteRemarks: onsiteRemarks,
+          opticalPower: opticalPower,
+          modemRouterSN: modemRouterSN,
+          routerModel: routerModel,
+          nap: nap,
+          vlanId: vlanId,
+          planId: planId,
+          planName: planName,
+          connectionType: connectionType,
+          visitBy: visitBy,
+          visitWith: visitWith,
+          speedtestImage: speedtestImage,
+          assignedEmail: assignedEmail,
+          materialsUsed: materialsUsed,
+          isSynced: false,
+          omitPhotoColumns: true,
+          tx: tx,
+        );
+        if (tx != null) {
+          for (final item in stagedAttachments) {
+            await pendingAttachments!.upsertInTx(
+              tx,
+              entityType: 'job_orders',
+              entityId: '$id',
+              slotName: item.slotName,
+              filePath: item.filePath,
+              deleteFlag: item.deleteFlag,
+            );
+          }
+        } else {
+          for (final item in stagedAttachments) {
+            await pendingAttachments!.upsert(
+              entityType: 'job_orders',
+              entityId: '$id',
+              slotName: item.slotName,
+              filePath: item.filePath,
+              deleteFlag: item.deleteFlag,
+            );
+          }
+        }
+      }
+
+      if (runInTransaction != null) {
+        await runInTransaction!((tx) => writeAtomic(tx));
+      } else {
+        await writeAtomic(null);
+      }
+      _imagesCache.remove(id);
+      return;
+    }
+
     final savedBox = await photoStorage.savePhotoLocally(boxReadingImage,
         tag: 'box_reading', entityId: id);
     final savedRouter = await photoStorage.savePhotoLocally(routerReadingImage,

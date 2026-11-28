@@ -1,3 +1,4 @@
+import '../../../core/database/daos/lookups_dao.dart';
 import '../../../core/network/api_client.dart';
 import '../models/catalog_model.dart';
 
@@ -5,11 +6,30 @@ import '../models/catalog_model.dart';
 class CatalogService {
   static final CatalogService instance = CatalogService._internal();
   final ApiClient _api;
+  // Gene - Nov, 28, 2026: Back CatalogService with local-only PowerSync v12 lookup tables for full offline availability.
+  LookupsDao? _lookupsDao;
 
   CatalogService._internal([ApiClient? api]) : _api = api ?? ApiClient.instance;
 
-  factory CatalogService({ApiClient? api}) =>
-      api == null ? instance : CatalogService._internal(api);
+  factory CatalogService({ApiClient? api, LookupsDao? lookupsDao}) {
+    if (api == null && lookupsDao == null) return instance;
+    return CatalogService._internal(api).._lookupsDao = lookupsDao;
+  }
+
+  void attachLookupsDao(LookupsDao? dao) {
+    _lookupsDao = dao;
+  }
+
+  void invalidateCache() {
+    _cachedPlans = null;
+    _cachedRouters = null;
+    _cachedLcps = null;
+    _cachedNaps = null;
+    _cachedPorts = null;
+    _cachedInventoryItems = null;
+    _cachedMaterials = null;
+    _cachedTechnicians = null;
+  }
 
   List<PlanDto>? _cachedPlans;
   List<RouterDto>? _cachedRouters;
@@ -101,10 +121,19 @@ class CatalogService {
     ),
   ];
 
-  /// Fetch all active broadband plans from `/api/Plans` with cache & fallback
+  /// Fetch all active broadband plans from local cached lookups first, then `/api/Plans` fallback.
   Future<List<PlanDto>> getPlans({bool forceRefresh = false}) async {
     if (!forceRefresh && _cachedPlans != null) {
       return _cachedPlans!;
+    }
+    if (!forceRefresh && _lookupsDao != null) {
+      try {
+        final local = await _lookupsDao!.getPlans();
+        if (local.isNotEmpty) {
+          _cachedPlans = local;
+          return local;
+        }
+      } catch (_) {}
     }
     try {
       final response = await _api.get('/Plans');
@@ -117,6 +146,12 @@ class CatalogService {
         return _cachedPlans!;
       }
     } catch (_) {}
+    if (_cachedPlans == null && _lookupsDao != null) {
+      try {
+        final local = await _lookupsDao!.getPlans();
+        if (local.isNotEmpty) return _cachedPlans = local;
+      } catch (_) {}
+    }
     return _cachedPlans ?? fallbackPlans;
   }
 
@@ -130,10 +165,19 @@ class CatalogService {
     return null;
   }
 
-  /// Fetch approved ONT/router models from `/api/Routers` with cache & fallback
+  /// Fetch approved ONT/router models from local cached lookups first, then `/api/Routers` fallback.
   Future<List<RouterDto>> getRouters({bool forceRefresh = false}) async {
     if (!forceRefresh && _cachedRouters != null) {
       return _cachedRouters!;
+    }
+    if (!forceRefresh && _lookupsDao != null) {
+      try {
+        final local = await _lookupsDao!.getRouters();
+        if (local.isNotEmpty) {
+          _cachedRouters = local;
+          return local;
+        }
+      } catch (_) {}
     }
     try {
       final response = await _api.get('/Routers');
@@ -146,6 +190,12 @@ class CatalogService {
         return _cachedRouters!;
       }
     } catch (_) {}
+    if (_cachedRouters == null && _lookupsDao != null) {
+      try {
+        final local = await _lookupsDao!.getRouters();
+        if (local.isNotEmpty) return _cachedRouters = local;
+      } catch (_) {}
+    }
     return _cachedRouters ?? fallbackRouters;
   }
 
@@ -159,10 +209,19 @@ class CatalogService {
     LcpOptionDto(id: 4, name: 'LCP 04', description: 'Libis Feeder Hub'),
   ];
 
-  /// Fetch active LCP cabinets from `/api/LCPs` or `/api/LCPNapLocations` with cache & fallback
+  /// Fetch active LCP cabinets from local cached lookups first, then `/api/LCPs` fallback.
   Future<List<LcpOptionDto>> getLcps({bool forceRefresh = false}) async {
     if (!forceRefresh && _cachedLcps != null) {
       return _cachedLcps!;
+    }
+    if (!forceRefresh && _lookupsDao != null) {
+      try {
+        final local = await _lookupsDao!.getLcps();
+        if (local.isNotEmpty) {
+          _cachedLcps = local;
+          return local;
+        }
+      } catch (_) {}
     }
     try {
       final response = await _api.get('/LCPs');
@@ -175,6 +234,12 @@ class CatalogService {
         return _cachedLcps!;
       }
     } catch (_) {}
+    if (_cachedLcps == null && _lookupsDao != null) {
+      try {
+        final local = await _lookupsDao!.getLcps();
+        if (local.isNotEmpty) return _cachedLcps = local;
+      } catch (_) {}
+    }
     return _cachedLcps ?? fallbackLcps;
   }
 
@@ -216,10 +281,19 @@ class CatalogService {
     NapDto(id: 10, name: 'test nap 1', description: 'test nap 1 Description'),
   ];
 
-  /// Fetch active NAPs from `/api/Naps` with cache & fallback
+  /// Fetch active NAPs from local cached lookups first, then `/api/Naps` fallback.
   Future<List<NapDto>> getNaps({bool forceRefresh = false}) async {
     if (!forceRefresh && _cachedNaps != null) {
       return _cachedNaps!;
+    }
+    if (!forceRefresh && _lookupsDao != null) {
+      try {
+        final local = await _lookupsDao!.getNaps();
+        if (local.isNotEmpty) {
+          _cachedNaps = local;
+          return local;
+        }
+      } catch (_) {}
     }
     try {
       final response = await _api.get('/Naps');
@@ -232,6 +306,12 @@ class CatalogService {
         return _cachedNaps!;
       }
     } catch (_) {}
+    if (_cachedNaps == null && _lookupsDao != null) {
+      try {
+        final local = await _lookupsDao!.getNaps();
+        if (local.isNotEmpty) return _cachedNaps = local;
+      } catch (_) {}
+    }
     return _cachedNaps ?? fallbackNaps;
   }
 
@@ -257,10 +337,19 @@ class CatalogService {
     PortDto(id: 16, name: 'PORT 016', description: 'PORT 016 Description'),
   ];
 
-  /// Fetch active Ports from `/api/Ports` with cache & fallback
+  /// Fetch active Ports from local cached lookups first, then `/api/Ports` fallback.
   Future<List<PortDto>> getPorts({bool forceRefresh = false}) async {
     if (!forceRefresh && _cachedPorts != null) {
       return _cachedPorts!;
+    }
+    if (!forceRefresh && _lookupsDao != null) {
+      try {
+        final local = await _lookupsDao!.getPorts();
+        if (local.isNotEmpty) {
+          _cachedPorts = local;
+          return local;
+        }
+      } catch (_) {}
     }
     try {
       final response = await _api.get('/Ports');
@@ -273,6 +362,12 @@ class CatalogService {
         return _cachedPorts!;
       }
     } catch (_) {}
+    if (_cachedPorts == null && _lookupsDao != null) {
+      try {
+        final local = await _lookupsDao!.getPorts();
+        if (local.isNotEmpty) return _cachedPorts = local;
+      } catch (_) {}
+    }
     return _cachedPorts ?? fallbackPorts;
   }
 
@@ -420,12 +515,20 @@ class CatalogService {
       ),
   ];
 
-  /// Fetch inventory items from `/api/InventoryItem`.
-  /// No types filter for now, per specification.
+  /// Fetch inventory items from local cached lookups first, then `/api/InventoryItem` fallback.
   Future<List<InventoryItemDto>> getInventoryItems(
       {bool forceRefresh = false}) async {
     if (!forceRefresh && _cachedInventoryItems != null) {
       return _cachedInventoryItems!;
+    }
+    if (!forceRefresh && _lookupsDao != null) {
+      try {
+        final local = await _lookupsDao!.getInventoryItems();
+        if (local.isNotEmpty) {
+          _cachedInventoryItems = local;
+          return local;
+        }
+      } catch (_) {}
     }
     try {
       final response = await _api.get('/InventoryItem');
@@ -443,8 +546,29 @@ class CatalogService {
         }
       }
     } catch (_) {}
+    if (_cachedInventoryItems == null && _lookupsDao != null) {
+      try {
+        final local = await _lookupsDao!.getInventoryItems();
+        if (local.isNotEmpty) return _cachedInventoryItems = local;
+      } catch (_) {}
+    }
     return _cachedInventoryItems ?? fallbackInventoryItems;
   }
+
+  Future<List<Map<String, Object?>>> getVlans() async =>
+      _lookupsDao?.getVlans() ?? const [];
+
+  Future<List<Map<String, Object?>>> getLcpNaps() async =>
+      _lookupsDao?.getLcpNaps() ?? const [];
+
+  Future<List<Map<String, Object?>>> getLcpNapPorts() async =>
+      _lookupsDao?.getLcpNapPorts() ?? const [];
+
+  Future<List<Map<String, Object?>>> getInventoryCategories() async =>
+      _lookupsDao?.getInventoryCategories() ?? const [];
+
+  Future<List<Map<String, Object?>>> getInventoryLogs() async =>
+      _lookupsDao?.getInventoryLogs() ?? const [];
 
   /// Fetch distinct material names from the Inventory API.
   /// No types filter for now.

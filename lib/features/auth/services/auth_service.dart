@@ -20,10 +20,112 @@ class AuthService {
         _gateway = gatewayClient ?? PowerSyncGatewayClient();
 
   /// Authenticate a technician with their account username and password.
+  /*
   Future<UserModel> login({
     required String username,
     required String password,
   }) async {
+  ...
+    return user;
+  }
+  */
+  // Gene - Nov, 28, 2026: Use RS256 PowerSync Gateway POST /api/Auth/login as authoritative when user profile is returned, persist tokenExpiresAt, and expose POST /api/Auth/refresh.
+  Future<void> _persistGatewayTokens(
+    GatewayLoginResult gwResult, {
+    bool alsoSaveAsJwt = false,
+  }) async {
+    if (gwResult.sessionToken.isNotEmpty) {
+      await _storage.write(
+        AppConstants.keyPowerSyncGatewayToken,
+        gwResult.sessionToken,
+      );
+      if (alsoSaveAsJwt) {
+        await _storage.saveToken(gwResult.sessionToken);
+      }
+    }
+    if (gwResult.tokenExpiresAt != null) {
+      await _storage.write(
+        AppConstants.keyPowerSyncGatewayTokenExpiresAt,
+        gwResult.tokenExpiresAt!.toUtc().toIso8601String(),
+      );
+    }
+    final ps = gwResult.powerSync;
+    if (ps != null) {
+      if (ps.token.isNotEmpty) {
+        await _storage.write(AppConstants.keyPowerSyncToken, ps.token);
+      }
+      if (ps.expiresAt != null) {
+        await _storage.write(
+          AppConstants.keyPowerSyncTokenExpiresAt,
+          ps.expiresAt!.toUtc().toIso8601String(),
+        );
+      }
+      if (ps.userId.isNotEmpty) {
+        await _storage.write(AppConstants.keyPowerSyncUserId, ps.userId);
+      }
+      if (ps.endpoint.isNotEmpty) {
+        await _storage.write(
+          AppConstants.keyPowerSyncEndpoint,
+          ps.endpoint,
+        );
+      }
+    }
+  }
+
+  Future<UserModel> login({
+    required String username,
+    required String password,
+  }) async {
+    GatewayLoginResult? gwResult;
+    if (_gateway.hasBaseUrl) {
+      try {
+        gwResult = await _gateway.login(
+          username: username.trim(),
+          password: password,
+        );
+        final rawMap = gwResult.rawJson;
+        final gwUserJson = rawMap['user'] is Map<String, dynamic>
+            ? rawMap['user'] as Map<String, dynamic>
+            : rawMap;
+        final hasUserFields = gwUserJson['id'] != null &&
+            (gwUserJson['username'] != null || gwUserJson['fname'] != null);
+        if (hasUserFields) {
+          var gwUser = UserModel.fromJson(gwUserJson);
+          if (!gwUser.active) {
+            throw Exception(
+              'Your technician account is inactive. Please contact Dispatch.',
+            );
+          }
+          final resolvedEmail = gwResult.email ?? gwResult.powerSync?.userId;
+          if (gwUser.email.trim().isEmpty &&
+              resolvedEmail != null &&
+              resolvedEmail.isNotEmpty) {
+            gwUser = UserModel(
+              id: gwUser.id,
+              username: gwUser.username,
+              fname: gwUser.fname,
+              lname: gwUser.lname,
+              email: resolvedEmail,
+              accessLevelId: gwUser.accessLevelId,
+              active: gwUser.active,
+              menus: gwUser.menus,
+              contactNumber: gwUser.contactNumber,
+              address: gwUser.address,
+            );
+          }
+          await _persistGatewayTokens(gwResult, alsoSaveAsJwt: true);
+          await _storage.saveUserSession(gwUser.toRawJson());
+          return gwUser;
+        }
+      } on PowerSyncUploadException catch (e) {
+        if (e.isUnauthorized || e.statusCode == 400 || e.statusCode == 403) {
+          throw Exception(e.message);
+        }
+      } catch (e) {
+        if (e.toString().contains('inactive')) rethrow;
+      }
+    }
+
     final response = await _api.post(
       '/Users/login',
       data: {
@@ -37,7 +139,6 @@ class AuthService {
       throw Exception('Empty response from authentication server.');
     }
 
-    // Extract user profile and token
     final rawUser = data is Map<String, dynamic> && data['user'] != null
         ? data['user']
         : data;
@@ -61,42 +162,17 @@ class AuthService {
       await _storage.saveToken(token.toString());
     }
 
-    // Best-effort PowerSync Gateway auth so RS256 tokens and canonical email
-    // are persisted immediately when POWERSYNC_GATEWAY_URL is configured.
     if (_gateway.hasBaseUrl) {
       try {
-        final gwResult = await _gateway.login(
+        gwResult ??= await _gateway.login(
           username: username.trim(),
           password: password,
         );
-        if (gwResult.sessionToken.isNotEmpty) {
-          await _storage.write(
-            AppConstants.keyPowerSyncGatewayToken,
-            gwResult.sessionToken,
-          );
-        }
-        final ps = gwResult.powerSync;
-        if (ps != null) {
-          if (ps.token.isNotEmpty) {
-            await _storage.write(AppConstants.keyPowerSyncToken, ps.token);
-          }
-          if (ps.expiresAt != null) {
-            await _storage.write(
-              AppConstants.keyPowerSyncTokenExpiresAt,
-              ps.expiresAt!.toUtc().toIso8601String(),
-            );
-          }
-          if (ps.userId.isNotEmpty) {
-            await _storage.write(AppConstants.keyPowerSyncUserId, ps.userId);
-          }
-          if (ps.endpoint.isNotEmpty) {
-            await _storage.write(
-              AppConstants.keyPowerSyncEndpoint,
-              ps.endpoint,
-            );
-          }
-        }
-        final resolvedEmail = gwResult.email ?? ps?.userId;
+        await _persistGatewayTokens(
+          gwResult,
+          alsoSaveAsJwt: token.toString().isEmpty,
+        );
+        final resolvedEmail = gwResult.email ?? gwResult.powerSync?.userId;
         if (user.email.trim().isEmpty &&
             resolvedEmail != null &&
             resolvedEmail.isNotEmpty) {
@@ -114,13 +190,26 @@ class AuthService {
           );
         }
       } catch (_) {
-        // Non-fatal: PowerSyncBackendConnector will mint via legacy Bearer token if needed.
+        // Non-fatal: PowerSyncBackendConnector will refresh/mint as needed.
       }
     }
 
     await _storage.saveUserSession(user.toRawJson());
 
     return user;
+  }
+
+  /// Refreshes the Gateway session & RS256 PowerSync token via `POST /api/Auth/refresh`.
+  Future<GatewayLoginResult?> refreshGatewaySession() async {
+    if (!_gateway.hasBaseUrl) return null;
+    final bearer =
+        (await _storage.read(AppConstants.keyPowerSyncGatewayToken))?.trim() ??
+            (await _storage.getToken())?.trim() ??
+            '';
+    if (bearer.isEmpty) return null;
+    final refreshed = await _gateway.refreshSession(bearerToken: bearer);
+    await _persistGatewayTokens(refreshed, alsoSaveAsJwt: true);
+    return refreshed;
   }
 
   /// Restore active technician session from local storage on app start

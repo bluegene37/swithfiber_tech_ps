@@ -52,6 +52,7 @@ abstract class JobOrdersApi {
     required String techId,
     required DateTime startTime,
     DateTime? endTime,
+    String? idempotencyKey,
   }) async {}
 
   /// `PUT /api/JobOrders/updatetiming`: record technician finish timestamp.
@@ -60,6 +61,7 @@ abstract class JobOrdersApi {
     required String techId,
     required DateTime startTime,
     required DateTime endTime,
+    String? idempotencyKey,
   }) async {}
 }
 
@@ -180,6 +182,7 @@ class DioJobOrdersApi implements JobOrdersApi {
     }
   }
 
+  /*
   /// Sent with no `Authorization` header. The endpoint accepts the update
   /// without one: the owner's bare curl with this exact body succeeds where
   /// the app's tokened request was answered with HTTP 500, so the token is
@@ -205,17 +208,40 @@ class DioJobOrdersApi implements JobOrdersApi {
       ),
     );
   }
+  */
+  // Gene - Nov, 28, 2026: Always attach Authorization Bearer token on JobOrders PUT/POST endpoints and include Idempotency-Key on timing calls per hardened gateway contract.
+  @override
+  Future<void> update(int id, Map<String, dynamic> body) async {
+    await _api.put(
+      '/JobOrders/$id',
+      data: body,
+    );
+  }
 
-  // Gene - Nov, 25, 2026: Added createtiming (POST) and updatetiming (PUT) implementations for Job Orders.
+  @override
+  Future<void> updateMultipart(int id, FormData formData) async {
+    await _api.put(
+      '/JobOrders/$id',
+      data: formData,
+      options: Options(
+        contentType: 'multipart/form-data',
+      ),
+    );
+  }
+
   @override
   Future<void> createTiming({
     required int joId,
     required String techId,
     required DateTime startTime,
     DateTime? endTime,
+    String? idempotencyKey,
   }) async {
     final startIso = startTime.toUtc().toIso8601String();
     final endIso = (endTime ?? startTime).toUtc().toIso8601String();
+    final key = (idempotencyKey != null && idempotencyKey.trim().isNotEmpty)
+        ? idempotencyKey.trim()
+        : 'jo_${joId}_create_${startTime.toUtc().millisecondsSinceEpoch}';
     await _api.post(
       '/JobOrders/createtiming',
       data: {
@@ -224,6 +250,7 @@ class DioJobOrdersApi implements JobOrdersApi {
         'startTime': startIso,
         'endTime': endIso,
       },
+      options: Options(headers: {'Idempotency-Key': key}),
     );
   }
 
@@ -233,15 +260,22 @@ class DioJobOrdersApi implements JobOrdersApi {
     required String techId,
     required DateTime startTime,
     required DateTime endTime,
+    String? idempotencyKey,
   }) async {
+    final startIso = startTime.toUtc().toIso8601String();
+    final endIso = endTime.toUtc().toIso8601String();
+    final key = (idempotencyKey != null && idempotencyKey.trim().isNotEmpty)
+        ? idempotencyKey.trim()
+        : 'jo_${joId}_update_${endTime.toUtc().millisecondsSinceEpoch}';
     await _api.put(
       '/JobOrders/updatetiming',
       data: {
         'joId': joId,
         'techId': techId,
-        'startTime': startTime.toUtc().toIso8601String(),
-        'endTime': endTime.toUtc().toIso8601String(),
+        'startTime': startIso,
+        'endTime': endIso,
       },
+      options: Options(headers: {'Idempotency-Key': key}),
     );
   }
 }

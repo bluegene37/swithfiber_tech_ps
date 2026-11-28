@@ -17,6 +17,8 @@ import '../models/service_order_model.dart';
 import '../screens/service_order_detail_screen.dart';
 import '../signals/service_orders_signals.dart';
 import '../widgets/service_order_card.dart';
+// Gene - Nov, 28, 2026: Added ServiceOrderHistoryView for on-demand assigned_service_orders_history subscription.
+import '../widgets/service_order_history_view.dart';
 import '../widgets/service_orders_map_view.dart';
 
 /// Dedicated screen for Service Orders (Repairs, Equipment Swaps, Maintenance).
@@ -45,6 +47,8 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
   bool _showMap = false;
   // Gene - Nov, 26, 2026: Collapsible search toggle matching Today JobOrdersScreen.
   bool _showSearch = false;
+  // Gene - Nov, 28, 2026: Completed history toggle backed by on-demand PowerSync assigned_service_orders_history stream.
+  bool _showHistory = false;
 
   void _toggleSearch() {
     setState(() {
@@ -292,10 +296,28 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                       key: const ValueKey('repairs_view_toggle_button'),
                       tooltip: _showMap ? 'Show list' : 'Show map',
                       isSelected: _showMap,
-                      onPressed: () => setState(() => _showMap = !_showMap),
+                      onPressed: () => setState(() {
+                        _showMap = !_showMap;
+                        if (_showMap) _showHistory = false;
+                      }),
                       icon: Icon(_showMap
                           ? CupertinoIcons.list_bullet
                           : CupertinoIcons.map),
+                    ),
+                    // Gene - Nov, 28, 2026: Toggle between active Repairs queue and on-demand Completed History stream.
+                    IconButton(
+                      key: const ValueKey('repairs_completed_history_toggle'),
+                      tooltip: _showHistory
+                          ? 'Show active tickets'
+                          : 'Show completed history',
+                      isSelected: _showHistory,
+                      onPressed: () => setState(() {
+                        _showHistory = !_showHistory;
+                        if (_showHistory) _showMap = false;
+                      }),
+                      icon: Icon(_showHistory
+                          ? CupertinoIcons.checkmark_seal_fill
+                          : CupertinoIcons.checkmark_seal),
                     ),
                     IconButton(
                       key: const ValueKey('repairs_timing_history_button'),
@@ -365,150 +387,154 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                   },
                 ),
               ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Column(
-                children: [
-                  // Priority Filter Chips
-                  SignalBuilder(
-                    builder: (context) {
-                      final currentPriority = signals.priorityFilter.value;
+            if (!_showHistory)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Column(
+                  children: [
+                    // Priority Filter Chips
+                    SignalBuilder(
+                      builder: (context) {
+                        final currentPriority = signals.priorityFilter.value;
 
-                      // Intrinsic height, not a fixed box: at 200% text a
-                      // ChoiceChip needs more than the 32px an 8pt scale was
-                      // designed around, and a SizedBox forces it into that
-                      // height instead of erroring, silently squeezing the
-                      // label. SingleChildScrollView lets the row size to
-                      // whatever the chips need while still scrolling
-                      // horizontally, same as the ListView it replaces.
-                      return SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            for (var index = 0;
-                                index < _priorities.length;
-                                index++) ...[
-                              if (index > 0) const SizedBox(width: 8),
-                              Builder(builder: (chipContext) {
-                                final p = _priorities[index];
-                                final isSelected =
-                                    currentPriority.toLowerCase() ==
-                                        p.toLowerCase();
+                        // Intrinsic height, not a fixed box: at 200% text a
+                        // ChoiceChip needs more than the 32px an 8pt scale was
+                        // designed around, and a SizedBox forces it into that
+                        // height instead of erroring, silently squeezing the
+                        // label. SingleChildScrollView lets the row size to
+                        // whatever the chips need while still scrolling
+                        // horizontally, same as the ListView it replaces.
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              for (var index = 0;
+                                  index < _priorities.length;
+                                  index++) ...[
+                                if (index > 0) const SizedBox(width: 8),
+                                Builder(builder: (chipContext) {
+                                  final p = _priorities[index];
+                                  final isSelected =
+                                      currentPriority.toLowerCase() ==
+                                          p.toLowerCase();
 
-                                return ChoiceChip(
-                                  label: Text(p),
-                                  selected: isSelected,
-                                  onSelected: (_) {
-                                    signals.priorityFilter.value = p;
-                                    setState(() {});
-                                  },
-                                  labelStyle:
-                                      chipContext.text.labelLarge!.copyWith(
-                                    color: isSelected
-                                        ? Colors.white
-                                        : AppTheme.secondaryInkOf(chipContext),
-                                  ),
-                                  selectedColor: switch (p) {
-                                    'Urgent' => AppTheme.danger,
-                                    'High' => AppTheme.warning,
-                                    'Normal' => AppTheme.info,
-                                    _ => AppTheme.primary,
-                                  },
-                                );
-                              }),
+                                  return ChoiceChip(
+                                    label: Text(p),
+                                    selected: isSelected,
+                                    onSelected: (_) {
+                                      signals.priorityFilter.value = p;
+                                      setState(() {});
+                                    },
+                                    labelStyle:
+                                        chipContext.text.labelLarge!.copyWith(
+                                      color: isSelected
+                                          ? Colors.white
+                                          : AppTheme.secondaryInkOf(
+                                              chipContext),
+                                    ),
+                                    selectedColor: switch (p) {
+                                      'Urgent' => AppTheme.danger,
+                                      'High' => AppTheme.warning,
+                                      'Normal' => AppTheme.info,
+                                      _ => AppTheme.primary,
+                                    },
+                                  );
+                                }),
+                              ],
                             ],
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 6),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 6),
 
-                  // Concern Filter Chips
-                  SignalBuilder(
-                    builder: (context) {
-                      final currentConcern = signals.concernFilter.value;
+                    // Concern Filter Chips
+                    SignalBuilder(
+                      builder: (context) {
+                        final currentConcern = signals.concernFilter.value;
 
-                      return SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            for (var index = 0;
-                                index < _concerns.length;
-                                index++) ...[
-                              if (index > 0) const SizedBox(width: 8),
-                              Builder(builder: (chipContext) {
-                                final c = _concerns[index];
-                                final isSelected =
-                                    currentConcern.toLowerCase() ==
-                                        c.toLowerCase();
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              for (var index = 0;
+                                  index < _concerns.length;
+                                  index++) ...[
+                                if (index > 0) const SizedBox(width: 8),
+                                Builder(builder: (chipContext) {
+                                  final c = _concerns[index];
+                                  final isSelected =
+                                      currentConcern.toLowerCase() ==
+                                          c.toLowerCase();
 
-                                return ChoiceChip(
-                                  label: Text(c == 'All' ? 'All Concerns' : c),
-                                  selected: isSelected,
-                                  onSelected: (_) {
-                                    signals.concernFilter.value = c;
-                                    setState(() {});
-                                  },
-                                  labelStyle:
-                                      chipContext.text.labelLarge!.copyWith(
-                                    color: isSelected
-                                        ? Colors.white
-                                        : AppTheme.secondaryInkOf(chipContext),
-                                  ),
-                                  selectedColor: AppTheme.serviceOrderAccent,
-                                );
-                              }),
+                                  return ChoiceChip(
+                                    label:
+                                        Text(c == 'All' ? 'All Concerns' : c),
+                                    selected: isSelected,
+                                    onSelected: (_) {
+                                      signals.concernFilter.value = c;
+                                      setState(() {});
+                                    },
+                                    labelStyle:
+                                        chipContext.text.labelLarge!.copyWith(
+                                      color: isSelected
+                                          ? Colors.white
+                                          : AppTheme.secondaryInkOf(
+                                              chipContext),
+                                    ),
+                                    selectedColor: AppTheme.serviceOrderAccent,
+                                  );
+                                }),
+                              ],
                             ],
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 6),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 6),
 
-                  // Gene - Nov, 23, 2026: Wrap-safe Priority / Nearest sort toggle.
-                  SignalBuilder(
-                    builder: (context) {
-                      final mode = signals.sortMode.value;
-                      return Align(
-                        alignment: Alignment.centerLeft,
-                        child: Wrap(
-                          key: const ValueKey('repairs_sort_toggle'),
-                          spacing: 8,
-                          runSpacing: 6,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              'Sort:',
-                              style: context.text.labelMedium!.copyWith(
-                                color: AppTheme.secondaryInkOf(context),
+                    // Gene - Nov, 23, 2026: Wrap-safe Priority / Nearest sort toggle.
+                    SignalBuilder(
+                      builder: (context) {
+                        final mode = signals.sortMode.value;
+                        return Align(
+                          alignment: Alignment.centerLeft,
+                          child: Wrap(
+                            key: const ValueKey('repairs_sort_toggle'),
+                            spacing: 8,
+                            runSpacing: 6,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                'Sort:',
+                                style: context.text.labelMedium!.copyWith(
+                                  color: AppTheme.secondaryInkOf(context),
+                                ),
                               ),
-                            ),
-                            for (final option in const [
-                              (
-                                mode: ServiceOrderSort.priority,
-                                label: 'Priority'
-                              ),
-                              (
-                                mode: ServiceOrderSort.nearest,
-                                label: 'Nearest'
-                              ),
-                            ])
-                              ChoiceChip(
-                                key: ValueKey(
-                                    'repairs_sort_${option.mode.name}'),
-                                label: Text(option.label),
-                                selected: mode == option.mode,
-                                onSelected: (_) =>
-                                    signals.setSortMode(option.mode),
-                              ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                  /*
+                              for (final option in const [
+                                (
+                                  mode: ServiceOrderSort.priority,
+                                  label: 'Priority'
+                                ),
+                                (
+                                  mode: ServiceOrderSort.nearest,
+                                  label: 'Nearest'
+                                ),
+                              ])
+                                ChoiceChip(
+                                  key: ValueKey(
+                                      'repairs_sort_${option.mode.name}'),
+                                  label: Text(option.label),
+                                  selected: mode == option.mode,
+                                  onSelected: (_) =>
+                                      signals.setSortMode(option.mode),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    /*
                 const SizedBox(height: 10),
 
                 // Status Banner
@@ -580,139 +606,148 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                   },
                 ),
                 */
-                ],
+                  ],
+                ),
               ),
-            ),
 
-            // 2. Orders List or Map Body
+            // 2. Orders List, Map, or Completed History Body
             Expanded(
-              child: SignalBuilder(
-                builder: (context) {
-                  final orders = signals.filteredOrders.value;
-                  final syncing = signals.isSyncing.value;
-
-                  if (syncing && orders.isEmpty) {
-                    return const DownloadingIndicator(
-                      title: 'Loading Service Orders',
-                      subtitle:
-                          'Fetching maintenance tickets and equipment pullouts...',
-                    );
-                  }
-
-                  // Gene - Nov, 23, 2026: Show Repairs interactive Map View when toggled in AppBar.
-                  if (_showMap) {
-                    return ServiceOrdersMapView(
+              child: _showHistory
+                  ? ServiceOrderHistoryView(
                       signals: signals,
-                      tileProvider: widget.mapTileProvider,
-                      onOpenTicket: _openOrderDetail,
-                    );
-                  }
+                      lcpNapSignals: widget.lcpNapSignals,
+                      jobsSignals: widget.jobsSignals,
+                    )
+                  : SignalBuilder(
+                      builder: (context) {
+                        final orders = signals.filteredOrders.value;
+                        final syncing = signals.isSyncing.value;
 
-                  if (orders.isEmpty) {
-                    final hasQuery =
-                        signals.searchQuery.value.trim().isNotEmpty;
-                    if (hasQuery) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.search_off_rounded,
-                                size: 48,
-                                color: AppTheme.secondaryInkOf(context),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No repair tickets found',
-                                style: context.text.titleSmall,
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'No tickets matching "${signals.searchQuery.value.trim()}". Check account number or subscriber name.',
-                                style: context.text.bodyMedium!.copyWith(
-                                  color: AppTheme.secondaryInkOf(context),
+                        if (syncing && orders.isEmpty) {
+                          return const DownloadingIndicator(
+                            title: 'Loading Service Orders',
+                            subtitle:
+                                'Fetching maintenance tickets and equipment pullouts...',
+                          );
+                        }
+
+                        // Gene - Nov, 23, 2026: Show Repairs interactive Map View when toggled in AppBar.
+                        if (_showMap) {
+                          return ServiceOrdersMapView(
+                            signals: signals,
+                            tileProvider: widget.mapTileProvider,
+                            onOpenTicket: _openOrderDetail,
+                          );
+                        }
+
+                        if (orders.isEmpty) {
+                          final hasQuery =
+                              signals.searchQuery.value.trim().isNotEmpty;
+                          if (hasQuery) {
+                            return Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(32),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.search_off_rounded,
+                                      size: 48,
+                                      color: AppTheme.secondaryInkOf(context),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'No repair tickets found',
+                                      style: context.text.titleSmall,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'No tickets matching "${signals.searchQuery.value.trim()}". Check account number or subscriber name.',
+                                      style: context.text.bodyMedium!.copyWith(
+                                        color: AppTheme.secondaryInkOf(context),
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    OutlinedButton(
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        signals.searchQuery.value = '';
+                                        signals.priorityFilter.value = 'All';
+                                        signals.concernFilter.value = 'All';
+                                        setState(() {});
+                                      },
+                                      child:
+                                          const Text('Clear search & filters'),
+                                    ),
+                                  ],
                                 ),
-                                textAlign: TextAlign.center,
                               ),
-                              const SizedBox(height: 16),
-                              OutlinedButton(
-                                onPressed: () {
-                                  _searchController.clear();
-                                  signals.searchQuery.value = '';
-                                  signals.priorityFilter.value = 'All';
-                                  signals.concernFilter.value = 'All';
-                                  setState(() {});
-                                },
-                                child: const Text('Clear search & filters'),
+                            );
+                          }
+
+                          final hasFilters =
+                              signals.priorityFilter.value != 'All' ||
+                                  signals.concernFilter.value != 'All';
+
+                          return Center(
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.all(32),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(18),
+                                    decoration: BoxDecoration(
+                                      color: isDark
+                                          ? const Color(0xFF3F2327)
+                                          : AppTheme.primarySubtleBg,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      CupertinoIcons.wrench,
+                                      size: 36,
+                                      color: AppTheme.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'No Active Service Orders',
+                                    style: context.text.titleSmall,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    hasFilters
+                                        ? 'No repair or swap tickets match the current priority or concern filter.'
+                                        : 'No repair or swap tickets are currently assigned.',
+                                    style: context.text.bodyMedium!.copyWith(
+                                        color:
+                                            AppTheme.secondaryInkOf(context)),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  if (hasFilters) ...[
+                                    const SizedBox(height: 16),
+                                    OutlinedButton(
+                                      onPressed: () {
+                                        signals.priorityFilter.value = 'All';
+                                        signals.concernFilter.value = 'All';
+                                        setState(() {});
+                                      },
+                                      child: const Text('Reset filters'),
+                                    ),
+                                  ],
+                                ],
                               ),
-                            ],
+                            ),
+                          );
+                        }
+
+                        return RefreshIndicator(
+                          onRefresh: () => signals.fetchRemote(
+                            technicianEmail: signals.technicianEmail.value,
                           ),
-                        ),
-                      );
-                    }
-
-                    final hasFilters = signals.priorityFilter.value != 'All' ||
-                        signals.concernFilter.value != 'All';
-
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(18),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? const Color(0xFF3F2327)
-                                    : AppTheme.primarySubtleBg,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                CupertinoIcons.wrench,
-                                size: 36,
-                                color: AppTheme.primary,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No Active Service Orders',
-                              style: context.text.titleSmall,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              hasFilters
-                                  ? 'No repair or swap tickets match the current priority or concern filter.'
-                                  : 'No repair or swap tickets are currently assigned.',
-                              style: context.text.bodyMedium!.copyWith(
-                                  color: AppTheme.secondaryInkOf(context)),
-                              textAlign: TextAlign.center,
-                            ),
-                            if (hasFilters) ...[
-                              const SizedBox(height: 16),
-                              OutlinedButton(
-                                onPressed: () {
-                                  signals.priorityFilter.value = 'All';
-                                  signals.concernFilter.value = 'All';
-                                  setState(() {});
-                                },
-                                child: const Text('Reset filters'),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-
-                  return RefreshIndicator(
-                    onRefresh: () => signals.fetchRemote(
-                      technicianEmail: signals.technicianEmail.value,
-                    ),
-                    color: AppTheme.serviceOrderAccent,
-                    /*
+                          color: AppTheme.serviceOrderAccent,
+                          /*
                   child: ListView.builder(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     itemCount: orders.length,
@@ -727,7 +762,7 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                     },
                   ),
                   */
-                    /*
+                          /*
                     // Gene - Nov, 26, 2026: Match JobOrdersScreen list padding and 8dp item spacing.
                     child: ListView.separated(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
@@ -744,48 +779,50 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                       },
                     ),
                     */
-                    // Gene - Nov, 28, 2026: Group Rescheduled repair tickets under a dedicated bottom section while keeping active orders first.
-                    child: () {
-                      final activeOrders =
-                          orders.where((o) => !o.isRescheduled).toList();
-                      final rescheduledOrders =
-                          orders.where((o) => o.isRescheduled).toList();
-                      return ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                        children: [
-                          for (var i = 0; i < activeOrders.length; i++) ...[
-                            if (i > 0) const SizedBox(height: 8),
-                            ServiceOrderCard(
-                              order: activeOrders[i],
-                              signals: signals,
-                              lcpNapSignals: widget.lcpNapSignals,
-                              jobsSignals: widget.jobsSignals,
-                            ),
-                          ],
-                          if (rescheduledOrders.isNotEmpty) ...[
-                            if (activeOrders.isNotEmpty)
-                              const SizedBox(height: 12),
-                            _ServiceRescheduledSectionHeader(
-                              count: rescheduledOrders.length,
-                            ),
-                            for (var i = 0;
-                                i < rescheduledOrders.length;
-                                i++) ...[
-                              if (i > 0) const SizedBox(height: 8),
-                              ServiceOrderCard(
-                                order: rescheduledOrders[i],
-                                signals: signals,
-                                lcpNapSignals: widget.lcpNapSignals,
-                                jobsSignals: widget.jobsSignals,
-                              ),
-                            ],
-                          ],
-                        ],
-                      );
-                    }(),
-                  );
-                },
-              ),
+                          // Gene - Nov, 28, 2026: Group Rescheduled repair tickets under a dedicated bottom section while keeping active orders first.
+                          child: () {
+                            final activeOrders =
+                                orders.where((o) => !o.isRescheduled).toList();
+                            final rescheduledOrders =
+                                orders.where((o) => o.isRescheduled).toList();
+                            return ListView(
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                              children: [
+                                for (var i = 0;
+                                    i < activeOrders.length;
+                                    i++) ...[
+                                  if (i > 0) const SizedBox(height: 8),
+                                  ServiceOrderCard(
+                                    order: activeOrders[i],
+                                    signals: signals,
+                                    lcpNapSignals: widget.lcpNapSignals,
+                                    jobsSignals: widget.jobsSignals,
+                                  ),
+                                ],
+                                if (rescheduledOrders.isNotEmpty) ...[
+                                  if (activeOrders.isNotEmpty)
+                                    const SizedBox(height: 12),
+                                  _ServiceRescheduledSectionHeader(
+                                    count: rescheduledOrders.length,
+                                  ),
+                                  for (var i = 0;
+                                      i < rescheduledOrders.length;
+                                      i++) ...[
+                                    if (i > 0) const SizedBox(height: 8),
+                                    ServiceOrderCard(
+                                      order: rescheduledOrders[i],
+                                      signals: signals,
+                                      lcpNapSignals: widget.lcpNapSignals,
+                                      jobsSignals: widget.jobsSignals,
+                                    ),
+                                  ],
+                                ],
+                              ],
+                            );
+                          }(),
+                        );
+                      },
+                    ),
             ),
           ],
         ),

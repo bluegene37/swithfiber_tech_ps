@@ -47,16 +47,15 @@ void main() {
     addTearDown(() => dio.httpClientAdapter = original);
   });
 
-  test('the job order PUT goes out bare, with no Authorization header',
+  test('the job order PUT sends the Authorization Bearer session token',
       () async {
     await DioJobOrdersApi().update(3979, {'status': 'Completed'});
 
     final put = adapter.captured.single;
     expect(put.method, 'PUT');
     expect(put.uri.toString(), endsWith('/api/JobOrders/3979'));
-    expect(put.headers.containsKey('Authorization'), isFalse,
-        reason: 'the bare curl is what the server accepts; the app must send '
-            'the same request');
+    // Gene - Nov, 28, 2026: Gateway / API endpoints enforce Authorization: Bearer <sessionToken> on PUT/PATCH/POST/GET.
+    expect(put.headers['Authorization'], 'Bearer jwt-abc');
     expect(put.headers['Content-Type'], 'application/json');
   });
 

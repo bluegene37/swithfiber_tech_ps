@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:sqlite_async/sqlite_async.dart' show SqliteWriteContext;
+
 import '../../../features/jobs/models/job_order_model.dart';
 import '../app_database.dart';
 import '../sql_values.dart';
@@ -77,6 +79,20 @@ class JobOrdersDao {
     final fields = {...changes, 'updated_at': dateText(DateTime.now())};
     final sets = fields.keys.map((k) => '$k = ?').join(', ');
     await _db.execute(
+      'UPDATE $table SET $sets WHERE id = ?',
+      [...fields.values, idText(id)],
+    );
+  }
+
+  // Gene - Nov, 28, 2026: Transaction-scoped _patch helper for atomic scalar + pending_attachments writes.
+  Future<void> _patchInTx(
+    SqliteWriteContext tx,
+    int id,
+    Map<String, Object?> changes,
+  ) async {
+    final fields = {...changes, 'updated_at': dateText(DateTime.now())};
+    final sets = fields.keys.map((k) => '$k = ?').join(', ');
+    await tx.execute(
       'UPDATE $table SET $sets WHERE id = ?',
       [...fields.values, idText(id)],
     );
@@ -178,6 +194,8 @@ class JobOrdersDao {
     String? assignedEmail,
     Map<String, int>? materialsUsed,
     bool isSynced = false,
+    bool omitPhotoColumns = false,
+    SqliteWriteContext? tx,
   }) async {
   */
   /*
@@ -203,6 +221,8 @@ class JobOrdersDao {
     String? assignedEmail,
     Map<String, int>? materialsUsed,
     bool isSynced = false,
+    bool omitPhotoColumns = false,
+    SqliteWriteContext? tx,
   }) async {
   */
 /*
@@ -230,12 +250,23 @@ class JobOrdersDao {
     String? assignedEmail,
     Map<String, int>? materialsUsed,
     bool isSynced = false,
+    bool omitPhotoColumns = false,
+    SqliteWriteContext? tx,
   }) async {
     String? updatedRawJson;
     if (materialsUsed != null || vlanId != null || planId != null || planName != null) {
-      final existing = await getJobById(id);
+      // Gene - Nov, 28, 2026: Read raw_json inside the active transaction when tx != null to prevent sqlite_async LockError.
+      final existingRow = tx != null
+          ? await tx.getOptional(
+              'SELECT raw_json FROM $table WHERE id = ?',
+              [idText(id)],
+            )
+          : await _db.getOptional(
+              'SELECT raw_json FROM $table WHERE id = ?',
+              [idText(id)],
+            );
       Map<String, dynamic> rawMap = {};
-      final raw = existing?.rawJson;
+      final raw = rowText(existingRow?['raw_json']);
       if (raw != null && raw.trim().isNotEmpty) {
         try {
           final decoded = jsonDecode(raw);
@@ -298,6 +329,8 @@ class JobOrdersDao {
     String? assignedEmail,
     Map<String, int>? materialsUsed,
     bool isSynced = false,
+    bool omitPhotoColumns = false,
+    SqliteWriteContext? tx,
   }) async {
     String? updatedRawJson;
     if (materialsUsed != null ||
@@ -305,9 +338,18 @@ class JobOrdersDao {
         planId != null ||
         planName != null ||
         connectionType != null) {
-      final existing = await getJobById(id);
+      // Gene - Nov, 28, 2026: Read raw_json inside the active transaction when tx != null to prevent sqlite_async LockError.
+      final existingRow = tx != null
+          ? await tx.getOptional(
+              'SELECT raw_json FROM $table WHERE id = ?',
+              [idText(id)],
+            )
+          : await _db.getOptional(
+              'SELECT raw_json FROM $table WHERE id = ?',
+              [idText(id)],
+            );
       Map<String, dynamic> rawMap = {};
-      final raw = existing?.rawJson;
+      final raw = rowText(existingRow?['raw_json']);
       if (raw != null && raw.trim().isNotEmpty) {
         try {
           final decoded = jsonDecode(raw);
@@ -375,6 +417,8 @@ class JobOrdersDao {
     String? assignedEmail,
     Map<String, int>? materialsUsed,
     bool isSynced = false,
+    bool omitPhotoColumns = false,
+    SqliteWriteContext? tx,
   }) async {
     String? updatedRawJson;
     if (materialsUsed != null ||
@@ -384,9 +428,18 @@ class JobOrdersDao {
         connectionType != null ||
         visitBy != null ||
         visitWith != null) {
-      final existing = await getJobById(id);
+      // Gene - Nov, 28, 2026: Read raw_json inside the active transaction when tx != null to prevent sqlite_async LockError.
+      final existingRow = tx != null
+          ? await tx.getOptional(
+              'SELECT raw_json FROM $table WHERE id = ?',
+              [idText(id)],
+            )
+          : await _db.getOptional(
+              'SELECT raw_json FROM $table WHERE id = ?',
+              [idText(id)],
+            );
       Map<String, dynamic> rawMap = {};
-      final raw = existing?.rawJson;
+      final raw = rowText(existingRow?['raw_json']);
       if (raw != null && raw.trim().isNotEmpty) {
         try {
           final decoded = jsonDecode(raw);
@@ -435,6 +488,7 @@ class JobOrdersDao {
       updatedRawJson = jsonEncode(rawMap);
     }
 
+    /*
     // Gene - Nov, 27, 2026: Also write connection_type, visit_by, visit_with, and item_name1..10 / item_quantity1..10 directly to job_orders columns for PowerSync ps_crud capture.
     final materialFields = <String, Object?>{};
     if (materialsUsed != null) {
@@ -480,6 +534,57 @@ class JobOrdersDao {
       if (updatedRawJson != null) 'raw_json': updatedRawJson,
       'is_synced': boolInt(isSynced),
     });
+    */
+    // Gene - Nov, 28, 2026: Write canonical PowerSync v12 item_name_1..10 / item_quantity_1..10 columns and support omitPhotoColumns & transactional execution (keeping speedtest_image scalar).
+    final materialFields = <String, Object?>{};
+    if (materialsUsed != null) {
+      int idx = 1;
+      materialsUsed.forEach((name, qty) {
+        if (idx <= 10) {
+          materialFields['item_name_$idx'] = name;
+          materialFields['item_quantity_$idx'] = qty.toString();
+          idx++;
+        }
+      });
+      for (int i = idx; i <= 10; i++) {
+        materialFields['item_name_$i'] = '';
+        materialFields['item_quantity_$i'] = '';
+      }
+    }
+
+    final changes = <String, Object?>{
+      if (status != null) 'status': status,
+      'onsite_status': onsiteStatus,
+      if (assignedEmail != null) 'assigned_email': assignedEmail,
+      'onsite_remarks': onsiteRemarks,
+      'optical_power': opticalPower,
+      'modem_router_sn': modemRouterSN,
+      'router_model': routerModel,
+      if (nap != null) 'nap': nap,
+      if (vlanId != null) 'vlan_id': vlanId,
+      if (planId != null) 'plan_id': planId,
+      if (planName != null) 'plan_name': planName,
+      if (connectionType != null) 'connection_type': connectionType,
+      if (visitBy != null) 'visit_by': visitBy,
+      if (visitWith != null) 'visit_with': visitWith,
+      ...materialFields,
+      'date_installed': dateText(DateTime.now()),
+      if (!omitPhotoColumns) 'box_reading_image': boxReadingImage,
+      if (!omitPhotoColumns) 'router_reading_image': routerReadingImage,
+      if (!omitPhotoColumns) 'client_signature': clientSignature,
+      if (!omitPhotoColumns) 'setup_image': setupImage,
+      'speedtest_image': speedtestImage,
+      if (!omitPhotoColumns) 'port_label_image': portLabelImage,
+      if (!omitPhotoColumns) 'signed_contract_image': signedContractImage,
+      if (!omitPhotoColumns) 'house_front': houseFront,
+      if (updatedRawJson != null) 'raw_json': updatedRawJson,
+      'is_synced': boolInt(isSynced),
+    };
+    if (tx != null) {
+      await _patchInTx(tx, id, changes);
+    } else {
+      await _patch(id, changes);
+    }
   }
 
   /// Get all pending unsynced records

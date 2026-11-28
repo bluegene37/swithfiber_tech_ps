@@ -123,6 +123,7 @@ class SecureStorageService {
     await deleteUserSession();
   }
   */
+  /*
   // Gene - Nov, 27, 2026: Also purge cached PowerSync and Gateway tokens/metadata on logout or 401.
   Future<void> clearCredentials() async {
     await deleteToken();
@@ -132,6 +133,39 @@ class SecureStorageService {
     await delete(AppConstants.keyPowerSyncTokenExpiresAt);
     await delete(AppConstants.keyPowerSyncUserId);
     await delete(AppConstants.keyPowerSyncEndpoint);
+  }
+  */
+  // Gene - Nov, 28, 2026: Clear bearer/session tokens only on 401 while keeping user_session and local SQLite intact for non-destructive re-auth; reserve full clearCredentials (including ETag & expiry) for explicit sign-out.
+  Future<void> clearTokensOnly() async {
+    await deleteToken();
+    await delete(AppConstants.keyPowerSyncToken);
+    await delete(AppConstants.keyPowerSyncGatewayToken);
+    await delete(AppConstants.keyPowerSyncGatewayTokenExpiresAt);
+    await delete(AppConstants.keyPowerSyncTokenExpiresAt);
+  }
+
+  Future<void> clearCredentials() async {
+    await clearTokensOnly();
+    await deleteUserSession();
+    await delete(AppConstants.keyPowerSyncUserId);
+    await delete(AppConstants.keyPowerSyncEndpoint);
+    await delete(AppConstants.keyLookupsEtag);
+  }
+
+  Future<String> getPowerSyncGatewayUrl() async {
+    final override =
+        (await read(AppConstants.keyPowerSyncGatewayUrlOverride))?.trim();
+    if (override != null && override.isNotEmpty) return override;
+    return AppConstants.defaultPowerSyncGatewayUrl.trim();
+  }
+
+  Future<void> savePowerSyncGatewayUrl(String url) async {
+    final clean = url.trim();
+    if (clean.isEmpty) {
+      await delete(AppConstants.keyPowerSyncGatewayUrlOverride);
+    } else {
+      await write(AppConstants.keyPowerSyncGatewayUrlOverride, clean);
+    }
   }
 
   /// Clear everything, including device configuration. Full factory reset.

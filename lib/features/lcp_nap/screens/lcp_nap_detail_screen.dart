@@ -17,6 +17,7 @@ import 'package:signals_flutter/signals_flutter.dart';
 // import 'package:url_launcher/url_launcher.dart';
 // Gene - Nov, 8, 2026: Imported ApiClient to guard background photo auto-sync timer during widget tests.
 import '../../../core/network/api_client.dart';
+import '../../../core/sync/powersync_service.dart';
 import '../../../core/services/map_navigation_service.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/theme/app_text.dart';
@@ -202,7 +203,17 @@ class _LcpNapDetailScreenState extends State<LcpNapDetailScreen>
       _loadSitePhotos(forceRefresh: true, silent: true);
     });
 
+    /*
     if (!ApiClient.isNetworkBlocked) {
+      _photoAutoSyncTimer = Timer.periodic(
+        const Duration(seconds: 15),
+        (_) => _loadSitePhotos(forceRefresh: true, silent: true),
+      );
+    }
+    */
+    // Gene - Nov, 28, 2026: Skip 15-second photo polling loop in PowerSync replicated mode (lazy disk-cached + pending overlay used instead).
+    if (!ApiClient.isNetworkBlocked &&
+        !PowerSyncService.instance.isReplicatedMode) {
       _photoAutoSyncTimer = Timer.periodic(
         const Duration(seconds: 15),
         (_) => _loadSitePhotos(forceRefresh: true, silent: true),

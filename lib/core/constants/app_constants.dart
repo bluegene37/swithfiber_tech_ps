@@ -37,6 +37,12 @@ class AppConstants {
   static const String keyPowerSyncToken = 'powersync_token';
   // Gene - Nov, 27, 2026: Added PowerSync Gateway token/session keys and compile-time gateway URL config.
   static const String keyPowerSyncGatewayToken = 'powersync_gateway_token';
+  // Gene - Nov, 28, 2026: Track gateway session expiry, lookups ETag, and optional gateway URL override for PowerSync v12.
+  static const String keyPowerSyncGatewayTokenExpiresAt =
+      'powersync_gateway_token_expires_at';
+  static const String keyLookupsEtag = 'lookups_etag';
+  static const String keyPowerSyncGatewayUrlOverride =
+      'powersync_gateway_url_override';
   static const String keyPowerSyncTokenExpiresAt = 'powersync_token_expires_at';
   static const String keyPowerSyncUserId = 'powersync_user_id';
   static const String keyPowerSyncEndpoint = 'powersync_endpoint';
@@ -59,9 +65,14 @@ class AppConstants {
   static bool get isPowerSyncConfigured =>
       defaultPowerSyncEndpoint.trim().isNotEmpty;
   */
+  /*
   // Gene - Nov, 28, 2026: Require both POWERSYNC_ENDPOINT and POWERSYNC_GATEWAY_URL so replicated mode never runs without an upload gateway.
   static bool get isPowerSyncConfigured =>
       defaultPowerSyncEndpoint.trim().isNotEmpty &&
+      defaultPowerSyncGatewayUrl.trim().isNotEmpty;
+  */
+  // Gene - Nov, 28, 2026: Gateway login/refresh dynamically returns powersync.endpoint, so configuring POWERSYNC_GATEWAY_URL activates replicated PowerSync mode.
+  static bool get isPowerSyncConfigured =>
       defaultPowerSyncGatewayUrl.trim().isNotEmpty;
   static const String devSecretKey =
       String.fromEnvironment('POWERSYNC_DEV_KEY', defaultValue: '');

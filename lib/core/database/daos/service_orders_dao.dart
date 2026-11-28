@@ -32,15 +32,46 @@ class ServiceOrdersDao {
   }
 
   /// Insert or update a single service order.
+  /*
   Future<void> insertOrUpdateOrder(ServiceOrderDto order,
           {bool synced = true}) =>
       insertAllOrders([order], synced: synced);
+  */
+  // Gene - Nov, 28, 2026: Support omitPhotoColumns & transactional writes when queueing disk-backed pending_attachments.
+  Future<void> insertOrUpdateOrder(
+    ServiceOrderDto order, {
+    bool synced = true,
+    bool omitPhotoColumns = false,
+  }) =>
+      insertAllOrders(
+        [order],
+        synced: synced,
+        omitPhotoColumns: omitPhotoColumns,
+      );
+
+  Future<void> insertOrUpdateOrderInTx(
+    dynamic tx,
+    ServiceOrderDto order, {
+    bool synced = true,
+    bool omitPhotoColumns = false,
+  }) async {
+    final row = order.toRow(synced: synced, omitPhotoColumns: omitPhotoColumns);
+    final columns = row.keys.toList();
+    final sql = insertOrReplaceSql(table, columns);
+    await tx.execute(sql, [for (final c in columns) row[c]]);
+  }
 
   /// Batch insert or cache service orders from API.
-  Future<void> insertAllOrders(List<ServiceOrderDto> orders,
-      {bool synced = true}) async {
+  Future<void> insertAllOrders(
+    List<ServiceOrderDto> orders, {
+    bool synced = true,
+    bool omitPhotoColumns = false,
+  }) async {
     if (orders.isEmpty) return;
-    final rows = [for (final o in orders) o.toRow(synced: synced)];
+    final rows = [
+      for (final o in orders)
+        o.toRow(synced: synced, omitPhotoColumns: omitPhotoColumns),
+    ];
     final columns = rows.first.keys.toList();
     final sql = insertOrReplaceSql(table, columns);
     await _db.writeTransaction((tx) async {

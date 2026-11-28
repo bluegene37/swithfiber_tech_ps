@@ -3,6 +3,64 @@ import 'package:dio/dio.dart';
 
 import '../constants/app_constants.dart';
 import '../network/api_client.dart';
+// Gene - Nov, 28, 2026: Added dio validateStatus support and PowerSync v12 lookups/refresh/conflict/timing contracts.
+
+/// Response payload from `GET /api/sync/lookups`.
+class GatewayLookupsResult {
+  final bool isNotModified;
+  final String? etag;
+  final DateTime? fetchedAt;
+  final Map<String, String> tableEtags;
+  final Map<String, List<Map<String, dynamic>>> tables;
+
+  const GatewayLookupsResult({
+    this.isNotModified = false,
+    this.etag,
+    this.fetchedAt,
+    this.tableEtags = const {},
+    this.tables = const {},
+  });
+
+  factory GatewayLookupsResult.fromJson(
+    Map<String, dynamic> json, {
+    String? headerEtag,
+  }) {
+    final rawTableEtags = json['tableEtags'];
+    final parsedEtags = <String, String>{};
+    if (rawTableEtags is Map) {
+      rawTableEtags.forEach((k, v) {
+        if (v != null) parsedEtags[k.toString()] = v.toString();
+      });
+    }
+    final rawTables = json['tables'];
+    final parsedTables = <String, List<Map<String, dynamic>>>{};
+    if (rawTables is Map) {
+      rawTables.forEach((tableName, rows) {
+        if (rows is List) {
+          parsedTables[tableName.toString()] = [
+            for (final r in rows)
+              if (r is Map<String, dynamic>)
+                r
+              else if (r is Map)
+                Map<String, dynamic>.from(r),
+          ];
+        }
+      });
+    }
+    final rawFetched = json['fetchedAt'] ?? json['fetched_at'];
+    final bodyEtag = json['etag']?.toString().trim();
+    return GatewayLookupsResult(
+      isNotModified: false,
+      etag: (bodyEtag != null && bodyEtag.isNotEmpty)
+          ? bodyEtag
+          : headerEtag?.trim(),
+      fetchedAt:
+          rawFetched == null ? null : DateTime.tryParse(rawFetched.toString()),
+      tableEtags: parsedEtags,
+      tables: parsedTables,
+    );
+  }
+}
 
 /// PowerSync token payload returned by `GET /api/Auth/powersync-token` or
 /// nested under `powersync` in `POST /api/Auth/login`.
@@ -104,7 +162,30 @@ class PowerSyncUploadException implements Exception {
   /// True for HTTP 401 Unauthorized, triggering a PowerSync token refresh.
   bool get isUnauthorized => statusCode == 401;
 
-  /// True for permanent client-side 4xx rejections (excluding 401/408/429)
+  // Gene - Nov, 28, 2026: Identify non-blocking 409 Conflict responses (REASSIGNED / CANCELLED) and expose parsed serverRecord metadata.
+  bool get isConflict => statusCode == 409;
+
+  Map<String, dynamic>? get _responseMap => _asMapStatic(responseBody);
+
+  String get conflictCode =>
+      (_responseMap?['code'] ?? 'CONFLICT').toString().trim().toUpperCase();
+
+  Map<String, dynamic>? get serverRecord =>
+      _asMapStatic(_responseMap?['serverRecord']);
+
+  String? get conflictAssignedEmail =>
+      _responseMap?['assignedEmail']?.toString().trim();
+
+  String? get conflictServerStatus =>
+      _responseMap?['serverStatus']?.toString().trim();
+
+  static Map<String, dynamic>? _asMapStatic(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return null;
+  }
+
+  /// True for permanent client-side 4xx rejections (excluding 401/408/409/429)
   /// that should be logged and cleared from `ps_crud` rather than blocking the queue.
   bool get isPermanent =>
       statusCode != null &&
@@ -112,6 +193,7 @@ class PowerSyncUploadException implements Exception {
       statusCode! < 500 &&
       statusCode != 401 &&
       statusCode != 408 &&
+      statusCode != 409 &&
       statusCode != 429;
 
   @override
@@ -288,14 +370,126 @@ class PowerSyncGatewayClient {
     }
   }
 
-  /// Sends a `multipart/form-data` write (`PUT` or `POST`) to the Gateway
-  /// (used when captured photo bytes or signatures are attached).
+  /// Refreshes both session token and PowerSync RS256 token via `POST /api/Auth/refresh`.
+  // Gene - Nov, 28, 2026: Added POST /api/Auth/refresh and GET /api/sync/lookups (with If-None-Match / 304) and authenticated sendTiming for PowerSync v12.
+  Future<GatewayLoginResult> refreshSession({
+    required String bearerToken,
+  }) async {
+    final url = _endpoint('/api/Auth/refresh');
+    _guardNetwork('POST', url);
+    try {
+      final response = await _dio.post<dynamic>(
+        url,
+        options: Options(
+          contentType: 'application/json',
+          headers: {'Authorization': 'Bearer ${bearerToken.trim()}'},
+        ),
+      );
+      final map = _asMap(response.data);
+      if (map == null) {
+        throw PowerSyncUploadException(
+          statusCode: response.statusCode,
+          message: 'Unexpected response from gateway auth refresh.',
+          requestMethod: 'POST',
+          requestUrl: url,
+          responseBody: response.data,
+        );
+      }
+      return GatewayLoginResult.fromJson(map);
+    } on DioException catch (e) {
+      throw _mapDioError(e, method: 'POST', url: url);
+    }
+  }
+
+  /// Fetches cached lookup tables via `GET /api/sync/lookups` using optional `If-None-Match` ETag.
+  Future<GatewayLookupsResult> fetchLookups({
+    required String bearerToken,
+    String? ifNoneMatch,
+  }) async {
+    final url = _endpoint('/api/sync/lookups');
+    _guardNetwork('GET', url);
+    try {
+      final headers = <String, String>{
+        'Authorization': 'Bearer ${bearerToken.trim()}',
+        if (ifNoneMatch != null && ifNoneMatch.trim().isNotEmpty)
+          'If-None-Match': ifNoneMatch.trim(),
+      };
+      final response = await _dio.get<dynamic>(
+        url,
+        options: Options(
+          headers: headers,
+          validateStatus: (status) =>
+              status != null &&
+              ((status >= 200 && status < 300) || status == 304),
+        ),
+      );
+      if (response.statusCode == 304) {
+        return GatewayLookupsResult(
+          isNotModified: true,
+          etag: ifNoneMatch?.trim(),
+        );
+      }
+      final map = _asMap(response.data);
+      if (map == null) {
+        throw PowerSyncUploadException(
+          statusCode: response.statusCode,
+          message: 'Unexpected response from /api/sync/lookups.',
+          requestMethod: 'GET',
+          requestUrl: url,
+          responseBody: response.data,
+        );
+      }
+      final headerEtag = response.headers.value('etag');
+      return GatewayLookupsResult.fromJson(map, headerEtag: headerEtag);
+    } on DioException catch (e) {
+      throw _mapDioError(e, method: 'GET', url: url);
+    }
+  }
+
+  /// Sends an authenticated Start/Finish timing request (`createtiming` or `updatetiming`) with `Idempotency-Key`.
+  Future<void> sendTiming({
+    required String method,
+    required String apiPath,
+    required Map<String, dynamic> body,
+    required String bearerToken,
+    String? idempotencyKey,
+  }) async {
+    final upperMethod = method.toUpperCase();
+    final url = _endpoint(apiPath);
+    _guardNetwork(upperMethod, url);
+    try {
+      await _dio.request<dynamic>(
+        url,
+        data: body,
+        options: Options(
+          method: upperMethod,
+          contentType: 'application/json',
+          headers: {
+            'Authorization': 'Bearer ${bearerToken.trim()}',
+            if (idempotencyKey != null && idempotencyKey.trim().isNotEmpty)
+              'Idempotency-Key': idempotencyKey.trim(),
+          },
+        ),
+      );
+    } on DioException catch (e) {
+      throw _mapDioError(
+        e,
+        method: upperMethod,
+        url: url,
+        requestBody: body,
+      );
+    }
+  }
+
+  /// Sends a `multipart/form-data` write (`PATCH`, `PUT`, or `POST`) to the Gateway
+  /// (used for coalesced PowerSync v12 mutations & captured photo slots).
   Future<Map<String, dynamic>?> uploadMultipart({
     required String method,
     required String apiPath,
     required FormData formData,
     required String bearerToken,
     String? idempotencyKey,
+    dynamic requestBodySummary,
   }) async {
     final upperMethod = method.toUpperCase();
     final url = _endpoint(apiPath);
@@ -320,6 +514,7 @@ class PowerSyncGatewayClient {
         e,
         method: upperMethod,
         url: url,
+        requestBody: requestBodySummary,
       );
     }
   }

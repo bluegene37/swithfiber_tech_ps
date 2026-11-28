@@ -1,13 +1,19 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:sqlite_async/sqlite_async.dart' show SqliteWriteContext;
+import 'package:uuid/uuid.dart';
 import '../../../core/database/daos/lcp_nap_dao.dart';
+import '../../../core/database/daos/pending_attachments_dao.dart';
+import '../../../core/database/models/pending_attachment.dart';
 import '../../../core/network/api_client.dart';
 // Gene - Nov, 11, 2026: Imported ApiException to distinguish offline/transient network failures (queued for auto-sync) from hard 4xx validation errors.
 import '../../../core/network/network_exceptions.dart';
 // Gene - Nov, 8, 2026: Imported PhotoStorageService and DataUrl to sync uploaded/deleted LCP NAP photos with local SQLite rows.
 import '../../../core/services/photo_storage_service.dart';
+import '../../../core/services/remote_photo_cache_service.dart';
 // Gene - Nov, 27, 2026: Added PowerSyncService import to route plant mutations via PowerSync ps_crud when replicated mode is active.
 import '../../../core/sync/powersync_service.dart';
 import '../../../core/utils/data_url.dart';
@@ -25,11 +31,17 @@ class LcpNapRepository {
   // Gene - Oct 29, 2026: Allow optional ApiClient injection for unit testing upload and image endpoints.
   final ApiClient _api;
   final bool Function() _isReplicatedMode;
+  final PendingAttachmentsDao? pendingAttachments;
+  final Future<T> Function<T>(Future<T> Function(SqliteWriteContext tx))?
+      runInTransaction;
 
+  // Gene - Nov, 28, 2026: Accept optional PendingAttachmentsDao and writeTransaction runner for PowerSync v12 disk-backed photos & offline UUID creates.
   LcpNapRepository(
     this._dao, [
     ApiClient? api,
     bool Function()? isReplicatedMode,
+    this.pendingAttachments,
+    this.runInTransaction,
   ])  : _api = api ?? ApiClient.instance,
         _isReplicatedMode = isReplicatedMode ??
             (() => PowerSyncService.instance.isReplicatedMode);
@@ -304,6 +316,11 @@ class LcpNapRepository {
     } else {
       _imagesCache.clear();
     }
+    // Gene - Nov, 28, 2026: Evict disk cache alongside RAM cache on manual refresh or completed upload.
+    unawaited(
+      RemotePhotoCacheService.instance
+          .invalidate('lcp_nap_locations', locationId),
+    );
   }
 
   Future<int>? _activeSyncPendingFuture;
@@ -385,18 +402,6 @@ class LcpNapRepository {
     bool forceRefresh = false,
   }) async {
     /*
-    if (!forceRefresh && _imagesCache.containsKey(locationId)) {
-      return _imagesCache[locationId];
-    }
-    */
-    /*
-    // Gene - Nov, 8, 2026: Evict stale cached entry when forceRefresh is true so deleted photos never resurrect from cache.
-    if (forceRefresh) {
-      _imagesCache.remove(locationId);
-    } else if (_imagesCache.containsKey(locationId)) {
-      return _imagesCache[locationId];
-    }
-    */
     // Gene - Nov, 11, 2026: Bypass cache read on forceRefresh without pre-deleting _imagesCache[locationId] so offline background refreshes retain last-known photos; also guard local unsynced photo edits until pushed.
     final localRow = await _dao.getLocationById(locationId);
     if (localRow != null && !localRow.isSynced) {
@@ -458,12 +463,6 @@ class LcpNapRepository {
           } catch (_) {}
         }
 
-        /*
-        if (dto.hasAnyPhoto) {
-          _imagesCache[locationId] = dto;
-        }
-        return dto;
-        */
         // Gene - Oct 31, 2026: Cache photo result whenever a valid response is returned.
         _imagesCache[locationId] = dto;
         return dto;
@@ -484,12 +483,6 @@ class LcpNapRepository {
         final singleData = singleRes.data;
         if (singleData is Map<String, dynamic>) {
           final dto = LcpNapImagesDto.fromJson(singleData);
-          /*
-          if (dto.hasAnyPhoto) {
-            _imagesCache[locationId] = dto;
-            return dto;
-          }
-          */
           // Gene - Nov, 8, 2026: Always cache and return the parsed DTO from single record endpoint even when all photos have been deleted (hasAnyPhoto == false).
           _imagesCache[locationId] = dto;
           return dto;
@@ -518,6 +511,194 @@ class LcpNapRepository {
     }
 
     return _imagesCache[locationId];
+    */
+    // Gene - Nov, 28, 2026: Lazy disk cache + pending_attachments overlay supporting numeric server IDs and non-numeric offline UUID creations.
+    final localRow = await _dao.getLocationById(locationId);
+    final entityKey = localRow?.rowId ?? '$locationId';
+
+    if (localRow != null && !localRow.isSynced) {
+      final hasLegacyInline = localRow.image != null ||
+          localRow.image2 != null ||
+          localRow.readingImage != null;
+      if (hasLegacyInline) {
+        final legacyDto = _buildImagesDtoFromBytes(
+          enc1Bytes: _resolvePhotoBytes(localRow.image) ??
+              ((localRow.image == '')
+                  ? null
+                  : _imagesCache[locationId]?.image?.bytes),
+          enc2Bytes: _resolvePhotoBytes(localRow.image2) ??
+              ((localRow.image2 == '')
+                  ? null
+                  : _imagesCache[locationId]?.image2?.bytes),
+          readingBytes: _resolvePhotoBytes(localRow.readingImage) ??
+              ((localRow.readingImage == '')
+                  ? null
+                  : _imagesCache[locationId]?.readingImage?.bytes),
+        );
+        final overlaid =
+            await _overlayPendingLcpNapImages(entityKey, legacyDto);
+        if (overlaid != null) _imagesCache[locationId] = overlaid;
+        return overlaid;
+      }
+    }
+
+    final previousCache = _imagesCache[locationId];
+    LcpNapImagesDto? baseDto;
+    if (!forceRefresh && previousCache != null) {
+      baseDto = previousCache;
+    } else if (locationId > 0) {
+      final diskJson = await RemotePhotoCacheService.instance
+          .readCachedJson('lcp_nap_locations', locationId);
+      if (diskJson != null) {
+        baseDto = LcpNapImagesDto.fromJson(diskJson);
+        _imagesCache[locationId] = baseDto;
+      }
+    }
+
+    if (locationId > 0 && (baseDto == null || forceRefresh)) {
+      try {
+        final response = await _api
+            .get('/LCPNapLocations/$locationId/GetLCPNAPLocationImages');
+        final data = response.data;
+        if (data is Map<String, dynamic>) {
+          var dto = LcpNapImagesDto.fromJson(data);
+          if (dto.readingImage == null) {
+            try {
+              final readingRes = await _api.get(
+                '/LCPNapLocations/$locationId/GetReadingImage',
+                options: Options(responseType: ResponseType.bytes),
+              );
+              if (readingRes.data is List<int> &&
+                  (readingRes.data as List<int>).isNotEmpty) {
+                final b64 = base64Encode(readingRes.data as List<int>);
+                dto = LcpNapImagesDto(
+                  image: dto.image,
+                  image2: dto.image2,
+                  readingImage: LcpNapImageFileDto(
+                    fileContents: b64,
+                    contentType: 'image/jpeg',
+                    fileDownloadName: 'reading_$locationId.jpg',
+                  ),
+                );
+              }
+            } catch (_) {}
+          }
+          baseDto = dto;
+          _imagesCache[locationId] = dto;
+          unawaited(
+            RemotePhotoCacheService.instance
+                .writeCachedJson('lcp_nap_locations', locationId, dto.toJson()),
+          );
+        } else if (response.statusCode == 204 ||
+            data == null ||
+            (data is String && data.trim().isEmpty)) {
+          const emptyDto = LcpNapImagesDto();
+          baseDto = emptyDto;
+          _imagesCache[locationId] = emptyDto;
+          unawaited(
+            RemotePhotoCacheService.instance.writeCachedJson(
+              'lcp_nap_locations',
+              locationId,
+              emptyDto.toJson(),
+            ),
+          );
+        }
+      } catch (_) {
+        var fellBackSingle = false;
+        try {
+          final singleRes = await _api.get('/LCPNapLocations/$locationId');
+          final singleData = singleRes.data;
+          if (singleData is Map<String, dynamic>) {
+            final dto = LcpNapImagesDto.fromJson(singleData);
+            baseDto = dto;
+            _imagesCache[locationId] = dto;
+            fellBackSingle = true;
+            unawaited(
+              RemotePhotoCacheService.instance.writeCachedJson(
+                  'lcp_nap_locations', locationId, dto.toJson()),
+            );
+          }
+        } catch (_) {}
+        if (!fellBackSingle && baseDto == null && previousCache != null) {
+          baseDto = previousCache;
+        }
+      }
+    }
+    baseDto ??= previousCache;
+
+    if (baseDto == null && localRow != null) {
+      final enc1 = _resolvePhotoBytes(localRow.image);
+      final enc2 = _resolvePhotoBytes(localRow.image2);
+      final reading = _resolvePhotoBytes(localRow.readingImage);
+      if (enc1 != null || enc2 != null || reading != null) {
+        baseDto = _buildImagesDtoFromBytes(
+          enc1Bytes: enc1,
+          enc2Bytes: enc2,
+          readingBytes: reading,
+        );
+      }
+    }
+
+    final merged = await _overlayPendingLcpNapImages(entityKey, baseDto);
+    if (merged != null) {
+      _imagesCache[locationId] = merged;
+    }
+    return merged;
+  }
+
+  Future<LcpNapImagesDto?> _overlayPendingLcpNapImages(
+    String entityKey,
+    LcpNapImagesDto? baseDto,
+  ) async {
+    final attDao = pendingAttachments;
+    if (attDao == null) return baseDto;
+    final items = await attDao.getAllForEntity('lcp_nap_locations', entityKey);
+    if (items.isEmpty) return baseDto;
+
+    var img1 = baseDto?.image;
+    var img2 = baseDto?.image2;
+    var reading = baseDto?.readingImage;
+
+    Future<LcpNapImageFileDto?> decodeAttachment(PendingAttachment att) async {
+      if (att.deleteFlag) return null;
+      final path = att.filePath?.trim();
+      if (path == null || path.isEmpty) return null;
+      try {
+        final f = File(path);
+        if (!await f.exists()) return null;
+        final bytes = await f.readAsBytes();
+        if (bytes.isEmpty) return null;
+        final isPng = path.toLowerCase().endsWith('.png');
+        return LcpNapImageFileDto(
+          fileContents: base64Encode(bytes),
+          contentType: isPng ? 'image/png' : 'image/jpeg',
+          fileDownloadName: '${att.slotName}.${isPng ? 'png' : 'jpg'}',
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+
+    for (final att in items) {
+      final overrideFile = await decodeAttachment(att);
+      switch (att.slotName) {
+        case 'image':
+          img1 = att.deleteFlag ? null : (overrideFile ?? img1);
+          break;
+        case 'image2':
+          img2 = att.deleteFlag ? null : (overrideFile ?? img2);
+          break;
+        case 'reading_image':
+          reading = att.deleteFlag ? null : (overrideFile ?? reading);
+          break;
+      }
+    }
+
+    return LcpNapImagesDto(
+      image: img1,
+      image2: img2,
+      readingImage: reading,
+    );
   }
 
   /*
@@ -662,6 +843,121 @@ class LcpNapRepository {
 
     final nowUtc = DateTime.now().toUtc();
     final nowIso = nowUtc.toIso8601String();
+
+    // Gene - Nov, 28, 2026: In replicated PowerSync v12 mode with PendingAttachmentsDao, write compressed photos strictly to pending_attachments inside the same writeTransaction as scalar fields.
+    if (_isReplicatedMode() && pendingAttachments != null) {
+      final stagedAttachments =
+          <({String slotName, String? filePath, bool deleteFlag})>[];
+      if (clearImage) {
+        stagedAttachments
+            .add((slotName: 'image', filePath: null, deleteFlag: true));
+      } else if (imageBytes != null && imageBytes.isNotEmpty) {
+        final savedPath = await PhotoStorageService.instance
+            .savePendingMediaBytes(imageBytes, extension: 'jpg');
+        stagedAttachments
+            .add((slotName: 'image', filePath: savedPath, deleteFlag: false));
+      }
+      if (clearImage2) {
+        stagedAttachments
+            .add((slotName: 'image2', filePath: null, deleteFlag: true));
+      } else if (image2Bytes != null && image2Bytes.isNotEmpty) {
+        final savedPath = await PhotoStorageService.instance
+            .savePendingMediaBytes(image2Bytes, extension: 'jpg');
+        stagedAttachments
+            .add((slotName: 'image2', filePath: savedPath, deleteFlag: false));
+      }
+      if (clearReadingImage) {
+        stagedAttachments
+            .add((slotName: 'reading_image', filePath: null, deleteFlag: true));
+      } else if (readingImageBytes != null && readingImageBytes.isNotEmpty) {
+        final savedPath = await PhotoStorageService.instance
+            .savePendingMediaBytes(readingImageBytes, extension: 'jpg');
+        stagedAttachments.add((
+          slotName: 'reading_image',
+          filePath: savedPath,
+          deleteFlag: false,
+        ));
+      }
+
+      final existingCache = _imagesCache[locationId];
+      _imagesCache[locationId] = LcpNapImagesDto(
+        image: clearImage
+            ? null
+            : ((imageBytes != null && imageBytes.isNotEmpty)
+                ? _buildImagesDtoFromBytes(enc1Bytes: imageBytes).image
+                : (existingCache?.image ??
+                    _buildImagesDtoFromBytes(
+                      enc1Bytes: _resolvePhotoBytes(mergedBase.image),
+                    ).image)),
+        image2: clearImage2
+            ? null
+            : ((image2Bytes != null && image2Bytes.isNotEmpty)
+                ? _buildImagesDtoFromBytes(enc2Bytes: image2Bytes).image2
+                : (existingCache?.image2 ??
+                    _buildImagesDtoFromBytes(
+                      enc2Bytes: _resolvePhotoBytes(mergedBase.image2),
+                    ).image2)),
+        readingImage: clearReadingImage
+            ? null
+            : ((readingImageBytes != null && readingImageBytes.isNotEmpty)
+                ? _buildImagesDtoFromBytes(readingBytes: readingImageBytes)
+                    .readingImage
+                : (existingCache?.readingImage ??
+                    _buildImagesDtoFromBytes(
+                      readingBytes: _resolvePhotoBytes(mergedBase.readingImage),
+                    ).readingImage)),
+      );
+
+      final queuedDto = mergedBase.copyWith(
+        modifiedDate: nowUtc,
+        isSynced: false,
+        updatedAt: DateTime.now(),
+      );
+      final entityKey = mergedBase.rowId;
+
+      Future<void> writeAtomic(SqliteWriteContext? tx) async {
+        if (tx != null) {
+          await _dao.insertOrUpdateLocationInTx(
+            tx,
+            queuedDto,
+            synced: false,
+            omitPhotoColumns: true,
+          );
+          for (final item in stagedAttachments) {
+            await pendingAttachments!.upsertInTx(
+              tx,
+              entityType: 'lcp_nap_locations',
+              entityId: entityKey,
+              slotName: item.slotName,
+              filePath: item.filePath,
+              deleteFlag: item.deleteFlag,
+            );
+          }
+        } else {
+          await _dao.insertOrUpdateLocation(
+            queuedDto,
+            synced: false,
+            omitPhotoColumns: true,
+          );
+          for (final item in stagedAttachments) {
+            await pendingAttachments!.upsert(
+              entityType: 'lcp_nap_locations',
+              entityId: entityKey,
+              slotName: item.slotName,
+              filePath: item.filePath,
+              deleteFlag: item.deleteFlag,
+            );
+          }
+        }
+      }
+
+      if (runInTransaction != null) {
+        await runInTransaction!((tx) => writeAtomic(tx));
+      } else {
+        await writeAtomic(null);
+      }
+      return true;
+    }
 
     // Gene - Nov, 27, 2026: In replicated PowerSync mode, write only changed/cleared photo slots locally so PowerSync Gateway handles multipart upload & preserves sibling photos on disk.
     if (_isReplicatedMode()) {
@@ -1248,6 +1544,97 @@ class LcpNapRepository {
 
     final nowUtc = DateTime.now().toUtc();
     final nowIso = nowUtc.toIso8601String();
+
+    // Gene - Nov, 28, 2026: In replicated PowerSync v12 mode with PendingAttachmentsDao, use client UUID rowId + pending_attachments so Gateway POSTs with Idempotency-Key: <localUuid> and maps returned server ID into local_id_map.
+    if (_isReplicatedMode() && pendingAttachments != null) {
+      final localUuid = const Uuid().v4();
+      final uiId = LcpNapDto.syntheticUiIdForUuid(localUuid);
+      final stagedAttachments = <({String slotName, String filePath})>[];
+
+      if (imageBytes != null && imageBytes.isNotEmpty) {
+        final savedPath = await PhotoStorageService.instance
+            .savePendingMediaBytes(imageBytes, extension: 'jpg');
+        stagedAttachments.add((slotName: 'image', filePath: savedPath));
+      }
+      if (image2Bytes != null && image2Bytes.isNotEmpty) {
+        final savedPath = await PhotoStorageService.instance
+            .savePendingMediaBytes(image2Bytes, extension: 'jpg');
+        stagedAttachments.add((slotName: 'image2', filePath: savedPath));
+      }
+      if (readingImageBytes != null && readingImageBytes.isNotEmpty) {
+        final savedPath = await PhotoStorageService.instance
+            .savePendingMediaBytes(readingImageBytes, extension: 'jpg');
+        stagedAttachments.add((slotName: 'reading_image', filePath: savedPath));
+      }
+
+      final offlineDto = LcpNapDto(
+        id: uiId,
+        localId: localUuid,
+        lcp: cleanLcp,
+        nap: cleanNap,
+        lcpNap: cleanLcpNap,
+        portTotal: portTotal,
+        coordinates: cleanCoords,
+        street: cleanStreet,
+        barangay: cleanBarangay,
+        city: cleanCity,
+        region: cleanRegion,
+        modifiedBy: resolvedModifiedBy,
+        userEmail: resolvedUserEmail,
+        modifiedDate: nowUtc,
+        isSynced: false,
+        updatedAt: DateTime.now(),
+      );
+
+      if (stagedAttachments.isNotEmpty) {
+        _imagesCache[uiId] = _buildImagesDtoFromBytes(
+          enc1Bytes: imageBytes,
+          enc2Bytes: image2Bytes,
+          readingBytes: readingImageBytes,
+        );
+      }
+
+      Future<void> writeAtomic(SqliteWriteContext? tx) async {
+        if (tx != null) {
+          await _dao.insertOrUpdateLocationInTx(
+            tx,
+            offlineDto,
+            synced: false,
+            omitPhotoColumns: true,
+          );
+          for (final item in stagedAttachments) {
+            await pendingAttachments!.upsertInTx(
+              tx,
+              entityType: 'lcp_nap_locations',
+              entityId: localUuid,
+              slotName: item.slotName,
+              filePath: item.filePath,
+            );
+          }
+        } else {
+          await _dao.insertOrUpdateLocation(
+            offlineDto,
+            synced: false,
+            omitPhotoColumns: true,
+          );
+          for (final item in stagedAttachments) {
+            await pendingAttachments!.upsert(
+              entityType: 'lcp_nap_locations',
+              entityId: localUuid,
+              slotName: item.slotName,
+              filePath: item.filePath,
+            );
+          }
+        }
+      }
+
+      if (runInTransaction != null) {
+        await runInTransaction!((tx) => writeAtomic(tx));
+      } else {
+        await writeAtomic(null);
+      }
+      return offlineDto;
+    }
 
     // Gene - Nov, 27, 2026: In replicated PowerSync mode, insert locally with a negative temporary ID so PowerSync ps_crud routes to idempotent POST /api/LCPNapLocations.
     if (_isReplicatedMode()) {

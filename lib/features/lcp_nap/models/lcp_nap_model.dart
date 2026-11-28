@@ -4,6 +4,8 @@ import '../../../core/database/sql_values.dart';
 /// DTO for Local Convergence Point (LCP) and Network Access Point (NAP) location sites.
 class LcpNapDto {
   final int id;
+  // Gene - Nov, 28, 2026: Store non-numeric offline client UUID alongside numeric UI id compatibility for PowerSync v12 local_id_map.
+  final String? localId;
   final String lcp;
   final String nap;
   final String lcpNap;
@@ -24,6 +26,7 @@ class LcpNapDto {
 
   LcpNapDto({
     required this.id,
+    this.localId,
     required this.lcp,
     required this.nap,
     required this.lcpNap,
@@ -164,31 +167,66 @@ class LcpNapDto {
     );
   }
 
+  /*
   /// Rebuilds a site from an `lcp_nap_locations` row.
   factory LcpNapDto.fromRow(Map<String, Object?> row) => LcpNapDto(
         id: rowInt(row['id']),
         lcp: rowText(row['lcp']) ?? '',
-        nap: rowText(row['nap']) ?? '',
-        lcpNap: rowText(row['lcp_nap']) ?? '',
-        portTotal: rowInt(row['port_total'], 8),
-        coordinates: rowText(row['coordinates']),
-        street: rowText(row['street']),
-        barangay: rowText(row['barangay']),
-        city: rowText(row['city']),
-        region: rowText(row['region']),
-        image: rowText(row['image']),
-        image2: rowText(row['image2']),
-        readingImage: rowText(row['reading_image']),
-        modifiedBy: rowText(row['modified_by']),
-        userEmail: rowText(row['user_email']),
-        modifiedDate: rowDate(row['modified_date']),
-        isSynced: rowBool(row['is_synced'], fallback: true),
-        updatedAt: rowDate(row['updated_at']),
-      );
+  */
+  // Gene - Nov, 28, 2026: Support non-numeric client UUID primary keys in lcp_nap_locations without losing deterministic UI int id.
+  String get rowId {
+    final raw = localId?.trim();
+    if (raw != null && raw.isNotEmpty) return raw;
+    return idText(id);
+  }
+
+  static int syntheticUiIdForUuid(String uuid) {
+    final hash = uuid.hashCode & 0x7fffffff;
+    return hash == 0 ? -1 : -hash;
+  }
+
+  /// Rebuilds a site from an `lcp_nap_locations` row.
+  factory LcpNapDto.fromRow(Map<String, Object?> row) {
+    final rawId = rowText(row['id'])?.trim() ?? '';
+    final parsedId = int.tryParse(rawId);
+    final resolvedId =
+        parsedId ?? (rawId.isEmpty ? 0 : syntheticUiIdForUuid(rawId));
+    return LcpNapDto(
+      id: resolvedId,
+      localId: parsedId == null && rawId.isNotEmpty ? rawId : null,
+      lcp: rowText(row['lcp']) ?? '',
+      nap: rowText(row['nap']) ?? '',
+      lcpNap: rowText(row['lcp_nap']) ?? '',
+      portTotal: rowInt(row['port_total'], 8),
+      coordinates: rowText(row['coordinates']),
+      street: rowText(row['street']),
+      barangay: rowText(row['barangay']),
+      city: rowText(row['city']),
+      region: rowText(row['region']),
+      image: rowText(row['image']),
+      image2: rowText(row['image2']),
+      readingImage: rowText(row['reading_image']),
+      modifiedBy: rowText(row['modified_by']),
+      userEmail: rowText(row['user_email']),
+      modifiedDate: rowDate(row['modified_date']),
+      isSynced: rowBool(row['is_synced'], fallback: true),
+      updatedAt: rowDate(row['updated_at']),
+    );
+  }
 
   /// The `lcp_nap_locations` row for this site.
+  /*
   Map<String, Object?> toRow({bool synced = true}) => {
         'id': idText(id),
+        'lcp': lcp,
+  */
+  // Gene - Nov, 28, 2026: Preserve non-numeric rowId for offline UUID creates and optionally omit image columns for disk-backed pending_attachments.
+  Map<String, Object?> toRow({
+    bool synced = true,
+    bool omitPhotoColumns = false,
+  }) =>
+      {
+        'id': rowId,
         'lcp': lcp,
         'nap': nap,
         'lcp_nap': lcpNap,
@@ -198,9 +236,9 @@ class LcpNapDto {
         'barangay': barangay,
         'city': city,
         'region': region,
-        'image': image,
-        'image2': image2,
-        'reading_image': readingImage,
+        if (!omitPhotoColumns) 'image': image,
+        if (!omitPhotoColumns) 'image2': image2,
+        if (!omitPhotoColumns) 'reading_image': readingImage,
         'modified_by': modifiedBy,
         'user_email': userEmail,
         'modified_date': dateText(modifiedDate),
@@ -255,6 +293,7 @@ class LcpNapDto {
   // Gene - Nov, 8, 2026: Added clearImage, clearImage2, and clearReadingImage flags to copyWith so deleted photos are cleared in local SQLite state.
   LcpNapDto copyWith({
     int? id,
+    String? localId,
     String? lcp,
     String? nap,
     String? lcpNap,
@@ -278,6 +317,7 @@ class LcpNapDto {
   }) {
     return LcpNapDto(
       id: id ?? this.id,
+      localId: localId ?? this.localId,
       lcp: lcp ?? this.lcp,
       nap: nap ?? this.nap,
       lcpNap: lcpNap ?? this.lcpNap,

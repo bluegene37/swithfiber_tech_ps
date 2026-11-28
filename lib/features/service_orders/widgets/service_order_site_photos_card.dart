@@ -5,6 +5,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_client.dart';
+// Gene - Nov, 28, 2026: Added PowerSyncService to skip 15-second photo polling in replicated mode.
+import '../../../core/sync/powersync_service.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
@@ -51,7 +53,17 @@ class _ServiceOrderSitePhotosCardState
     if (_sitePhotos == null) {
       _loadPhotos();
     }
+    /*
     if (!ApiClient.isNetworkBlocked) {
+      _photoAutoSyncTimer = Timer.periodic(
+        const Duration(seconds: 15),
+        (_) => _loadPhotos(forceRefresh: true, silent: true),
+      );
+    }
+    */
+    // Gene - Nov, 28, 2026: Skip 15s polling timer when PowerSync replicated mode is active.
+    if (!ApiClient.isNetworkBlocked &&
+        !PowerSyncService.instance.isReplicatedMode) {
       _photoAutoSyncTimer = Timer.periodic(
         const Duration(seconds: 15),
         (_) => _loadPhotos(forceRefresh: true, silent: true),

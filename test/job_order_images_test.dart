@@ -69,6 +69,7 @@ class _RecordingJobApi implements JobOrdersApi {
     required String techId,
     required DateTime startTime,
     DateTime? endTime,
+    String? idempotencyKey,
   }) async {
     calls.add('createTiming($joId)');
   }
@@ -79,6 +80,7 @@ class _RecordingJobApi implements JobOrdersApi {
     required String techId,
     required DateTime startTime,
     required DateTime endTime,
+    String? idempotencyKey,
   }) async {
     calls.add('updateTiming($joId)');
   }

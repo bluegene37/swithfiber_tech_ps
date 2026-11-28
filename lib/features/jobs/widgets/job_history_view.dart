@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:powersync/powersync.dart' show SyncStreamSubscription;
 import 'package:signals_flutter/signals_flutter.dart';
+import '../../../core/sync/powersync_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_search_field.dart';
@@ -47,6 +50,9 @@ class JobHistoryView extends StatefulWidget {
 
 class _JobHistoryViewState extends State<JobHistoryView> {
   final TextEditingController _searchController = TextEditingController();
+  // Gene - Nov, 28, 2026: On-demand PowerSync v12 history stream subscription with 15m TTL, cleaned up when leaving history view.
+  SyncStreamSubscription? _historySub;
+  bool _isSyncingHistory = false;
 
   static final _short = DateFormat('MMM d');
 
@@ -54,10 +60,36 @@ class _JobHistoryViewState extends State<JobHistoryView> {
   void initState() {
     super.initState();
     _searchController.text = widget.jobsSignals.historySearch.value;
+    _subscribeHistory();
+  }
+
+  Future<void> _subscribeHistory() async {
+    if (!PowerSyncService.instance.isInitialized ||
+        !PowerSyncService.instance.isReplicatedMode) {
+      return;
+    }
+    if (mounted) setState(() => _isSyncingHistory = true);
+    try {
+      final sub = await PowerSyncService.instance.subscribeHistoryStream(
+        'assigned_job_orders_history',
+        ttl: const Duration(minutes: 15),
+      );
+      if (!mounted) {
+        sub?.unsubscribe();
+        return;
+      }
+      _historySub = sub;
+      await sub?.waitForFirstSync();
+    } catch (_) {
+      // Offline or transient sync failure: show locally cached history rows.
+    } finally {
+      if (mounted) setState(() => _isSyncingHistory = false);
+    }
   }
 
   @override
   void dispose() {
+    _historySub?.unsubscribe();
     _searchController.dispose();
     super.dispose();
   }
@@ -200,6 +232,10 @@ class _JobHistoryViewState extends State<JobHistoryView> {
                     onCity: _pickCity,
                     onReset: _clearFilters,
                   ),
+                  if (_isSyncingHistory) ...[
+                    const SizedBox(height: 8),
+                    const LinearProgressIndicator(minHeight: 2),
+                  ],
                 ],
               ),
             ),
@@ -545,6 +581,7 @@ class _NoEmailState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    /*
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -558,6 +595,44 @@ class _NoEmailState extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text('No email on your profile', style: context.text.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              'Job orders are matched to you by the email address on your '
+              'technician account. Refresh your profile, or ask Dispatch to '
+              'add one.',
+              textAlign: TextAlign.center,
+              style: context.text.bodySmall,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: onRefreshProfile,
+              icon: const Icon(Icons.person_search_rounded, size: 24),
+              label: const Text('Refresh my profile'),
+            ),
+          ],
+        ),
+      ),
+    );
+    */
+    // Gene - Nov, 28, 2026: Wrap _NoEmailState in SingleChildScrollView so 200% text scaling on compact viewports never overflows.
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.alternate_email_rounded,
+              size: 40,
+              color: AppTheme.secondaryInkOf(context),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No email on your profile',
+              textAlign: TextAlign.center,
+              style: context.text.titleMedium,
+            ),
             const SizedBox(height: 6),
             Text(
               'Job orders are matched to you by the email address on your '

@@ -140,6 +140,7 @@ class _RejectingJobsApi extends JobOrdersApi {
     required String techId,
     required DateTime startTime,
     DateTime? endTime,
+    String? idempotencyKey,
   }) async {
     timingCalls++;
     throw StateError('Simulated offline timing error');
@@ -151,6 +152,7 @@ class _RejectingJobsApi extends JobOrdersApi {
     required String techId,
     required DateTime startTime,
     required DateTime endTime,
+    String? idempotencyKey,
   }) async {
     timingCalls++;
     throw StateError('Simulated offline timing error');
@@ -180,6 +182,7 @@ class _RejectingServiceOrdersApi extends ServiceOrdersApi {
     required String techId,
     required DateTime startTime,
     DateTime? endTime,
+    String? idempotencyKey,
   }) async {
     timingCalls++;
     throw StateError('Simulated upstream timing failure');
@@ -191,6 +194,7 @@ class _RejectingServiceOrdersApi extends ServiceOrdersApi {
     required String techId,
     required DateTime startTime,
     required DateTime endTime,
+    String? idempotencyKey,
   }) async {
     timingCalls++;
     throw StateError('Upstream column jo_id failure');
@@ -234,7 +238,7 @@ void main() {
         'powerSyncReplicatedSchema validates and marks synced vs localOnly tables',
         () {
       expect(() => powerSyncReplicatedSchema.validate(), returnsNormally);
-      expect(powerSyncReplicatedSchema.tables.length, 5);
+      expect(powerSyncReplicatedSchema.tables.length, 19);
 
       final jobs = powerSyncReplicatedSchema.tables
           .firstWhere((t) => t.name == 'job_orders');
@@ -278,10 +282,10 @@ void main() {
           'region',
           'location',
           'modified_by',
-          'item_name1',
-          'item_quantity1',
-          'item_name10',
-          'item_quantity10',
+          'item_name_1',
+          'item_quantity_1',
+          'item_name_10',
+          'item_quantity_10',
         ]),
       );
 
@@ -294,12 +298,10 @@ void main() {
           'assigned_date',
           'requested_by',
           'duration',
-          'item_name',
-          'item_quantity',
-          'item_name1',
-          'item_quantity1',
-          'item_name10',
-          'item_quantity10',
+          'item_name_1',
+          'item_quantity_1',
+          'item_name_10',
+          'item_quantity_10',
         ]),
       );
 
@@ -329,8 +331,8 @@ void main() {
         'start_timestamp': '2026-11-27T08:00:00Z',
         'end_timestamp': '2026-11-27T09:15:00Z',
         'duration': '75',
-        'item_name1': 'Drop Cable (m)',
-        'item_quantity1': '60',
+        'item_name_1': 'Drop Cable (m)',
+        'item_quantity_1': '60',
         'item_name_2': 'SC/APC Fast Connector',
         'item_quantity_2': '2',
         'status': 'Scheduled',
@@ -368,10 +370,10 @@ void main() {
         'email_address': 'maria@example.com',
         'address': '45 Optical Rd',
         'support_remarks': 'Check splitter port 3',
-        'item_name': 'Cable Tie',
-        'item_quantity': '4',
-        'item_name1': 'SC/APC Fast Connector',
-        'item_quantity1': '2',
+        'item_name_1': 'Cable Tie',
+        'item_quantity_1': '4',
+        'item_name_2': 'SC/APC Fast Connector',
+        'item_quantity_2': '2',
         'raw_json': null,
         'materials_used_json': null,
         'is_synced': null,
@@ -623,37 +625,30 @@ void main() {
 
         await connector.uploadData(db);
 
-        expect(adapter.requests.length, 1);
-        final req = adapter.requests.first;
-        expect(req.method, 'POST');
-        expect(req.uri.path, '/api/powersync/upload');
-        expect(req.headers['Authorization'], 'Bearer gw-jwt');
+        expect(adapter.requests.length, 2);
 
-        final ops =
-            (req.jsonBody!['operations'] as List).cast<Map<String, dynamic>>();
-        expect(ops.length, 2);
+        final joReq = adapter.requests[0];
+        expect(joReq.method, 'PATCH');
+        expect(joReq.uri.path, '/api/JobOrders/4328');
+        expect(joReq.headers['Authorization'], 'Bearer gw-jwt');
+        expect((joReq.headers['Idempotency-Key'] ?? '').toString(), isNotEmpty);
+        expect(joReq.rawText, contains('name="onsite_status"'));
+        expect(joReq.rawText, contains('Done'));
+        expect(joReq.rawText, contains('name="duration"'));
+        expect(joReq.rawText, contains('45'));
+        expect(joReq.rawText, contains('name="delete_setup_image"'));
+        expect(joReq.rawText, isNot(contains('existing_box.jpg')));
+        expect(joReq.rawText, isNot(contains('name="optical_power"')));
+        expect(joReq.rawText, isNot(contains('name="raw_json"')));
+        expect(joReq.rawText, isNot(contains('name="is_synced"')));
+        expect(joReq.rawText, isNot(contains('name="updated_at"')));
 
-        final joOp = ops[0];
-        expect(joOp['op'], 'PATCH');
-        expect(joOp['table'], 'job_orders');
-        expect(joOp['id'], '4328');
-        final joData = joOp['data'] as Map<String, dynamic>;
-        expect(joData['onsite_status'], 'Done');
-        expect(joData['duration'], '45');
-        expect(joData['delete_setup_image'], isTrue);
-        expect(joData.containsKey('box_reading_image'), isFalse);
-        expect(joData.containsKey('optical_power'), isFalse);
-        expect(joData.containsKey('raw_json'), isFalse);
-        expect(joData.containsKey('is_synced'), isFalse);
-        expect(joData.containsKey('updated_at'), isFalse);
-
-        final soOp = ops[1];
-        expect(soOp['op'], 'PATCH');
-        expect(soOp['table'], 'service_orders');
-        expect(soOp['id'], '869');
-        final soData = soOp['data'] as Map<String, dynamic>;
-        expect(soData['duration'], '30');
-        expect(soData.containsKey('materials_used_json'), isFalse);
+        final soReq = adapter.requests[1];
+        expect(soReq.method, 'PATCH');
+        expect(soReq.uri.path, '/api/ServiceOrders/869');
+        expect(soReq.rawText, contains('name="duration"'));
+        expect(soReq.rawText, contains('30'));
+        expect(soReq.rawText, isNot(contains('name="materials_used_json"')));
 
         expect(uploaded, [('job_orders', 4328), ('service_orders', 869)]);
         expect(await db.getNextCrudTransaction(), isNull);
@@ -663,7 +658,7 @@ void main() {
     });
 
     test(
-        'routes captured photos to multipart PUT and offline plant creates with Idempotency-Key',
+        'routes captured photos to multipart PATCH and offline plant creates to POST with Idempotency-Key',
         () async {
       final db = await openReplicatedDb();
       final adapter =
@@ -697,7 +692,7 @@ void main() {
           'INSERT INTO lcp_nap_locations (id, lcp, nap, lcp_nap, port_total, '
           'coordinates, image) VALUES (?, ?, ?, ?, ?, ?, ?)',
           [
-            '-42',
+            'local-uuid-42',
             'LCP 09',
             'NAP 03',
             'LCP 09 NAP 03',
@@ -715,25 +710,22 @@ void main() {
           ),
         );
 
-        // Upload job order multipart PUT
-        await connector.uploadData(db);
-        // Upload offline plant multipart POST
         await connector.uploadData(db);
 
         expect(adapter.requests.length, 2);
 
         final joReq = adapter.requests[0];
-        expect(joReq.method, 'PUT');
+        expect(joReq.method, 'PATCH');
         expect(joReq.uri.path, '/api/JobOrders/4328');
-        expect(joReq.rawText, contains('name="BoxReadingImage"'));
+        expect(joReq.rawText, contains('name="box_reading_image"'));
         expect(joReq.rawText, contains('name="delete_setup_image"'));
         expect(joReq.rawText, isNot(contains('keep_me.jpg')));
 
         final plantReq = adapter.requests[1];
         expect(plantReq.method, 'POST');
         expect(plantReq.uri.path, '/api/LCPNapLocations');
-        expect(plantReq.headers['Idempotency-Key'], 'offline-42');
-        expect(plantReq.rawText, contains('name="Image"'));
+        expect(plantReq.headers['Idempotency-Key'], 'local-uuid-42');
+        expect(plantReq.rawText, contains('name="image"'));
 
         expect(await db.getNextCrudTransaction(), isNull);
       } finally {
@@ -742,11 +734,11 @@ void main() {
     });
 
     test(
-        'normalizes offline scalar lcp_nap_locations ID to non-numeric PUT in uploadBatch',
+        'routes non-numeric UUID lcp_nap_locations ID to POST /api/LCPNapLocations with Idempotency-Key',
         () async {
       final db = await openReplicatedDb();
       final adapter =
-          _MockGatewayAdapter((req) async => _jsonResponse({'ok': true}));
+          _MockGatewayAdapter((req) async => _jsonResponse({'id': 1777}));
 
       try {
         FlutterSecureStorage.setMockInitialValues({
@@ -756,7 +748,14 @@ void main() {
         await db.execute(
           'INSERT INTO lcp_nap_locations (id, lcp, nap, lcp_nap, port_total, coordinates) '
           'VALUES (?, ?, ?, ?, ?, ?)',
-          ['-77', 'LCP 07', 'NAP 07', 'LCP 07 NAP 07', 8, '14.51, 121.02'],
+          [
+            'local-uuid-77',
+            'LCP 07',
+            'NAP 07',
+            'LCP 07 NAP 07',
+            8,
+            '14.51, 121.02',
+          ],
         );
 
         final connector = SwitchFiberBackendConnector(
@@ -769,11 +768,10 @@ void main() {
 
         await connector.uploadData(db);
 
-        final ops = (adapter.requests.single.jsonBody!['operations'] as List)
-            .cast<Map<String, dynamic>>();
-        expect(ops.single['op'], 'PUT');
-        expect(ops.single['table'], 'lcp_nap_locations');
-        expect(ops.single['id'], 'offline-77');
+        final req = adapter.requests.single;
+        expect(req.method, 'POST');
+        expect(req.uri.path, '/api/LCPNapLocations');
+        expect(req.headers['Idempotency-Key'], 'local-uuid-77');
         expect(await db.getNextCrudTransaction(), isNull);
       } finally {
         await db.close();
@@ -785,12 +783,30 @@ void main() {
       var uploadAttempts = 0;
 
       final adapter = _MockGatewayAdapter((req) async {
-        if (req.uri.path == '/api/powersync/upload') {
+        if (req.uri.path == '/api/JobOrders/500') {
           uploadAttempts++;
           if (uploadAttempts == 1) {
             return _jsonResponse({'message': 'Expired'}, statusCode: 401);
           }
           return _jsonResponse({'ok': true});
+        }
+        if (req.uri.path == '/api/Auth/refresh') {
+          return _jsonResponse({
+            'token': 'fresh-token-after-401',
+            'expiresAt': DateTime.now()
+                .toUtc()
+                .add(const Duration(hours: 12))
+                .toIso8601String(),
+            'powersync': {
+              'token': 'ps-token-after-401',
+              'expiresAt': DateTime.now()
+                  .toUtc()
+                  .add(const Duration(hours: 12))
+                  .toIso8601String(),
+              'userId': 'tech@example.com',
+              'endpoint': 'https://sync.example.com',
+            },
+          });
         }
         if (req.uri.path == '/api/Auth/powersync-token') {
           return _jsonResponse({

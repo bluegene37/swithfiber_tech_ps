@@ -13,6 +13,11 @@ import 'daos/service_orders_dao.dart';
 import 'daos/sync_error_logs_dao.dart';
 // Gene - Nov, 26, 2026: Added WorkTimingHistoryDao import and getter on AppDatabase.
 import 'daos/work_timing_history_dao.dart';
+// Gene - Nov, 28, 2026: Added PowerSync v12 DAOs for lookups, pending_attachments, sync_conflicts, and local_id_map.
+import 'daos/local_id_map_dao.dart';
+import 'daos/lookups_dao.dart';
+import 'daos/pending_attachments_dao.dart';
+import 'daos/sync_conflicts_dao.dart';
 
 /// The app's local database: a [PowerSyncDatabase] opened on
 /// [powerSyncSchema], with one DAO per table.
@@ -56,6 +61,12 @@ class AppDatabase {
   // Gene - Nov, 26, 2026: Expose workTimingHistoryDao on AppDatabase.
   late final WorkTimingHistoryDao workTimingHistoryDao =
       WorkTimingHistoryDao(this);
+  // Gene - Nov, 28, 2026: Expose PowerSync v12 operational & lookup DAOs.
+  late final PendingAttachmentsDao pendingAttachmentsDao =
+      PendingAttachmentsDao(this);
+  late final SyncConflictsDao syncConflictsDao = SyncConflictsDao(this);
+  late final LocalIdMapDao localIdMapDao = LocalIdMapDao(this);
+  late final LookupsDao lookupsDao = LookupsDao(this);
 
   // Every query goes through these so nothing runs before PowerSync has
   // finished applying the schema. Writes and reads await that on their own

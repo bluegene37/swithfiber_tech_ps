@@ -1,17 +1,24 @@
 /*
 import 'dart:async';
 */
-// Gene - Nov, 28, 2026: Commented out unused dart:async import after removing redundant startup connectIfConfigured call.
+// Gene - Nov, 28, 2026: Restored dart:async unawaited and wired v12 LookupsSyncService, SyncConflictsSignals, BackgroundSyncService, and non-destructive 401 reauth.
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import 'core/database/app_database.dart';
+import 'core/database/daos/pending_attachments_dao.dart';
 import 'core/network/api_client.dart';
+import 'core/network/network_connectivity_service.dart';
 import 'core/storage/secure_storage_service.dart';
+import 'core/sync/background_sync_service.dart';
+import 'core/sync/lookups_sync_service.dart';
 import 'core/sync/powersync_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/signals/auth_signals.dart';
+import 'features/catalogs/services/catalog_service.dart';
+import 'features/diagnostics/signals/sync_conflicts_signals.dart';
 import 'features/jobs/repositories/job_repository.dart';
 import 'features/jobs/signals/jobs_signals.dart';
 import 'features/lcp_nap/repositories/lcp_nap_repository.dart';
@@ -48,6 +55,23 @@ void main() async {
     errorLog: database.syncErrorLogsDao,
   );
   */
+  // Gene - Nov, 28, 2026: Attach SQLite LookupsDao for offline-first catalog reads and wire v12 transactional photo/conflict/ID-map dependencies.
+  CatalogService.instance.attachLookupsDao(database.lookupsDao);
+  final authSignals = AuthSignals.instance;
+  final lookupsSyncService = LookupsSyncService(
+    lookupsDao: database.lookupsDao,
+    onUnauthorized: () {
+      authSignals.requireReauth(
+        reason: 'Your session expired. Sign in to refresh offline catalogs.',
+      );
+    },
+  );
+  final syncConflictsSignals = SyncConflictsSignals(
+    database.syncConflictsDao,
+    pendingAttachmentsDao: database.pendingAttachmentsDao,
+  );
+
+  /*
   // Gene - Nov, 26, 2026: Wire WorkTimingHistoryDao into JobRepository and ServiceOrdersSignals.
   final jobRepository = JobRepository(
     database.jobOrdersDao,
@@ -60,28 +84,35 @@ void main() async {
     errorLog: database.syncErrorLogsDao,
     timingHistory: database.workTimingHistoryDao,
   );
-  /*
-  // Gene - Nov, 27, 2026: Wire SyncErrorLogsDao and post-upload image cache invalidation into PowerSyncService connector.
-  powerSync.setUploadHooks(
-    errorLog: database.syncErrorLogsDao,
-    onEntityUploaded: (table, entityId) {
-      switch (table) {
-        case 'job_orders':
-          jobRepository.clearImagesCache(entityId);
-          break;
-        case 'service_orders':
-          serviceOrdersSignals.clearImagesCache(entityId);
-          break;
-        case 'lcp_nap_locations':
-          lcpNapRepository.invalidateImagesCache(entityId);
-          break;
-      }
-    },
-  );
   */
-  // Gene - Nov, 28, 2026: Also wire 401 unauthorized recovery from PowerSync Gateway credentials into AuthSignals.
+  final jobRepository = JobRepository(
+    database.jobOrdersDao,
+    errorLog: database.syncErrorLogsDao,
+    timingHistory: database.workTimingHistoryDao,
+    pendingAttachments: database.pendingAttachmentsDao,
+    runInTransaction: database.writeTransaction,
+  );
+  final lcpNapRepository = LcpNapRepository(
+    database.lcpNapLocationsDao,
+    null,
+    null,
+    database.pendingAttachmentsDao,
+    database.writeTransaction,
+  );
+  final serviceOrdersSignals = ServiceOrdersSignals(
+    dao: database.serviceOrdersDao,
+    errorLog: database.syncErrorLogsDao,
+    timingHistory: database.workTimingHistoryDao,
+    pendingAttachments: database.pendingAttachmentsDao,
+    runInTransaction: database.writeTransaction,
+  );
+
+  // Gene - Nov, 28, 2026: Wire v12 DAOs and non-destructive 401 reauth callback into PowerSync connector.
   powerSync.setUploadHooks(
     errorLog: database.syncErrorLogsDao,
+    pendingAttachments: database.pendingAttachmentsDao,
+    syncConflicts: database.syncConflictsDao,
+    localIdMap: database.localIdMapDao,
     onEntityUploaded: (table, entityId) {
       switch (table) {
         case 'job_orders':
@@ -96,14 +127,14 @@ void main() async {
       }
     },
     onUnauthorized: () {
-      AuthSignals.instance.logout(
-        reason: 'Your sync session expired. Please sign in again.',
+      authSignals.requireReauth(
+        reason:
+            'Your sync session expired. Sign in to resume uploading offline changes.',
       );
     },
   );
 
   // 2. Initialize Signals State Layer
-  final authSignals = AuthSignals.instance;
   final jobsSignals = JobsSignals(jobRepository);
   final lcpNapSignals = LcpNapSignals(lcpNapRepository);
 
@@ -113,14 +144,15 @@ void main() async {
   ApiClient.instance
       .setBaseUrl(await SecureStorageService.instance.getBaseUrl());
 
-  // 4. Connect API client 401 callback to auth signals
+  // 4. Connect API client 401 callback to non-destructive in-place reauth (never wipe SQLite on 401).
   ApiClient.instance.onUnauthorized = () {
     /*
-    authSignals.logout();
-    */
-    // Gene - Nov, 28, 2026: Surface session-expired message on 401 logout.
     authSignals.logout(
       reason: 'Your session expired. Please sign in again.',
+    );
+    */
+    authSignals.requireReauth(
+      reason: 'Your session expired. Sign in to continue syncing.',
     );
   };
 
@@ -128,11 +160,17 @@ void main() async {
   await SettingsSignals.instance.restore();
   await authSignals.restoreSession();
 
-  /*
-  // 6. Connect PowerSync cloud sync with active technician session
-  unawaited(powerSync.connectIfConfigured());
-  */
-  // Gene - Nov, 28, 2026: AuthSignals.restoreSession() and AuthSignals.login() handle serialized PowerSync connect/reconnect when an authenticated user exists.
+  // 6. Initialize OS connectivity monitoring, best-effort background sync, and cached lookups refresh.
+  NetworkConnectivityService.instance.initialize();
+  NetworkConnectivityService.instance.addOnlineListener(() {
+    if (authSignals.isAuthenticated.value) {
+      unawaited(lookupsSyncService.sync());
+    }
+  });
+  if (authSignals.isAuthenticated.value) {
+    unawaited(lookupsSyncService.sync());
+  }
+  unawaited(BackgroundSyncService.initializeAndRegister());
 
   runApp(
     SwitchFiberTechApp(
@@ -140,6 +178,9 @@ void main() async {
       jobsSignals: jobsSignals,
       lcpNapSignals: lcpNapSignals,
       serviceOrdersSignals: serviceOrdersSignals,
+      syncConflictsSignals: syncConflictsSignals,
+      lookupsSyncService: lookupsSyncService,
+      pendingAttachmentsDao: database.pendingAttachmentsDao,
       showSplash: true,
     ),
   );
@@ -150,6 +191,9 @@ class SwitchFiberTechApp extends StatelessWidget {
   final JobsSignals jobsSignals;
   final LcpNapSignals lcpNapSignals;
   final ServiceOrdersSignals? serviceOrdersSignals;
+  final SyncConflictsSignals? syncConflictsSignals;
+  final LookupsSyncService? lookupsSyncService;
+  final PendingAttachmentsDao? pendingAttachmentsDao;
   final bool showSplash;
 
   const SwitchFiberTechApp({
@@ -158,6 +202,9 @@ class SwitchFiberTechApp extends StatelessWidget {
     required this.jobsSignals,
     required this.lcpNapSignals,
     this.serviceOrdersSignals,
+    this.syncConflictsSignals,
+    this.lookupsSyncService,
+    this.pendingAttachmentsDao,
     this.showSplash = true,
   });
 
@@ -180,6 +227,9 @@ class SwitchFiberTechApp extends StatelessWidget {
             jobsSignals: jobsSignals,
             lcpNapSignals: lcpNapSignals,
             serviceOrdersSignals: serviceOrdersSignals,
+            syncConflictsSignals: syncConflictsSignals,
+            lookupsSyncService: lookupsSyncService,
+            pendingAttachmentsDao: pendingAttachmentsDao,
             showSplash: showSplash,
           ),
         );
@@ -199,6 +249,9 @@ class _RootView extends StatefulWidget {
   final JobsSignals jobsSignals;
   final LcpNapSignals lcpNapSignals;
   final ServiceOrdersSignals? serviceOrdersSignals;
+  final SyncConflictsSignals? syncConflictsSignals;
+  final LookupsSyncService? lookupsSyncService;
+  final PendingAttachmentsDao? pendingAttachmentsDao;
   final bool showSplash;
 
   const _RootView({
@@ -206,6 +259,9 @@ class _RootView extends StatefulWidget {
     required this.jobsSignals,
     required this.lcpNapSignals,
     this.serviceOrdersSignals,
+    this.syncConflictsSignals,
+    this.lookupsSyncService,
+    this.pendingAttachmentsDao,
     required this.showSplash,
   });
 
@@ -237,6 +293,9 @@ class _RootViewState extends State<_RootView> {
                   jobsSignals: widget.jobsSignals,
                   lcpNapSignals: widget.lcpNapSignals,
                   serviceOrdersSignals: widget.serviceOrdersSignals,
+                  syncConflictsSignals: widget.syncConflictsSignals,
+                  lookupsSyncService: widget.lookupsSyncService,
+                  pendingAttachmentsDao: widget.pendingAttachmentsDao,
                 );
               },
             ),

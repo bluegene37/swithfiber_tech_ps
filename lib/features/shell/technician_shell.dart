@@ -3,14 +3,20 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:powersync/powersync.dart' show SyncStatus;
 import 'package:signals_flutter/signals_flutter.dart';
+import '../../core/database/daos/pending_attachments_dao.dart';
 import '../../core/network/network_connectivity_service.dart';
 import '../../core/services/badge_service.dart';
+import '../../core/sync/lookups_sync_service.dart';
 // Gene - Nov, 27, 2026: Added PowerSyncService import to skip legacy REST polling timer when replicated sync is active.
 import '../../core/sync/powersync_service.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/signals/auth_signals.dart';
+import '../auth/widgets/reauth_dialog.dart';
+import '../diagnostics/screens/sync_conflicts_screen.dart';
+import '../diagnostics/signals/sync_conflicts_signals.dart';
 import '../jobs/models/job_order_model.dart';
 import '../jobs/screens/job_order_detail_screen.dart';
 import '../jobs/screens/job_orders_screen.dart';
@@ -35,14 +41,21 @@ class TechnicianShell extends StatefulWidget {
   final JobsSignals jobsSignals;
   final LcpNapSignals lcpNapSignals;
   final ServiceOrdersSignals? serviceOrdersSignals;
+  final SyncConflictsSignals? syncConflictsSignals;
+  final LookupsSyncService? lookupsSyncService;
+  final PendingAttachmentsDao? pendingAttachmentsDao;
   final bool enableAutoSync;
 
+  // Gene - Nov, 28, 2026: Accept optional SyncConflictsSignals, LookupsSyncService, and PendingAttachmentsDao for v12 conflict review, lookups refresh, and pending upload counters.
   const TechnicianShell({
     super.key,
     required this.authSignals,
     required this.jobsSignals,
     required this.lcpNapSignals,
     this.serviceOrdersSignals,
+    this.syncConflictsSignals,
+    this.lookupsSyncService,
+    this.pendingAttachmentsDao,
     this.enableAutoSync = true,
   });
 
@@ -68,6 +81,12 @@ class _TechnicianShellState extends State<TechnicianShell>
   late final void Function() _disposeAlertEffect;
   // Gene - Oct 3, 2026: Disposer for reactive launcher icon badge count updates.
   late final void Function() _disposeBadgeEffect;
+  void Function()? _disposeReauthEffect;
+  StreamSubscription<SyncStatus>? _psStatusSub;
+  StreamSubscription<int>? _attCountSub;
+  bool _reauthDialogVisible = false;
+  int _pendingUploadsCount = 0;
+  int _pendingAttachmentCount = 0;
   Timer? _autoSyncTimer;
   Timer? _bannerDismissTimer;
   // Gene - Oct, 1, 2026: Added tracking for most recent alert between Job Orders and Service Orders.
@@ -145,11 +164,14 @@ class _TechnicianShellState extends State<TechnicianShell>
       // Gene - Nov, 27, 2026: When PowerSync replicated mode is active, reconnect PowerSync & clear photo caches instead of legacy REST pulls/pushes.
       if (PowerSyncService.instance.isReplicatedMode) {
         unawaited(PowerSyncService.instance.connectIfConfigured());
+        unawaited(widget.lookupsSyncService?.sync());
         widget.jobsSignals.repository.clearImagesCache();
         _serviceOrdersSignals.clearImagesCache();
         widget.lcpNapSignals.repository.invalidateImagesCache();
+        await _refreshPendingUploadsCount();
         return;
       }
+      unawaited(widget.lookupsSyncService?.sync());
       await widget.jobsSignals.repository.syncWorker.syncPendingJobs();
       await _serviceOrdersSignals.syncWorker?.syncPendingOrders();
       await widget.lcpNapSignals.syncPending();
@@ -232,6 +254,61 @@ class _TechnicianShellState extends State<TechnicianShell>
       final totalUnread = unreadScheduled + unreadRepairs;
       BadgeService.instance.updateBadgeCount(totalUnread).catchError((_) {});
     });
+
+    // Gene - Nov, 28, 2026: Observe pending upload counts, 401 reauth prompts, and trigger lookups refresh on launch.
+    if (PowerSyncService.instance.isInitialized &&
+        PowerSyncService.instance.isReplicatedMode) {
+      _psStatusSub = PowerSyncService.instance.statusStream?.listen((_) {
+        unawaited(_refreshPendingUploadsCount());
+      });
+    }
+    _attCountSub =
+        widget.pendingAttachmentsDao?.watchPendingCount().listen((count) {
+      if (mounted) {
+        setState(() => _pendingAttachmentCount = count);
+      }
+      unawaited(_refreshPendingUploadsCount());
+    });
+    unawaited(_refreshPendingUploadsCount());
+    unawaited(widget.lookupsSyncService?.sync());
+
+    _disposeReauthEffect = effect(() {
+      final needsReauth = widget.authSignals.reauthRequired.value;
+      if (needsReauth) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showReauthDialogIfNeeded();
+        });
+      }
+    });
+  }
+
+  Future<void> _refreshPendingUploadsCount() async {
+    if (!PowerSyncService.instance.isInitialized ||
+        !PowerSyncService.instance.isReplicatedMode) {
+      return;
+    }
+    final count = await PowerSyncService.instance.countPendingUploads();
+    if (mounted && count != _pendingUploadsCount) {
+      setState(() => _pendingUploadsCount = count);
+    }
+  }
+
+  Future<void> _showReauthDialogIfNeeded() async {
+    if (!mounted ||
+        _reauthDialogVisible ||
+        !widget.authSignals.reauthRequired.value) {
+      return;
+    }
+    _reauthDialogVisible = true;
+    try {
+      await showDialog<bool>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => ReauthDialog(authSignals: widget.authSignals),
+      );
+    } finally {
+      _reauthDialogVisible = false;
+    }
   }
 
   /*
@@ -266,12 +343,15 @@ class _TechnicianShellState extends State<TechnicianShell>
       // Gene - Nov, 27, 2026: In replicated PowerSync mode, verify stream connection & clear image caches instead of pulling via legacy REST APIs.
       if (PowerSyncService.instance.isReplicatedMode) {
         unawaited(PowerSyncService.instance.connectIfConfigured());
+        unawaited(widget.lookupsSyncService?.sync());
         widget.jobsSignals.repository.clearImagesCache();
         _serviceOrdersSignals.clearImagesCache();
         widget.lcpNapSignals.repository.invalidateImagesCache();
+        unawaited(_refreshPendingUploadsCount());
         _lastSyncCompletedAt = DateTime.now();
         return;
       }
+      unawaited(widget.lookupsSyncService?.sync());
       if (!widget.jobsSignals.isRefreshing.value) {
         await widget.jobsSignals.fetchRemote();
       }
@@ -328,6 +408,9 @@ class _TechnicianShellState extends State<TechnicianShell>
     _disposeAlertEffect();
     // Gene - Oct 3, 2026: Dispose launcher badge effect.
     _disposeBadgeEffect();
+    _disposeReauthEffect?.call();
+    _psStatusSub?.cancel();
+    _attCountSub?.cancel();
     _removeOnlineListener();
     _disposeEmailSync();
     if (widget.serviceOrdersSignals == null) {
@@ -498,19 +581,211 @@ class _TechnicianShellState extends State<TechnicianShell>
         jobsSignals: jobs,
         serviceOrdersSignals: _serviceOrdersSignals,
         lcpNapSignals: widget.lcpNapSignals,
+        syncConflictsSignals: widget.syncConflictsSignals,
+        lookupsSyncService: widget.lookupsSyncService,
       ),
     ];
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: Stack(
-        children: [
-          screens[_currentIndex],
-          _buildNewJobAlertBanner(context),
-        ],
+      body: SignalBuilder(
+        builder: (context) {
+          final hasStrip = _hasSyncStatusStrip();
+          return Column(
+            children: [
+              _buildSyncStatusStrip(context, isDark),
+              Expanded(
+                child: MediaQuery.removePadding(
+                  context: context,
+                  removeTop: hasStrip,
+                  child: Stack(
+                    children: [
+                      screens[_currentIndex],
+                      _buildNewJobAlertBanner(context),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
       bottomNavigationBar: _buildIosBottomBar(context, jobs, isDark),
+    );
+  }
+
+  bool _hasSyncStatusStrip() {
+    final conflictsCount =
+        widget.syncConflictsSignals?.unresolvedCount.value ?? 0;
+    final needsReauth = widget.authSignals.reauthRequired.value;
+    final localPending = widget.jobsSignals.unsyncedCount.value +
+        _serviceOrdersSignals.allOrders.value.where((o) => !o.isSynced).length +
+        widget.lcpNapSignals.unsyncedCount.value;
+    final pendingUploads = PowerSyncService.instance.isReplicatedMode
+        ? (_pendingUploadsCount > _pendingAttachmentCount
+            ? _pendingUploadsCount
+            : _pendingAttachmentCount)
+        : localPending;
+    return conflictsCount > 0 || pendingUploads > 0 || needsReauth;
+  }
+
+  Widget _buildSyncStatusStrip(BuildContext context, bool isDark) {
+    return SignalBuilder(
+      builder: (context) {
+        final conflictsCount =
+            widget.syncConflictsSignals?.unresolvedCount.value ?? 0;
+        final needsReauth = widget.authSignals.reauthRequired.value;
+        final localPending = widget.jobsSignals.unsyncedCount.value +
+            _serviceOrdersSignals.allOrders.value
+                .where((o) => !o.isSynced)
+                .length +
+            widget.lcpNapSignals.unsyncedCount.value;
+        final pendingUploads = PowerSyncService.instance.isReplicatedMode
+            ? (_pendingUploadsCount > _pendingAttachmentCount
+                ? _pendingUploadsCount
+                : _pendingAttachmentCount)
+            : localPending;
+
+        if (conflictsCount <= 0 && pendingUploads <= 0 && !needsReauth) {
+          return const SizedBox.shrink();
+        }
+
+        final topPad = MediaQuery.paddingOf(context).top;
+        return Material(
+          color: AppTheme.cardOf(context),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(12, topPad + 4, 12, 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (needsReauth)
+                  InkWell(
+                    key: const ValueKey('reauth_banner'),
+                    onTap: _showReauthDialogIfNeeded,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.dangerSubtle,
+                        borderRadius: BorderRadius.circular(10),
+                        border:
+                            Border.all(color: AppTheme.dangerInkOf(context)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            CupertinoIcons.lock_fill,
+                            size: 20,
+                            color: AppTheme.dangerInkOf(context),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Session expired — tap to sign in and resume syncing',
+                              style: context.text.labelMedium!.copyWith(
+                                color: AppTheme.dangerInkOf(context),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (conflictsCount > 0 && widget.syncConflictsSignals != null)
+                  InkWell(
+                    key: const ValueKey('needs_review_banner'),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => SyncConflictsScreen(
+                            signals: widget.syncConflictsSignals!,
+                          ),
+                        ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.warningSubtle,
+                        borderRadius: BorderRadius.circular(10),
+                        border:
+                            Border.all(color: AppTheme.warningInkOf(context)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            CupertinoIcons.exclamationmark_octagon_fill,
+                            size: 20,
+                            color: AppTheme.warningInkOf(context),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '$conflictsCount conflict${conflictsCount == 1 ? '' : 's'} — Needs Review',
+                              style: context.text.labelMedium!.copyWith(
+                                color: AppTheme.warningInkOf(context),
+                              ),
+                            ),
+                          ),
+                          Text(
+                            'Review',
+                            style: context.text.labelLarge!.copyWith(
+                              color: AppTheme.warningInkOf(context),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (pendingUploads > 0)
+                  Container(
+                    key: const ValueKey('pending_uploads_pill'),
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.fillOf(context),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.hairlineOf(context)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          CupertinoIcons.cloud_upload,
+                          size: 20,
+                          color: AppTheme.infoInkOf(context),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '$pendingUploads pending upload${pendingUploads == 1 ? '' : 's'}',
+                            style: context.text.labelMedium!.copyWith(
+                              color: AppTheme.inkOf(context),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

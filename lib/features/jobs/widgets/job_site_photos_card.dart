@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 // import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_client.dart';
+// Gene - Nov, 28, 2026: Added PowerSyncService to skip 15-second photo polling in replicated mode.
+import '../../../core/sync/powersync_service.dart';
 import '../../../core/services/photo_storage_service.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
@@ -80,7 +82,9 @@ class _JobSitePhotosCardState extends State<JobSitePhotosCard> {
     if (!ApiClient.blockNetworkForTesting) {
     */
     // Gene - Nov, 8, 2026: Use ApiClient.isNetworkBlocked getter to avoid visibleForTesting analyzer warning.
-    if (!ApiClient.isNetworkBlocked) {
+    // Gene - Nov, 28, 2026: Skip 15s polling timer when PowerSync replicated mode is active.
+    if (!ApiClient.isNetworkBlocked &&
+        !PowerSyncService.instance.isReplicatedMode) {
       _photoAutoSyncTimer = Timer.periodic(
         const Duration(seconds: 15),
         (_) => _loadPhotos(forceRefresh: true, silent: true),

@@ -1095,6 +1095,7 @@ class JobOrderDto {
       } catch (_) {}
     }
 
+    /*
     // Gene - Nov, 27, 2026: Hydrate materials from row columns (item_name1..10 / item_name_1..10) when raw_json is absent (PowerSync replicated rows).
     if (materials.isEmpty) {
       for (var i = 1; i <= 10; i++) {
@@ -1102,6 +1103,20 @@ class JobOrderDto {
             (rowText(row['item_name$i']) ?? rowText(row['item_name_$i']))
                 ?.trim();
         final qtyRaw = row['item_quantity$i'] ?? row['item_quantity_$i'];
+        if (name != null && name.isNotEmpty) {
+          final qty = qtyRaw is int
+              ? qtyRaw
+              : int.tryParse(qtyRaw?.toString() ?? '0') ?? 0;
+          if (qty > 0) materials[name] = qty;
+        }
+      }
+    }
+    */
+    // Gene - Nov, 28, 2026: Hydrate materials strictly from canonical PowerSync v12 columns item_name_1..10 and item_quantity_1..10.
+    if (materials.isEmpty) {
+      for (var i = 1; i <= 10; i++) {
+        final name = rowText(row['item_name_$i'])?.trim();
+        final qtyRaw = row['item_quantity_$i'];
         if (name != null && name.isNotEmpty) {
           final qty = qtyRaw is int
               ? qtyRaw
@@ -1348,6 +1363,7 @@ class JobOrderDto {
       rawJsonWithMaterials = jsonEncode(rawMap);
     }
 
+    /*
     // Gene - Nov, 27, 2026: Include Server v11 columns and item_name1..10 / item_quantity1..10 in toRow().
     final materialRow = <String, Object?>{};
     if (materialsUsed.isNotEmpty) {
@@ -1367,6 +1383,28 @@ class JobOrderDto {
       for (int i = 1; i <= 10; i++) {
         materialRow['item_name$i'] = synced ? null : '';
         materialRow['item_quantity$i'] = synced ? null : '';
+      }
+    }
+    */
+    // Gene - Nov, 28, 2026: Emit canonical PowerSync v12 material columns item_name_1..10 and item_quantity_1..10 in toRow().
+    final materialRow = <String, Object?>{};
+    if (materialsUsed.isNotEmpty) {
+      int idx = 1;
+      materialsUsed.forEach((name, qty) {
+        if (idx <= 10) {
+          materialRow['item_name_$idx'] = name;
+          materialRow['item_quantity_$idx'] = qty.toString();
+          idx++;
+        }
+      });
+      for (int i = idx; i <= 10; i++) {
+        materialRow['item_name_$i'] = '';
+        materialRow['item_quantity_$i'] = '';
+      }
+    } else {
+      for (int i = 1; i <= 10; i++) {
+        materialRow['item_name_$i'] = synced ? null : '';
+        materialRow['item_quantity_$i'] = synced ? null : '';
       }
     }
 

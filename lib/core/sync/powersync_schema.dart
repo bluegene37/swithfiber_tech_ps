@@ -32,7 +32,43 @@ const Schema powerSyncSchema = Schema([
   workTimingHistoryTable,
 ]);
 */
+// Gene - Nov, 28, 2026: Upgraded PowerSync schema to v12: canonical item_name_1..10/item_quantity_1..10, new local indexes, 11 cached localOnly lookup tables, and localOnly operational tables (pending_attachments, sync_conflicts, local_id_map).
+/*
 // Gene - Nov, 27, 2026: Added Server v11 columns and exported both local-only powerSyncSchema and replicated powerSyncReplicatedSchema via activePowerSyncSchema().
+const List<Column> _jobOrdersColumns = [
+...
+  Column.text('item_name1'),
+  Column.text('item_quantity1'),
+  Column.text('item_name2'),
+  Column.text('item_quantity2'),
+  Column.text('item_name3'),
+  Column.text('item_quantity3'),
+  Column.text('item_name4'),
+  Column.text('item_quantity4'),
+  Column.text('item_name5'),
+  Column.text('item_quantity5'),
+  Column.text('item_name6'),
+  Column.text('item_quantity6'),
+  Column.text('item_name7'),
+  Column.text('item_quantity7'),
+  Column.text('item_name8'),
+  Column.text('item_quantity8'),
+  Column.text('item_name9'),
+  Column.text('item_quantity9'),
+  Column.text('item_name10'),
+  Column.text('item_quantity10'),
+  // Client metadata columns (null on server-replicated rows):
+  Column.text('raw_json'),
+  Column.integer('is_synced'),
+  Column.text('updated_at'),
+];
+
+const List<Index> _jobOrdersIndexes = [
+  Index('job_status_idx', [IndexedColumn('status')]),
+  Index('job_assigned_email_idx', [IndexedColumn('assigned_email')]),
+  Index('job_is_synced_idx', [IndexedColumn('is_synced')]),
+];
+*/
 const List<Column> _jobOrdersColumns = [
   Column.text('ticket_number'),
   Column.text('customer_name'),
@@ -69,7 +105,6 @@ const List<Column> _jobOrdersColumns = [
   Column.text('start_timestamp'),
   Column.text('end_timestamp'),
   Column.text('modified_date'),
-  // Server v11 replicated columns beyond the original local schema:
   Column.text('address_coordinates'),
   Column.text('installation_landmark'),
   Column.text('usage_type'),
@@ -91,26 +126,26 @@ const List<Column> _jobOrdersColumns = [
   Column.text('region'),
   Column.text('location'),
   Column.text('modified_by'),
-  Column.text('item_name1'),
-  Column.text('item_quantity1'),
-  Column.text('item_name2'),
-  Column.text('item_quantity2'),
-  Column.text('item_name3'),
-  Column.text('item_quantity3'),
-  Column.text('item_name4'),
-  Column.text('item_quantity4'),
-  Column.text('item_name5'),
-  Column.text('item_quantity5'),
-  Column.text('item_name6'),
-  Column.text('item_quantity6'),
-  Column.text('item_name7'),
-  Column.text('item_quantity7'),
-  Column.text('item_name8'),
-  Column.text('item_quantity8'),
-  Column.text('item_name9'),
-  Column.text('item_quantity9'),
-  Column.text('item_name10'),
-  Column.text('item_quantity10'),
+  Column.text('item_name_1'),
+  Column.text('item_quantity_1'),
+  Column.text('item_name_2'),
+  Column.text('item_quantity_2'),
+  Column.text('item_name_3'),
+  Column.text('item_quantity_3'),
+  Column.text('item_name_4'),
+  Column.text('item_quantity_4'),
+  Column.text('item_name_5'),
+  Column.text('item_quantity_5'),
+  Column.text('item_name_6'),
+  Column.text('item_quantity_6'),
+  Column.text('item_name_7'),
+  Column.text('item_quantity_7'),
+  Column.text('item_name_8'),
+  Column.text('item_quantity_8'),
+  Column.text('item_name_9'),
+  Column.text('item_quantity_9'),
+  Column.text('item_name_10'),
+  Column.text('item_quantity_10'),
   // Client metadata columns (null on server-replicated rows):
   Column.text('raw_json'),
   Column.integer('is_synced'),
@@ -119,6 +154,8 @@ const List<Column> _jobOrdersColumns = [
 
 const List<Index> _jobOrdersIndexes = [
   Index('job_status_idx', [IndexedColumn('status')]),
+  Index('job_onsite_status_idx', [IndexedColumn('onsite_status')]),
+  Index('job_modified_date_idx', [IndexedColumn('modified_date')]),
   Index('job_assigned_email_idx', [IndexedColumn('assigned_email')]),
   Index('job_is_synced_idx', [IndexedColumn('is_synced')]),
 ];
@@ -178,6 +215,7 @@ const List<Column> _serviceOrdersColumns = [
   Column.text('house_front_picture'),
   Column.text('address_coordinates'),
   Column.real('service_charge'),
+/*
   // Server v11 replicated columns beyond the original local schema:
   Column.text('support_remarks'),
   Column.text('assigned_by'),
@@ -217,6 +255,45 @@ const List<Index> _serviceOrdersIndexes = [
   Index('so_assigned_email_idx', [IndexedColumn('assigned_email')]),
   Index('so_is_synced_idx', [IndexedColumn('is_synced')]),
 ];
+*/
+  // Gene - Nov, 28, 2026: Canonical v12 service_orders columns (item_name_1..10 / item_quantity_1..10, visit_status index).
+  Column.text('support_remarks'),
+  Column.text('assigned_by'),
+  Column.text('assigned_date'),
+  Column.text('requested_by'),
+  Column.text('duration'),
+  Column.text('item_name_1'),
+  Column.text('item_quantity_1'),
+  Column.text('item_name_2'),
+  Column.text('item_quantity_2'),
+  Column.text('item_name_3'),
+  Column.text('item_quantity_3'),
+  Column.text('item_name_4'),
+  Column.text('item_quantity_4'),
+  Column.text('item_name_5'),
+  Column.text('item_quantity_5'),
+  Column.text('item_name_6'),
+  Column.text('item_quantity_6'),
+  Column.text('item_name_7'),
+  Column.text('item_quantity_7'),
+  Column.text('item_name_8'),
+  Column.text('item_quantity_8'),
+  Column.text('item_name_9'),
+  Column.text('item_quantity_9'),
+  Column.text('item_name_10'),
+  Column.text('item_quantity_10'),
+  // Client metadata columns (null on server-replicated rows):
+  Column.text('raw_json'),
+  Column.integer('is_synced'),
+  Column.text('updated_at'),
+];
+
+const List<Index> _serviceOrdersIndexes = [
+  Index('so_visit_status_idx', [IndexedColumn('visit_status')]),
+  Index('so_support_status_idx', [IndexedColumn('support_status')]),
+  Index('so_assigned_email_idx', [IndexedColumn('assigned_email')]),
+  Index('so_is_synced_idx', [IndexedColumn('is_synced')]),
+];
 
 const List<Column> _lcpNapColumns = [
   Column.text('lcp'),
@@ -244,6 +321,7 @@ const List<Index> _lcpNapIndexes = [
   Index('lcp_nap_is_synced_idx', [IndexedColumn('is_synced')]),
 ];
 
+/*
 /// Local-only PowerSync schema used when `POWERSYNC_ENDPOINT` is unconfigured.
 const Schema powerSyncSchema = Schema([
   jobOrdersTable,
@@ -260,6 +338,51 @@ const Schema powerSyncReplicatedSchema = Schema([
   lcpNapLocationsReplicatedTable,
   syncErrorLogsTable,
   workTimingHistoryTable,
+]);
+*/
+// Gene - Nov, 28, 2026: PowerSync v12 schemas include the 11 cached lookup tables and 3 local-only operational tables in both local-only and replicated modes.
+const Schema powerSyncSchema = Schema([
+  jobOrdersTable,
+  serviceOrdersTable,
+  lcpNapLocationsTable,
+  syncErrorLogsTable,
+  workTimingHistoryTable,
+  inventoryItemsTable,
+  inventoryCategoriesTable,
+  inventoryLogsTable,
+  plansTable,
+  lcpTable,
+  napTable,
+  vlansTable,
+  lcpNapTable,
+  portsTable,
+  lcpNapPortsTable,
+  routersTable,
+  pendingAttachmentsTable,
+  syncConflictsTable,
+  localIdMapTable,
+]);
+
+const Schema powerSyncReplicatedSchema = Schema([
+  jobOrdersReplicatedTable,
+  serviceOrdersReplicatedTable,
+  lcpNapLocationsReplicatedTable,
+  syncErrorLogsTable,
+  workTimingHistoryTable,
+  inventoryItemsTable,
+  inventoryCategoriesTable,
+  inventoryLogsTable,
+  plansTable,
+  lcpTable,
+  napTable,
+  vlansTable,
+  lcpNapTable,
+  portsTable,
+  lcpNapPortsTable,
+  routersTable,
+  pendingAttachmentsTable,
+  syncConflictsTable,
+  localIdMapTable,
 ]);
 
 /// Returns [powerSyncReplicatedSchema] when PowerSync cloud sync is active,
@@ -355,3 +478,142 @@ const Table workTimingHistoryTable = Table.localOnly('work_timing_history', [
   Index('wth_order_idx',
       [IndexedColumn('order_type'), IndexedColumn('order_id')]),
 ]);
+
+// Gene - Nov, 28, 2026: 11 Local-Only Lookup Tables populated via GET /api/sync/lookups.
+const Table inventoryItemsTable = Table.localOnly('inventory_items', [
+  Column.text('item_id'),
+  Column.text('name'),
+  Column.text('description'),
+  Column.text('category'),
+  Column.text('supplier'),
+  Column.integer('quantity'),
+  Column.text('image'),
+  Column.text('user_email'),
+  Column.text('modified_by'),
+  Column.text('modified_date'),
+]);
+
+const Table inventoryCategoriesTable = Table.localOnly('inventory_categories', [
+  Column.text('name'),
+  Column.text('description'),
+  Column.text('modified_by'),
+  Column.text('modified_date'),
+]);
+
+const Table inventoryLogsTable = Table.localOnly('inventory_logs', [
+  Column.text('item_id'),
+  Column.integer('quantity'),
+  Column.text('requested_by'),
+  Column.text('requested_with'),
+  Column.text('status'),
+  Column.text('remarks'),
+  Column.text('created_date'),
+]);
+
+const Table plansTable = Table.localOnly('plans', [
+  Column.text('name'),
+  Column.text('description'),
+  Column.real('amount'),
+  Column.integer('discount_id'),
+  Column.text('created_by'),
+  Column.text('created_date'),
+  Column.text('modified_by'),
+  Column.text('modified_date'),
+]);
+
+const List<Column> _namedLookupColumns = [
+  Column.text('name'),
+  Column.text('description'),
+  Column.text('created_by'),
+  Column.text('created_date'),
+  Column.text('modified_by'),
+  Column.text('modified_date'),
+];
+
+const Table lcpTable = Table.localOnly('lcp', _namedLookupColumns);
+const Table napTable = Table.localOnly('nap', _namedLookupColumns);
+const Table vlansTable = Table.localOnly('vlans', _namedLookupColumns);
+const Table lcpNapTable = Table.localOnly('lcpnap', _namedLookupColumns);
+
+const List<Column> _portLookupColumns = [
+  Column.text('name'),
+  Column.text('description'),
+  Column.integer('created_by_user_id'),
+  Column.text('created_date'),
+  Column.integer('modified_by_user_id'),
+  Column.text('modified_date'),
+];
+
+const Table portsTable = Table.localOnly('ports', _portLookupColumns);
+const Table lcpNapPortsTable =
+    Table.localOnly('lcpnap_ports', _portLookupColumns);
+
+const Table routersTable = Table.localOnly('routers', [
+  Column.text('name'),
+  Column.text('description'),
+  Column.text('brand'),
+  Column.text('model'),
+  Column.text('created_by'),
+  Column.text('created_date'),
+  Column.text('modified_by'),
+  Column.text('modified_date'),
+]);
+
+// Gene - Nov, 28, 2026: 3 Local-Only Operational Tables for disk-backed multipart photos, non-blocking 409 conflicts, and offline UUID -> server ID mapping.
+const Table pendingAttachmentsTable = Table.localOnly(
+  'pending_attachments',
+  [
+    Column.text('entity_type'),
+    Column.text('entity_id'),
+    Column.text('slot_name'),
+    Column.text('file_path'),
+    Column.integer('delete_flag'),
+    Column.text('status'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ],
+  indexes: [
+    Index('pending_att_entity_idx', [
+      IndexedColumn('entity_type'),
+      IndexedColumn('entity_id'),
+      IndexedColumn('status'),
+    ]),
+  ],
+);
+
+const Table syncConflictsTable = Table.localOnly(
+  'sync_conflicts',
+  [
+    Column.text('entity_type'),
+    Column.text('entity_id'),
+    Column.text('reason'),
+    Column.integer('status_code'),
+    Column.text('message'),
+    Column.text('server_snapshot'),
+    Column.text('local_payload'),
+    Column.integer('resolved'),
+    Column.text('created_at'),
+  ],
+  indexes: [
+    Index('sync_conflicts_resolved_idx', [
+      IndexedColumn('resolved'),
+      IndexedColumn('created_at'),
+    ]),
+  ],
+);
+
+const Table localIdMapTable = Table.localOnly(
+  'local_id_map',
+  [
+    Column.text('entity_type'),
+    Column.text('local_id'),
+    Column.text('server_id'),
+    Column.text('created_at'),
+  ],
+  indexes: [
+    Index('local_id_map_lookup_idx', [
+      IndexedColumn('entity_type'),
+      IndexedColumn('local_id'),
+    ]),
+  ],
+);

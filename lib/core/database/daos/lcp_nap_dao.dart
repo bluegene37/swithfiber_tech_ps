@@ -1,3 +1,5 @@
+import 'package:sqlite_async/sqlite_async.dart' show SqliteWriteContext;
+
 import '../../../features/lcp_nap/models/lcp_nap_model.dart';
 import '../app_database.dart';
 import '../sql_values.dart';
@@ -9,7 +11,12 @@ class LcpNapLocationsDao {
   LcpNapLocationsDao(this._db);
 
   static const String table = 'lcp_nap_locations';
+  /*
   static const String _byIdAsc = 'ORDER BY CAST(id AS INTEGER) ASC';
+  */
+  // Gene - Nov, 28, 2026: Sort non-numeric offline UUID creations cleanly alongside numeric IDs.
+  static const String _byIdAsc =
+      "ORDER BY CASE WHEN id GLOB '[0-9]*' THEN 1 ELSE 0 END ASC, CAST(id AS INTEGER) ASC, id ASC";
 
   static List<LcpNapDto> _map(Iterable<Map<String, Object?>> rows) =>
       [for (final r in rows) LcpNapDto.fromRow(r)];
@@ -40,12 +47,34 @@ class LcpNapLocationsDao {
 
   // Gene - Nov, 11, 2026: Added single-row lookup and unsynced queue queries so offline NAP image uploads, deletions, and GPS edits auto-sync on reconnect.
   /// Get a single location by ID
+  /*
   Future<LcpNapDto?> getLocationById(int id) async {
     final row = await _db.getOptional(
       'SELECT * FROM $table WHERE id = ?',
       [idText(id)],
     );
     return row == null ? null : LcpNapDto.fromRow(row);
+  }
+  */
+  // Gene - Nov, 28, 2026: Resolve locations by numeric UI id or non-numeric UUID localId.
+  Future<LcpNapDto?> getLocationByRowId(String rowId) async {
+    final row = await _db.getOptional(
+      'SELECT * FROM $table WHERE id = ?',
+      [rowId],
+    );
+    return row == null ? null : LcpNapDto.fromRow(row);
+  }
+
+  Future<LcpNapDto?> getLocationById(int id) async {
+    final byText = await getLocationByRowId(idText(id));
+    if (byText != null) return byText;
+    if (id < 0) {
+      final all = await getAllLocations();
+      for (final loc in all) {
+        if (loc.id == id) return loc;
+      }
+    }
+    return null;
   }
 
   /// Get all locations with pending local photo or GPS edits (`is_synced = 0`)
@@ -64,15 +93,43 @@ class LcpNapLocationsDao {
   }
 
   /// Insert or update single location
-  Future<void> insertOrUpdateLocation(LcpNapDto location,
-          {bool synced = true}) =>
-      insertAllLocations([location], synced: synced);
+  Future<void> insertOrUpdateLocation(
+    LcpNapDto location, {
+    bool synced = true,
+    bool omitPhotoColumns = false,
+  }) =>
+      insertAllLocations(
+        [location],
+        synced: synced,
+        omitPhotoColumns: omitPhotoColumns,
+      );
+
+  Future<void> insertOrUpdateLocationInTx(
+    SqliteWriteContext tx,
+    LcpNapDto location, {
+    bool synced = true,
+    bool omitPhotoColumns = false,
+  }) async {
+    final row = location.toRow(
+      synced: synced,
+      omitPhotoColumns: omitPhotoColumns,
+    );
+    final columns = row.keys.toList();
+    final sql = insertOrReplaceSql(table, columns);
+    await tx.execute(sql, [for (final c in columns) row[c]]);
+  }
 
   /// Batch insert / cache locations from API
-  Future<void> insertAllLocations(List<LcpNapDto> locations,
-      {bool synced = true}) async {
+  Future<void> insertAllLocations(
+    List<LcpNapDto> locations, {
+    bool synced = true,
+    bool omitPhotoColumns = false,
+  }) async {
     if (locations.isEmpty) return;
-    final rows = [for (final l in locations) l.toRow(synced: synced)];
+    final rows = [
+      for (final l in locations)
+        l.toRow(synced: synced, omitPhotoColumns: omitPhotoColumns),
+    ];
     final columns = rows.first.keys.toList();
     final sql = insertOrReplaceSql(table, columns);
     await _db.writeTransaction((tx) async {

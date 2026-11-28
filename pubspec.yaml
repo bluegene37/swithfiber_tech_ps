@@ -2,28 +2,6 @@ name: swithfiber_tech_ps
 description: "Native mobile application for Switch Fiber Field Technicians (PowerSync Architecture)."
 publish_to: 'none'
 
-# Gene - Oct 08, 2026: Bumped build number to 25 for Closed Testing release.
-# version: 1.0.0+1
-# Gene - Oct 24, 2026: Bumped version to 1.0.2+1 for LCP NAP features.
-# version: 1.0.2+1
-# Gene - Nov 03, 2026: Incremented version to 1.0.3+1 for Apple TestFlight release.
-# version: 1.0.3+1
-# Gene - Nov, 07, 2026: Bumped build number to 26 (above Play Console Closed Testing versionCode 25) for v1.0.3 Android Closed Testing release.
-# version: 1.0.3+26
-# Gene - Nov, 08, 2026: Incremented build number after + to 27 for Apple TestFlight and Google Play Closed Testing release.
-# version: 1.0.3+27
-# Gene - Nov, 11, 2026: Incremented build number after + to 28 for Apple TestFlight and Google Play Closed Testing release (LCP NAP image upload & GPS auto-sync).
-# version: 1.0.3+28
-# Gene - Nov, 12, 2026: Bumped build number to 29 with dependency updates.
-# version: 1.0.3+29
-# Gene - Nov, 12, 2026: Bumped build number to 39 (above published store build 38 from Release run #10) for Apple TestFlight and Google Play Closed Testing release.
-# version: 1.0.3+39
-# Gene - Nov, 13, 2026: Bumped build number to 54 (above Release run #14 build 53) for the next Android Closed Testing and Apple TestFlight release.
-# version: 1.0.3+54
-# Gene - Nov, 22, 2026: Bumped build number to 71 (above published store build 70 from Release run #16) for the next Android Closed Testing and Apple TestFlight release.
-# version: 1.0.3+71
-# Gene - Nov, 23, 2026: Bumped build number to 72 for Apple TestFlight and Google Play Closed Testing release (Release run #18).
-# version: 1.0.3+72
 # Gene - Nov, 28, 2026: Bumped build number to 73 for Apple TestFlight and Google Play Closed Testing release (Release run #22 -> build 95, above store build 93).
 version: 1.0.3+73
 
@@ -68,6 +46,10 @@ dependencies:
   geocoding: ^5.0.0
   audioplayers: ^6.8.1
   app_badge_plus: ^1.3.5
+  # Gene - Nov, 28, 2026: Added photo compression, connectivity monitoring, and background sync packages for PowerSync v12.
+  flutter_image_compress: ^2.4.0
+  connectivity_plus: ^6.1.4
+  workmanager: ^0.9.0+3
 
 dev_dependencies:
   flutter_test:
