@@ -49,7 +49,9 @@ dependencies:
   # Gene - Nov, 28, 2026: Added photo compression, connectivity monitoring, and background sync packages for PowerSync v12.
   flutter_image_compress: ^2.4.0
   connectivity_plus: ^6.1.4
-  workmanager: ^0.9.0+3
+  # workmanager: ^0.9.0+3
+  # Gene - Nov, 28, 2026: Upgraded workmanager to ^0.10.10 to fix AGP 9 + android.builtInKotlin=false Kotlin compilation in workmanager_android (#722) and Android 16 background sync reliability.
+  workmanager: ^0.10.10
 
 dev_dependencies:
   flutter_test:
