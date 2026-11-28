@@ -158,6 +158,7 @@ class JobsSignals {
     return null;
   });
   */
+  /*
   // Gene - Nov, 28, 2026: Restrict activeStartedJob to visible open non-rescheduled Today jobs so hidden Inprogress rows cannot lock Start across other orders.
   late final ReadonlySignal<JobOrderDto?> activeStartedJob = computed(() {
     final email = technicianEmail.value?.trim() ?? '';
@@ -165,6 +166,26 @@ class JobsSignals {
       if (!job.isOpen ||
           !job.canActivate ||
           job.siteException == SiteException.reschedule ||
+          !job.isTimingInProgress) {
+        continue;
+      }
+      if (email.isNotEmpty &&
+          (job.assignedEmail?.trim().isNotEmpty ?? false) &&
+          !job.isAssignedTo(email)) {
+        continue;
+      }
+      return job;
+    }
+    return null;
+  });
+  */
+  // Gene - Nov, 28, 2026: Also ignore SiteException.failed (Failed/Cancelled onsiteStatus) so failed jobs never ghost-lock Start across orders.
+  late final ReadonlySignal<JobOrderDto?> activeStartedJob = computed(() {
+    final email = technicianEmail.value?.trim() ?? '';
+    for (final job in allJobs.value) {
+      if (!job.isOpen ||
+          !job.canActivate ||
+          job.siteException != null ||
           !job.isTimingInProgress) {
         continue;
       }

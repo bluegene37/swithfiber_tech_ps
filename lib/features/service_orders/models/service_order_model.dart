@@ -807,10 +807,36 @@ class ServiceOrderDto {
   }
 
   bool get isUrgent => (priorityLevel ?? '').trim().toLowerCase() == 'urgent';
+  /*
   bool get isOpen =>
       !isDone &&
       supportStatus.trim().toLowerCase() != 'resolved' &&
       supportStatus.trim().toLowerCase() != 'closed';
+  */
+  // Gene - Nov, 28, 2026: Exclude all terminal PowerSync v13 visit/support statuses so closed/failed/cancelled history rows never stay open or lock Start.
+  static const Set<String> _closedVisitStatuses = {
+    'done',
+    'failed',
+    'resolved',
+    'completed',
+    'cancelled',
+    'canceled',
+  };
+  static const Set<String> _closedSupportStatuses = {
+    'resolved',
+    'closed',
+    'completed',
+    'done',
+    'cancelled',
+    'canceled',
+  };
+
+  bool get isOpen {
+    final visit = (visitStatus ?? '').trim().toLowerCase();
+    final support = supportStatus.trim().toLowerCase();
+    return !_closedVisitStatuses.contains(visit) &&
+        !_closedSupportStatuses.contains(support);
+  }
 
   // Gene - Nov, 25, 2026: Added Start/Finish work timing status getters to gate editing until Start and re-lock on Finish.
   WorkTimingStatus get workTimingStatus =>

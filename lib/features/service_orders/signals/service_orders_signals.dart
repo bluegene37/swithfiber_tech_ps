@@ -524,6 +524,7 @@ class ServiceOrdersSignals {
 
   void setSortMode(ServiceOrderSort mode) => sortMode.value = mode;
 
+  /*
   late final ReadonlySignal<int> baseOrdersCount = computed(() {
     final onlyMe = onlyAssignedToMe.value;
     final email = technicianEmail.value?.trim();
@@ -531,6 +532,22 @@ class ServiceOrdersSignals {
       return allOrders.value.length;
     }
     return allOrders.value.where((o) => o.isAssignedTo(email)).length;
+  });
+  */
+  // Gene - Nov, 28, 2026: Exclude closed/completed Service Orders from baseOrdersCount so active Repairs counts match filteredOrders.
+  late final ReadonlySignal<int> baseOrdersCount = computed(() {
+    final onlyMe = onlyAssignedToMe.value;
+    final email = technicianEmail.value?.trim();
+    return allOrders.value.where((o) {
+      if (!o.isOpen) return false;
+      if (onlyMe &&
+          email != null &&
+          email.isNotEmpty &&
+          !o.isAssignedTo(email)) {
+        return false;
+      }
+      return true;
+    }).length;
   });
 
   /// Total count of service orders visible to technician
@@ -694,7 +711,12 @@ class ServiceOrdersSignals {
     final mode = sortMode.value;
     final myPos = LocationService.instance.lastKnownPosition;
 
+    /*
     return allOrders.value.where((order) {
+    */
+    // Gene - Nov, 28, 2026: Exclude closed/completed orders synced via history streams from the active Repairs queue.
+    return allOrders.value.where((order) {
+      if (!order.isOpen) return false;
       if (onlyMe &&
           (email != null && email.isNotEmpty) &&
           !order.isAssignedTo(email)) {

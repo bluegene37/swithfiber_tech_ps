@@ -315,12 +315,26 @@ class WorkTimingBar extends StatelessWidget {
               ? 'Started ${formatTimingDateTime(normalizedStart)}$sessionsSuffix'
               : 'In progress',
         ),
+      /*
       WorkTimingStatus.finished => (
           Icons.check_circle_outline_rounded,
           AppTheme.successInkOf(context),
           normalizedStart != null && normalizedEnd != null
               ? '${formatTimingRange(normalizedStart, normalizedEnd)}$sessionsSuffix'
               : 'Finished$sessionsSuffix',
+        ),
+      */
+      // Gene - Nov, 28, 2026: Append lockedHint on finished cards when another active order hides Start Again.
+      WorkTimingStatus.finished => (
+          Icons.check_circle_outline_rounded,
+          AppTheme.successInkOf(context),
+          () {
+            final base = (normalizedStart != null && normalizedEnd != null)
+                ? '${formatTimingRange(normalizedStart, normalizedEnd)}$sessionsSuffix'
+                : 'Finished$sessionsSuffix';
+            if (!hideStart) return base;
+            return '$base · ${lockedHint ?? 'Finish active order first'}';
+          }(),
         ),
     };
 
@@ -611,6 +625,128 @@ class WorkTimingLockBanner extends StatelessWidget {
                 ],
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Gene - Nov, 28, 2026: Shared Calm Utility banner surfaced at the top of Today & Repairs when an active order is running (even if hidden by filters or on the opposite tab), with a direct Finish action.
+/// Compact banner displaying the currently started Job Order or Service Order
+/// with a one-tap `Finish` control so technicians are never stranded when the
+/// active order is on the other tab or hidden by filters.
+class ActiveWorkOrderBanner extends StatelessWidget {
+  final String orderLabel;
+  final DateTime? startTime;
+  final bool isBusy;
+  final bool isServiceOrder;
+  final VoidCallback? onFinish;
+
+  const ActiveWorkOrderBanner({
+    super.key,
+    required this.orderLabel,
+    this.startTime,
+    this.isBusy = false,
+    this.isServiceOrder = false,
+    this.onFinish,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedStart = normalizeTimingTimestamp(startTime);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark
+        ? AppTheme.darkCardElevated
+        : (isServiceOrder
+            ? AppTheme.serviceOrderSubtleBgOf(context)
+            : AppTheme.infoSubtle);
+    final borderColor = isServiceOrder
+        ? AppTheme.serviceOrderSubtleBorderOf(context)
+        : (isDark
+            ? AppTheme.borderDark
+            : AppTheme.info.withValues(alpha: 0.4));
+    final accentInk = isServiceOrder
+        ? AppTheme.serviceOrderInkOf(context)
+        : AppTheme.infoInkOf(context);
+    final buttonColor = isServiceOrder
+        ? AppTheme.serviceOrderAccent
+        : AppTheme.infoInkOf(context);
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
+      ),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 8,
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.timer_outlined, size: 20, color: accentInk),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Active: $orderLabel',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.text.labelLarge?.copyWith(
+                        color: accentInk,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (normalizedStart != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Started ${formatTimingDateTime(normalizedStart)}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.text.bodySmall?.copyWith(
+                          color: AppTheme.secondaryInkOf(context),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          FilledButton.icon(
+            key: const ValueKey('active_order_banner_finish_button'),
+            onPressed: isBusy ? null : onFinish,
+            style: FilledButton.styleFrom(
+              backgroundColor: buttonColor,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(104, AppTheme.minTarget),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            icon: isBusy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.stop_rounded, size: 20),
+            label: const Text('Finish'),
           ),
         ],
       ),

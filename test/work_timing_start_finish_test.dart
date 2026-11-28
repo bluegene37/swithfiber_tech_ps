@@ -1651,4 +1651,367 @@ void main() {
       expect(headerY, lessThan(reschedY));
     });
   });
+
+  // Gene - Nov, 28, 2026: Regression tests for terminal status ghost-lock prevention, WorkTimingBar finished lockedHint, and ActiveWorkOrderBanner cross-tab/filter Finish recovery.
+  group('Ghost lock prevention & ActiveWorkOrderBanner', () {
+    test(
+        'ServiceOrderDto.isOpen excludes all terminal statuses and prevents ghost Start locks',
+        () {
+      const openOrder = ServiceOrderDto(
+        id: 1,
+        accountNumber: 'ACC-001',
+        fullName: 'Open Ticket',
+        contactNumber: '09170000001',
+        emailAddress: 'open@example.com',
+        address: '1 Open St',
+        visitStatus: 'Pending',
+        supportStatus: 'Open',
+        assignedEmail: 'tech@example.com',
+      );
+      expect(openOrder.isOpen, isTrue);
+
+      for (final visit in const [
+        'Done',
+        'Failed',
+        'Resolved',
+        'Completed',
+        'Cancelled',
+        'Canceled',
+      ]) {
+        expect(
+          openOrder.copyWith(visitStatus: visit).isOpen,
+          isFalse,
+          reason: 'visitStatus=$visit must not be open',
+        );
+      }
+
+      for (final support in const [
+        'Resolved',
+        'Closed',
+        'Completed',
+        'Done',
+        'Cancelled',
+        'Canceled',
+      ]) {
+        expect(
+          openOrder.copyWith(supportStatus: support).isOpen,
+          isFalse,
+          reason: 'supportStatus=$support must not be open',
+        );
+      }
+
+      final signals = ServiceOrdersSignals(
+        api: _TimingRecordingServiceOrdersApi(),
+        isReplicatedMode: () => false,
+      );
+      signals.setTechnicianEmail('tech@example.com');
+      addTearDown(signals.dispose);
+
+      final startOnly = DateTime.utc(2026, 11, 28, 8, 0);
+      signals.allOrders.value = [
+        openOrder,
+        openOrder.copyWith(
+          id: 2,
+          accountNumber: 'ACC-002',
+          visitStatus: 'Failed',
+          startTimestamp: startOnly,
+        ),
+        openOrder.copyWith(
+          id: 3,
+          accountNumber: 'ACC-003',
+          visitStatus: 'Cancelled',
+          startTimestamp: startOnly,
+        ),
+        openOrder.copyWith(
+          id: 4,
+          accountNumber: 'ACC-004',
+          supportStatus: 'Completed',
+          startTimestamp: startOnly,
+        ),
+        openOrder.copyWith(
+          id: 5,
+          accountNumber: 'ACC-005',
+          visitStatus: 'Done',
+          supportStatus: 'Resolved',
+          startTimestamp: startOnly,
+        ),
+      ];
+
+      expect(signals.filteredOrders.value.map((o) => o.id).toList(), [1]);
+      expect(signals.baseOrdersCount.value, 1);
+      expect(signals.activeStartedOrder.value, isNull);
+    });
+
+    test(
+        'JobsSignals.activeStartedJob ignores Failed/Cancelled onsiteStatus while keeping Done onsiteStatus active until completed',
+        () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final db = AppDatabase.forTesting();
+      addTearDown(db.close);
+
+      final repo = JobRepository(
+        db.jobOrdersDao,
+        timingHistory: db.workTimingHistoryDao,
+        isReplicatedMode: () => false,
+      );
+      final signals = JobsSignals(repo);
+      signals.setTechnicianEmail('tech@example.com');
+      addTearDown(signals.dispose);
+
+      await db.jobOrdersDao.insertAllJobs([
+        JobOrderDto(
+          id: 801,
+          ticketNumber: 'SF-801',
+          customerName: 'Failed Onsite',
+          address: '10 Failed St',
+          status: 'Scheduled',
+          onsiteStatus: 'Failed',
+          assignedEmail: 'tech@example.com',
+          startTimeStamp: DateTime.utc(2026, 11, 28, 7, 0),
+        ),
+        JobOrderDto(
+          id: 802,
+          ticketNumber: 'SF-802',
+          customerName: 'Cancelled Onsite',
+          address: '20 Cancelled St',
+          status: 'Scheduled',
+          onsiteStatus: 'Cancelled',
+          assignedEmail: 'tech@example.com',
+          startTimeStamp: DateTime.utc(2026, 11, 28, 7, 15),
+        ),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(signals.activeStartedJob.value, isNull);
+
+      await db.jobOrdersDao.insertOrUpdateJob(
+        JobOrderDto(
+          id: 803,
+          ticketNumber: 'SF-803',
+          customerName: 'Report Filed Ready',
+          address: '30 Ready St',
+          status: 'Scheduled',
+          onsiteStatus: 'Done',
+          assignedEmail: 'tech@example.com',
+          startTimeStamp: DateTime.utc(2026, 11, 28, 7, 30),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(signals.activeStartedJob.value?.id, 803);
+    });
+
+    testWidgets(
+        'WorkTimingBar shows lockedHint on finished cards when hideStart is true',
+        (tester) async {
+      final start = DateTime(2026, 11, 28, 9, 0);
+      final end = DateTime(2026, 11, 28, 10, 0);
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Scaffold(
+          body: WorkTimingBar(
+            status: WorkTimingStatus.finished,
+            startTime: start,
+            endTime: end,
+            hideStart: true,
+            lockedHint: 'Finish JO #101 first',
+            onStart: () {},
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.textContaining('Finish JO #101 first'), findsOneWidget);
+      expect(find.text('Start Again'), findsNothing);
+    });
+
+    testWidgets(
+        'ActiveWorkOrderBanner surfaces running order across tabs and filters, finishes it cleanly, and passes 200% text scale',
+        (tester) async {
+      DraftStorageService.instance.resetForTesting();
+      final db = AppDatabase.forTesting();
+      final jobApi = _TimingRecordingJobApi();
+      final soApi = _TimingRecordingServiceOrdersApi();
+      final jobsSignals =
+          JobsSignals(JobRepository(db.jobOrdersDao, api: jobApi));
+      final soSignals = ServiceOrdersSignals(api: soApi);
+      jobsSignals.setTechnicianEmail('tech@example.com');
+      soSignals.setTechnicianEmail('tech@example.com');
+      addTearDown(() async {
+        await jobsSignals.dispose();
+        soSignals.dispose();
+        await db.close();
+      });
+
+      await tester.runAsync(() async {
+        await db.jobOrdersDao.insertAllJobs([
+          JobOrderDto(
+            id: 101,
+            ticketNumber: 'SF-101',
+            customerName: 'Job One',
+            address: '101 St',
+            status: 'Scheduled',
+            assignedEmail: 'tech@example.com',
+            updatedAt: DateTime.now(),
+          ),
+          JobOrderDto(
+            id: 102,
+            ticketNumber: 'SF-102',
+            customerName: 'Job Two',
+            address: '102 St',
+            status: 'Scheduled',
+            assignedEmail: 'tech@example.com',
+            updatedAt: DateTime.now(),
+          ),
+        ]);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      });
+
+      soSignals.allOrders.value = [
+        const ServiceOrderDto(
+          id: 201,
+          accountNumber: 'ACC-201',
+          fullName: 'Repair One',
+          contactNumber: '09170000201',
+          emailAddress: 'r201@example.com',
+          address: '201 Ave',
+          concern: 'Pullout',
+          priorityLevel: 'Normal',
+          supportStatus: 'Open',
+          assignedEmail: 'tech@example.com',
+        ),
+        const ServiceOrderDto(
+          id: 202,
+          accountNumber: 'ACC-202',
+          fullName: 'Repair Two',
+          contactNumber: '09170000202',
+          emailAddress: 'r202@example.com',
+          address: '202 Ave',
+          concern: 'No Connection',
+          priorityLevel: 'High',
+          supportStatus: 'Open',
+          assignedEmail: 'tech@example.com',
+        ),
+      ];
+
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(402, 1400);
+      addTearDown(tester.view.reset);
+
+      final overflows = <String>[];
+      final origOnError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        final msg = details.exceptionAsString();
+        if (msg.contains('overflowed')) {
+          overflows.add(msg);
+        } else {
+          origOnError?.call(details);
+        }
+      };
+      addTearDown(() => FlutterError.onError = origOnError);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2.0)),
+          child: DefaultTabController(
+            length: 2,
+            child: Scaffold(
+              body: TabBarView(
+                children: [
+                  JobOrdersScreen(
+                    jobsSignals: jobsSignals,
+                    serviceOrdersSignals: soSignals,
+                  ),
+                  ServiceOrdersScreen(
+                    signals: soSignals,
+                    jobsSignals: jobsSignals,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(
+          find.byKey(const ValueKey('active_work_order_banner')), findsNothing);
+
+      // Start JO 101 -> banner shows on Today and Repairs; Finish from Repairs.
+      final jo101StartBtn = find.byKey(const ValueKey('job_start_button_101'));
+      await tester.ensureVisible(jo101StartBtn);
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await tester.tap(jo101StartBtn);
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      });
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('active_work_order_banner')),
+          findsOneWidget);
+      expect(find.textContaining('JO #101 · Job One'), findsOneWidget);
+
+      final tabController =
+          DefaultTabController.of(tester.element(find.byType(TabBarView)));
+      tabController.animateTo(1);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('active_work_order_banner')),
+          findsOneWidget);
+      expect(find.textContaining('JO #101 · Job One'), findsOneWidget);
+      expect(find.byKey(const ValueKey('service_order_start_button_201')),
+          findsNothing);
+
+      final finishFromRepairs =
+          find.byKey(const ValueKey('active_order_banner_finish_button'));
+      await tester.ensureVisible(finishFromRepairs);
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await tester.tap(finishFromRepairs);
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      });
+      await tester.pumpAndSettle();
+      expect(
+          find.byKey(const ValueKey('active_work_order_banner')), findsNothing);
+      expect(find.byKey(const ValueKey('service_order_start_button_201')),
+          findsOneWidget);
+
+      // Start SO 201 (Pullout), then hide it behind 'No Connection' concern filter.
+      final so201StartBtn =
+          find.byKey(const ValueKey('service_order_start_button_201'));
+      await tester.ensureVisible(so201StartBtn);
+      await tester.pumpAndSettle();
+      await tester.tap(so201StartBtn);
+      await tester.pumpAndSettle();
+      soSignals.concernFilter.value = 'No Connection';
+      await tester.pumpAndSettle();
+
+      expect(find.text('Repair One'), findsNothing);
+      expect(find.byKey(const ValueKey('active_work_order_banner')),
+          findsOneWidget);
+      expect(find.textContaining('SO-0201 (ACC-201) · Repair One'),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('service_order_start_button_202')),
+          findsNothing);
+
+      // Switch to Today tab -> banner still surfaces SO 201 and finishes it.
+      tabController.animateTo(0);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('active_work_order_banner')),
+          findsOneWidget);
+      expect(find.textContaining('SO-0201 (ACC-201) · Repair One'),
+          findsOneWidget);
+
+      final finishFromToday =
+          find.byKey(const ValueKey('active_order_banner_finish_button'));
+      await tester.ensureVisible(finishFromToday);
+      await tester.pumpAndSettle();
+      await tester.tap(finishFromToday);
+      await tester.pumpAndSettle();
+      expect(
+          find.byKey(const ValueKey('active_work_order_banner')), findsNothing);
+      expect(
+          find.byKey(const ValueKey('job_start_button_101')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('job_start_button_102')), findsOneWidget);
+      expect(overflows, isEmpty, reason: overflows.join('\n'));
+    });
+  });
 }

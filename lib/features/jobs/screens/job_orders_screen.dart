@@ -498,6 +498,65 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
           },
         ),
 
+        // Gene - Nov, 28, 2026: Surface an active-order banner with a direct Finish CTA whenever a Job Order or Service Order is currently started.
+        if (!_showDone)
+          Watch((context) {
+            final activeJob = signals.activeStartedJob.value;
+            final activeOrder =
+                widget.serviceOrdersSignals?.activeStartedOrder.value;
+            if (activeJob == null && activeOrder == null) {
+              return const SizedBox.shrink();
+            }
+            if (activeJob != null) {
+              final busy =
+                  signals.busyTimingJobIds.value.contains(activeJob.id);
+              return ActiveWorkOrderBanner(
+                key: const ValueKey('active_work_order_banner'),
+                orderLabel: 'JO #${activeJob.id} · ${activeJob.customerName}',
+                startTime: activeJob.startTimeStamp,
+                isBusy: busy,
+                isServiceOrder: false,
+                onFinish: () async {
+                  final warning = await signals.finishJob(activeJob);
+                  if (warning != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(warning),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+              );
+            }
+            final soSignals = widget.serviceOrdersSignals!;
+            final order = activeOrder!;
+            final busy = soSignals.busyTimingOrderIds.value.contains(order.id);
+            final soCode = 'SO-${order.id.toString().padLeft(4, '0')}';
+            final acct = order.accountNumber.trim();
+            final label = acct.isNotEmpty
+                ? '$soCode ($acct) · ${order.fullName}'
+                : '$soCode · ${order.fullName}';
+            return ActiveWorkOrderBanner(
+              key: const ValueKey('active_work_order_banner'),
+              orderLabel: label,
+              startTime: order.startTimestamp,
+              isBusy: busy,
+              isServiceOrder: true,
+              onFinish: () async {
+                final warning = await soSignals.finishOrder(order);
+                if (warning != null && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(warning),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+            );
+          }),
+
         // Done jobs live behind one toggle instead of a second tab.
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),

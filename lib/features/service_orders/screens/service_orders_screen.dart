@@ -7,6 +7,8 @@ import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_search_field.dart';
 import '../../../core/widgets/loading_states.dart';
+// Gene - Nov, 28, 2026: Import WorkTimingBar/ActiveWorkOrderBanner to surface active running orders directly on the Repairs header.
+import '../../../core/widgets/work_timing_bar.dart';
 // Gene - Nov, 26, 2026: Import WorkTimingEntry, WorkTimingHistoryScreen, and TodayGlancePanel for Job Order visual parity + timing history access.
 import '../../../core/database/models/work_timing_entry.dart';
 import '../../diagnostics/screens/work_timing_history_screen.dart';
@@ -387,6 +389,65 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                   },
                 ),
               ),
+            // Gene - Nov, 28, 2026: Surface an active-order banner with a direct Finish CTA whenever a Service Order or Job Order is currently started.
+            if (!_showHistory)
+              Watch((context) {
+                final activeOrder = signals.activeStartedOrder.value;
+                final activeJob = widget.jobsSignals?.activeStartedJob.value;
+                if (activeOrder == null && activeJob == null) {
+                  return const SizedBox.shrink();
+                }
+                if (activeOrder != null) {
+                  final busy = signals.busyTimingOrderIds.value
+                      .contains(activeOrder.id);
+                  final soCode =
+                      'SO-${activeOrder.id.toString().padLeft(4, '0')}';
+                  final acct = activeOrder.accountNumber.trim();
+                  final label = acct.isNotEmpty
+                      ? '$soCode ($acct) · ${activeOrder.fullName}'
+                      : '$soCode · ${activeOrder.fullName}';
+                  return ActiveWorkOrderBanner(
+                    key: const ValueKey('active_work_order_banner'),
+                    orderLabel: label,
+                    startTime: activeOrder.startTimestamp,
+                    isBusy: busy,
+                    isServiceOrder: true,
+                    onFinish: () async {
+                      final warning = await signals.finishOrder(activeOrder);
+                      if (warning != null && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(warning),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    },
+                  );
+                }
+                final jobsSignals = widget.jobsSignals!;
+                final job = activeJob!;
+                final busy =
+                    jobsSignals.busyTimingJobIds.value.contains(job.id);
+                return ActiveWorkOrderBanner(
+                  key: const ValueKey('active_work_order_banner'),
+                  orderLabel: 'JO #${job.id} · ${job.customerName}',
+                  startTime: job.startTimeStamp,
+                  isBusy: busy,
+                  isServiceOrder: false,
+                  onFinish: () async {
+                    final warning = await jobsSignals.finishJob(job);
+                    if (warning != null && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(warning),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
+                );
+              }),
             if (!_showHistory)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
