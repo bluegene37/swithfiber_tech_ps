@@ -1,6 +1,9 @@
 // Gene - Nov, 28, 2026: In-place re-login dialog triggered on HTTP 401 expiry while preserving local SQLite database, ps_crud queue, and pending_attachments.
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../signals/auth_signals.dart';
@@ -19,14 +22,67 @@ class _ReauthDialogState extends State<ReauthDialog> {
   bool _obscurePassword = true;
   bool _submitting = false;
   String? _errorText;
+  Timer? _cooldownTimer;
+  void Function()? _disposeCooldownEffect;
+  int _cooldownSeconds = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _disposeCooldownEffect = effect(() {
+      _syncCooldown(widget.authSignals.rateLimitUntil.value);
+    });
+  }
+
+  void _syncCooldown(DateTime? until) {
+    _cooldownTimer?.cancel();
+    _cooldownTimer = null;
+    if (until == null) {
+      if (mounted && _cooldownSeconds != 0) {
+        setState(() => _cooldownSeconds = 0);
+      }
+      return;
+    }
+    int compute() {
+      final diff = until.difference(DateTime.now()).inSeconds;
+      return diff > 0 ? diff : 0;
+    }
+
+    final initial = compute();
+    if (mounted) {
+      setState(() => _cooldownSeconds = initial);
+    } else {
+      _cooldownSeconds = initial;
+    }
+    if (initial <= 0) {
+      widget.authSignals.rateLimitUntil.value = null;
+      return;
+    }
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      final rem = compute();
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _cooldownSeconds = rem);
+      if (rem <= 0) {
+        timer.cancel();
+        _cooldownTimer = null;
+        widget.authSignals.rateLimitUntil.value = null;
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _cooldownTimer?.cancel();
+    _disposeCooldownEffect?.call();
     _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    if (_cooldownSeconds > 0) return;
     final password = _passwordController.text;
     if (password.isEmpty) {
       setState(() => _errorText = 'Enter your password to resume syncing.');
@@ -145,14 +201,18 @@ class _ReauthDialogState extends State<ReauthDialog> {
         ),
         FilledButton(
           key: const ValueKey('reauth_submit_button'),
-          onPressed: _submitting ? null : _submit,
+          onPressed: (_submitting || _cooldownSeconds > 0) ? null : _submit,
           child: _submitting
               ? const SizedBox(
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Sign In'),
+              : Text(
+                  _cooldownSeconds > 0
+                      ? 'Wait ${_cooldownSeconds}s'
+                      : 'Sign In',
+                ),
         ),
       ],
     );

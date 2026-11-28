@@ -77,7 +77,11 @@ const List<Column> _jobOrdersColumns = [
   Column.text('barangay'),
   Column.text('city'),
   Column.text('plan_name'),
+  /*
   Column.integer('plan_id'),
+  */
+  // Gene - Nov, 28, 2026: PowerSync v13 stores job_orders plan_id, lcp_id, nap_id, vlan_id, port_id, application_id, and item_quantity_1..10 as Column.text matching MSSQL nvarchar.
+  Column.text('plan_id'),
   Column.text('subscriber_email'),
   Column.text('second_contact_number'),
   Column.text('status'),
@@ -87,11 +91,18 @@ const List<Column> _jobOrdersColumns = [
   Column.real('optical_power'),
   Column.text('modem_router_sn'),
   Column.text('router_model'),
+  /*
   Column.integer('lcp_id'),
   Column.integer('nap_id'),
   Column.text('nap'),
   Column.text('port_id'),
   Column.integer('vlan_id'),
+  */
+  Column.text('lcp_id'),
+  Column.text('nap_id'),
+  Column.text('nap'),
+  Column.text('port_id'),
+  Column.text('vlan_id'),
   Column.text('date_installed'),
   Column.text('box_reading_image'),
   Column.text('router_reading_image'),
@@ -256,32 +267,37 @@ const List<Index> _serviceOrdersIndexes = [
   Index('so_is_synced_idx', [IndexedColumn('is_synced')]),
 ];
 */
-  // Gene - Nov, 28, 2026: Canonical v12 service_orders columns (item_name_1..10 / item_quantity_1..10, visit_status index).
+  // Gene - Nov, 28, 2026: Canonical v13 service_orders columns (item_name/item_quantity + item_name_1..10 / INTEGER item_quantity_1..10, visit_status & support_status indexes).
   Column.text('support_remarks'),
   Column.text('assigned_by'),
   Column.text('assigned_date'),
   Column.text('requested_by'),
   Column.text('duration'),
+  Column.text('item_name'),
+  Column.integer('item_quantity'),
   Column.text('item_name_1'),
+  /*
   Column.text('item_quantity_1'),
+  */
+  Column.integer('item_quantity_1'),
   Column.text('item_name_2'),
-  Column.text('item_quantity_2'),
+  Column.integer('item_quantity_2'),
   Column.text('item_name_3'),
-  Column.text('item_quantity_3'),
+  Column.integer('item_quantity_3'),
   Column.text('item_name_4'),
-  Column.text('item_quantity_4'),
+  Column.integer('item_quantity_4'),
   Column.text('item_name_5'),
-  Column.text('item_quantity_5'),
+  Column.integer('item_quantity_5'),
   Column.text('item_name_6'),
-  Column.text('item_quantity_6'),
+  Column.integer('item_quantity_6'),
   Column.text('item_name_7'),
-  Column.text('item_quantity_7'),
+  Column.integer('item_quantity_7'),
   Column.text('item_name_8'),
-  Column.text('item_quantity_8'),
+  Column.integer('item_quantity_8'),
   Column.text('item_name_9'),
-  Column.text('item_quantity_9'),
+  Column.integer('item_quantity_9'),
   Column.text('item_name_10'),
-  Column.text('item_quantity_10'),
+  Column.integer('item_quantity_10'),
   // Client metadata columns (null on server-replicated rows):
   Column.text('raw_json'),
   Column.integer('is_synced'),
@@ -535,12 +551,23 @@ const Table napTable = Table.localOnly('nap', _namedLookupColumns);
 const Table vlansTable = Table.localOnly('vlans', _namedLookupColumns);
 const Table lcpNapTable = Table.localOnly('lcpnap', _namedLookupColumns);
 
+/*
 const List<Column> _portLookupColumns = [
   Column.text('name'),
   Column.text('description'),
   Column.integer('created_by_user_id'),
   Column.text('created_date'),
   Column.integer('modified_by_user_id'),
+  Column.text('modified_date'),
+];
+*/
+// Gene - Nov, 28, 2026: Store ports/lcpnap_ports user IDs as text per PowerSync v13 lookup contract.
+const List<Column> _portLookupColumns = [
+  Column.text('name'),
+  Column.text('description'),
+  Column.text('created_by_user_id'),
+  Column.text('created_date'),
+  Column.text('modified_by_user_id'),
   Column.text('modified_date'),
 ];
 

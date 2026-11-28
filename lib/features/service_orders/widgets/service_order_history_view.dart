@@ -1,4 +1,4 @@
-// Gene - Nov, 28, 2026: On-demand Completed / History view for Service Orders subscribing to PowerSync v12 assigned_service_orders_history (15m TTL) on mount and unsubscribing on dispose.
+// Gene - Nov, 28, 2026: On-demand Completed / History view for Service Orders subscribing to PowerSync v13 assigned_service_orders_history (15m TTL) with paginated LIMIT 50 OFFSET ? queries.
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
@@ -11,6 +11,7 @@ import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../jobs/signals/jobs_signals.dart';
 import '../../lcp_nap/signals/lcp_nap_signals.dart';
+import '../models/service_order_model.dart';
 import '../signals/service_orders_signals.dart';
 import '../widgets/service_order_card.dart';
 
@@ -32,13 +33,79 @@ class ServiceOrderHistoryView extends StatefulWidget {
 }
 
 class _ServiceOrderHistoryViewState extends State<ServiceOrderHistoryView> {
+  static const int _pageSize = 50;
+
+  final ScrollController _scrollController = ScrollController();
   SyncStreamSubscription? _historySub;
+  VoidCallback? _disposeOrdersWatcher;
   bool _isSyncingHistory = false;
+  bool _loadingMore = false;
+  bool _hasMoreSqlPages = false;
+  int _loadedPages = 1;
+  List<ServiceOrderDto> _pagedSqlOrders = const [];
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
+    _disposeOrdersWatcher = effect(() {
+      widget.signals.allOrders.value;
+      widget.signals.technicianEmail.value;
+      unawaited(_reloadFirstPage());
+    });
     _subscribeHistory();
+    unawaited(_reloadFirstPage());
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients || _loadingMore) return;
+    final pos = _scrollController.position;
+    if (pos.pixels >= pos.maxScrollExtent - 200) {
+      unawaited(_loadNextPage());
+    }
+  }
+
+  Future<void> _reloadFirstPage() async {
+    if (widget.signals.dao == null) return;
+    try {
+      final rows = await widget.signals.getHistoryOrdersPage(
+        limit: _pageSize,
+        offset: 0,
+      );
+      if (!mounted) return;
+      setState(() {
+        _loadedPages = 1;
+        _pagedSqlOrders = rows;
+        _hasMoreSqlPages = rows.length == _pageSize;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _loadNextPage() async {
+    if (_loadingMore) return;
+    if (widget.signals.dao != null && _pagedSqlOrders.isNotEmpty) {
+      if (!_hasMoreSqlPages) return;
+      setState(() => _loadingMore = true);
+      try {
+        final next = await widget.signals.getHistoryOrdersPage(
+          limit: _pageSize,
+          offset: _pagedSqlOrders.length,
+        );
+        if (!mounted) return;
+        setState(() {
+          _pagedSqlOrders = [..._pagedSqlOrders, ...next];
+          _hasMoreSqlPages = next.length == _pageSize;
+        });
+      } finally {
+        if (mounted) setState(() => _loadingMore = false);
+      }
+      return;
+    }
+
+    final totalInMemory = widget.signals.completedOrders.value.length;
+    if (_loadedPages * _pageSize < totalInMemory) {
+      setState(() => _loadedPages += 1);
+    }
   }
 
   Future<void> _subscribeHistory() async {
@@ -58,6 +125,7 @@ class _ServiceOrderHistoryViewState extends State<ServiceOrderHistoryView> {
       }
       _historySub = sub;
       await sub?.waitForFirstSync();
+      await _reloadFirstPage();
     } catch (_) {
       // Offline or transient sync failure: show locally cached completed tickets.
     } finally {
@@ -67,6 +135,9 @@ class _ServiceOrderHistoryViewState extends State<ServiceOrderHistoryView> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _disposeOrdersWatcher?.call();
     _historySub?.unsubscribe();
     super.dispose();
   }
@@ -79,7 +150,16 @@ class _ServiceOrderHistoryViewState extends State<ServiceOrderHistoryView> {
         Expanded(
           child: SignalBuilder(
             builder: (context) {
-              final orders = widget.signals.completedOrders.value;
+              final inMemoryOrders = widget.signals.completedOrders.value;
+              final useSqlRows =
+                  widget.signals.dao != null && _pagedSqlOrders.isNotEmpty;
+              final orders = useSqlRows
+                  ? _pagedSqlOrders
+                  : inMemoryOrders.take(_loadedPages * _pageSize).toList();
+              final hasMore = useSqlRows
+                  ? _hasMoreSqlPages
+                  : inMemoryOrders.length > orders.length;
+
               if (orders.isEmpty) {
                 return Center(
                   child: SingleChildScrollView(
@@ -110,20 +190,41 @@ class _ServiceOrderHistoryViewState extends State<ServiceOrderHistoryView> {
                 );
               }
               return RefreshIndicator(
-                onRefresh: () => widget.signals.fetchRemote(
-                  technicianEmail: widget.signals.technicianEmail.value,
-                ),
+                onRefresh: () async {
+                  await widget.signals.fetchRemote(
+                    technicianEmail: widget.signals.technicianEmail.value,
+                  );
+                  await _reloadFirstPage();
+                },
                 color: AppTheme.serviceOrderAccent,
                 child: ListView.separated(
+                  controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                  itemCount: orders.length,
+                  itemCount: orders.length + (hasMore ? 1 : 0),
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) => ServiceOrderCard(
-                    order: orders[index],
-                    signals: widget.signals,
-                    lcpNapSignals: widget.lcpNapSignals,
-                    jobsSignals: widget.jobsSignals,
-                  ),
+                  itemBuilder: (context, index) {
+                    if (index >= orders.length) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: OutlinedButton(
+                            key: const ValueKey(
+                                'service_order_history_load_more'),
+                            onPressed: _loadingMore ? null : _loadNextPage,
+                            child: Text(
+                              _loadingMore ? 'Loading...' : 'Load more',
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                    return ServiceOrderCard(
+                      order: orders[index],
+                      signals: widget.signals,
+                      lcpNapSignals: widget.lcpNapSignals,
+                      jobsSignals: widget.jobsSignals,
+                    );
+                  },
                 ),
               );
             },

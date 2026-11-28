@@ -8,6 +8,8 @@ import 'package:signals_flutter/signals_flutter.dart';
 import 'package:sqlite_async/sqlite_async.dart' show SqliteWriteContext;
 // Gene - Nov, 20, 2026: Added app_constants and secure_storage_service imports for persisting read service order IDs.
 import '../../../core/constants/app_constants.dart';
+// Gene - Nov, 28, 2026: Added NetworkExceptions import for 403 NOT_ASSIGNED handling.
+import '../../../core/network/network_exceptions.dart';
 // Gene - Nov, 23, 2026: Added LocationService for Nearest-first repair sorting.
 import '../../../core/services/location_service.dart';
 import '../../../core/services/remote_photo_cache_service.dart';
@@ -154,6 +156,45 @@ class ServiceOrdersSignals {
 
   // Gene - Nov, 25, 2026: In-memory cache and fetch helper for GET /api/ServiceOrders/{id}/GetServiceOrderImage.
   final Map<int, ServiceOrderImagesDto> _imagesCache = {};
+  // Gene - Nov, 28, 2026: Track 403 NOT_ASSIGNED service order IDs reactively and expose paginated local history query.
+  final notAssignedOrderIds = signal<Set<int>>(<int>{});
+
+  bool isOrderNotAssigned(int orderId) =>
+      notAssignedOrderIds.value.contains(orderId);
+
+  void _markOrderNotAssigned(int orderId) {
+    if (!notAssignedOrderIds.peek().contains(orderId)) {
+      notAssignedOrderIds.value = {...notAssignedOrderIds.peek(), orderId};
+    }
+  }
+
+  Future<ServiceOrderDto?> fetchRemoteOrderById(int orderId) async {
+    if (isOrderNotAssigned(orderId)) return null;
+    try {
+      return await api.fetchServiceOrderById(orderId);
+    } on ApiException catch (e) {
+      if (e.isNotAssigned) {
+        clearImagesCache(orderId);
+        _markOrderNotAssigned(orderId);
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  Future<List<ServiceOrderDto>> getHistoryOrdersPage({
+    int limit = 50,
+    int offset = 0,
+    String? technicianEmail,
+  }) async {
+    final activeDao = dao;
+    if (activeDao == null) return const [];
+    return activeDao.getHistoryOrdersPage(
+      limit: limit,
+      offset: offset,
+      technicianEmail: technicianEmail ?? this.technicianEmail.value,
+    );
+  }
 
   /// Clear in-memory and disk service order photo caches (for tests, sync, or manual refresh).
   void clearImagesCache([int? id]) {
@@ -172,29 +213,17 @@ class ServiceOrdersSignals {
     int orderId, {
     bool forceRefresh = false,
   }) async {
-    /*
-    if (forceRefresh) {
-      _imagesCache.remove(orderId);
-    } else if (_imagesCache.containsKey(orderId)) {
-      return _imagesCache[orderId];
+    if (isOrderNotAssigned(orderId) && !forceRefresh) {
+      return null;
     }
-
-    try {
-      final data = await api.fetchServiceOrderImages(orderId);
-      if (data != null) {
-        final dto = ServiceOrderImagesDto.fromJson(data);
-        _imagesCache[orderId] = dto;
-        return dto;
-      }
-    } catch (_) {
-      // Offline fallback or test mock
-    }
-    return _imagesCache[orderId];
-    */
     // Gene - Nov, 28, 2026: Lazy disk cache + pending_attachments overlay for offline Service Order photo previews.
     ServiceOrderImagesDto? baseDto;
     if (forceRefresh) {
       _imagesCache.remove(orderId);
+      if (notAssignedOrderIds.peek().contains(orderId)) {
+        notAssignedOrderIds.value = {...notAssignedOrderIds.peek()}
+          ..remove(orderId);
+      }
     } else if (_imagesCache.containsKey(orderId)) {
       baseDto = _imagesCache[orderId];
     } else {
@@ -217,6 +246,19 @@ class ServiceOrdersSignals {
             RemotePhotoCacheService.instance
                 .writeCachedJson('service_orders', orderId, dto.toJson()),
           );
+        }
+      } on ApiException catch (e) {
+        if (e.isNotAssigned) {
+          clearImagesCache(orderId);
+          _markOrderNotAssigned(orderId);
+          return null;
+        }
+        if (baseDto == null) {
+          final diskJson = await RemotePhotoCacheService.instance
+              .readCachedJson('service_orders', orderId);
+          if (diskJson != null) {
+            baseDto = ServiceOrderImagesDto.fromJson(diskJson);
+          }
         }
       } catch (_) {
         if (baseDto == null) {

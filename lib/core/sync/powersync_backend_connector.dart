@@ -668,7 +668,7 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
         isOfflineCreate: isOfflineCreate,
         idempotencyKey: isOfflineCreate
             ? group.rawId
-            : 'psv12-${group.table}-$targetId-${group.firstClientId}-${group.lastClientId}',
+            : 'psv13-${group.table}-$targetId-${group.firstClientId}-${group.lastClientId}',
         dirtyScalarData: group.dirtyScalarData,
         inlineFiles: group.inlineFiles,
         inlineDeleteFlags: group.inlineDeleteFlags,
@@ -931,28 +931,31 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
       }
       return _GroupUploadOutcome.succeeded;
     } on PowerSyncUploadException catch (e) {
-      if (e.isConflict) {
+      // Gene - Nov, 28, 2026: On 409 Conflict (REASSIGNED/CANCELLED) or 403 NOT_ASSIGNED, log serverRecord to sync_conflicts, delete blocked pending_attachments + temp files, and continue processing remaining entities in the batch.
+      if (e.isConflict || e.isNotAssigned) {
+        final conflictReason =
+            e.isNotAssigned ? 'NOT_ASSIGNED' : e.conflictCode;
+        final fallbackSnapshot = <String, dynamic>{
+          if (e.conflictAssignedEmail != null &&
+              e.conflictAssignedEmail!.isNotEmpty)
+            'assignedEmail': e.conflictAssignedEmail,
+          if (e.conflictServerStatus != null &&
+              e.conflictServerStatus!.isNotEmpty)
+            'serverStatus': e.conflictServerStatus,
+        };
         await syncConflicts?.recordConflict(
           entityType: table,
           entityId: targetId,
-          reason: e.conflictCode,
-          statusCode: 409,
+          reason: conflictReason,
+          statusCode: e.statusCode ?? 409,
           message: e.message,
-          serverSnapshot: jsonEncode(e.serverRecord ?? const {}),
+          serverSnapshot: jsonEncode(e.serverRecord ?? fallbackSnapshot),
           localPayload: jsonEncode(summaryMap),
         );
         if (pendingAttachments != null) {
-          await pendingAttachments!.markStatus(
-            table,
-            rawId,
-            PendingAttachment.statusConflict,
-          );
+          await pendingAttachments!.deleteForEntity(table, rawId);
           if (targetId != rawId) {
-            await pendingAttachments!.markStatus(
-              table,
-              targetId,
-              PendingAttachment.statusConflict,
-            );
+            await pendingAttachments!.deleteForEntity(table, targetId);
           }
         }
         return _GroupUploadOutcome.conflictRecorded;

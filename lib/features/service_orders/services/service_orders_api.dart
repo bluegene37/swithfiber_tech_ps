@@ -41,12 +41,17 @@ class ServiceOrdersApi {
 
   /// Fetch a single service order by its unique ID
   Future<ServiceOrderDto?> fetchServiceOrderById(int id) async {
-    final response = await _api.get('/ServiceOrders/$id');
-    final data = response.data;
-    if (data is Map<String, dynamic>) {
-      return ServiceOrderDto.fromJson(data);
+    try {
+      final response = await _api.get('/ServiceOrders/$id');
+      final data = response.data;
+      if (data is Map<String, dynamic>) {
+        return ServiceOrderDto.fromJson(data);
+      }
+      return null;
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
     }
-    return null;
   }
 
   // Gene - Nov, 25, 2026: Fetch Service Order images and client signature from GET /api/ServiceOrders/{id}/GetServiceOrderImage.

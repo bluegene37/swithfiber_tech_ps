@@ -77,11 +77,43 @@ class JobsSignals {
     SecureStorageService? storage,
   })  : clock = clock ?? DateTime.now,
         _storage = storage ?? SecureStorageService.instance {
+    repository.onJobNotAssigned = markJobNotAssigned;
     _initDriftStream();
   }
 
   // Raw State Signals
   final allJobs = signal<List<JobOrderDto>>([]);
+  // Gene - Nov, 28, 2026: Track 403 NOT_ASSIGNED job IDs reactively and expose paginated local history query.
+  final notAssignedJobIds = signal<Set<int>>(<int>{});
+
+  bool isJobNotAssigned(int jobId) =>
+      notAssignedJobIds.value.contains(jobId) ||
+      repository.isJobNotAssigned(jobId);
+
+  void markJobNotAssigned(int jobId) {
+    if (notAssignedJobIds.peek().contains(jobId)) return;
+    notAssignedJobIds.value = {...notAssignedJobIds.peek(), jobId};
+  }
+
+  Future<JobOrderDto?> fetchRemoteJobById(int jobId) =>
+      repository.fetchRemoteJobById(jobId);
+
+  Future<List<JobOrderDto>> getHistoryJobsPage({
+    int limit = 50,
+    int offset = 0,
+    String? technicianEmail,
+    String? statusFilter,
+    String? city,
+    String? search,
+  }) =>
+      repository.getHistoryJobsPage(
+        limit: limit,
+        offset: offset,
+        technicianEmail: technicianEmail ?? this.technicianEmail.value,
+        statusFilter: statusFilter,
+        city: city,
+        search: search,
+      );
   // Defaults to 'scheduled' so technicians immediately see their scheduled work orders.
   final activeFilter = signal<String>(JobStatus.scheduled.name);
   final searchQuery = signal<String>('');

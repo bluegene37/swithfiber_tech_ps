@@ -197,10 +197,16 @@ class LookupsDao {
     if (col == 'amount') {
       return rowDouble(val) ?? 0.0;
     }
+    /*
     if (col == 'quantity' ||
         col == 'discount_id' ||
         col == 'created_by_user_id' ||
         col == 'modified_by_user_id') {
+      return rowIntOrNull(val);
+    }
+    */
+    // Gene - Nov, 28, 2026: Store ports user IDs as text and keep integer lookup counts coerced cleanly; preserve naive Manila timestamps verbatim.
+    if (col == 'quantity' || col == 'discount_id') {
       return rowIntOrNull(val);
     }
     return val.toString();
@@ -257,7 +263,7 @@ class LookupsDao {
           id: rowInt(r['id']),
           name: rowText(r['name'])?.trim() ?? '',
           description: rowText(r['description'])?.trim() ?? '',
-          createdDate: rowDate(r['created_date']),
+          createdDate: parseManilaLocalDate(r['created_date']),
         ),
     ];
   }
@@ -271,7 +277,7 @@ class LookupsDao {
           name: rowText(r['name'])?.trim() ?? '',
           description: rowText(r['description'])?.trim() ?? '',
           createdByUserId: rowIntOrNull(r['created_by_user_id']),
-          createdDate: rowDate(r['created_date']),
+          createdDate: parseManilaLocalDate(r['created_date']),
         ),
     ];
   }
@@ -291,7 +297,7 @@ class LookupsDao {
           quantity: rowInt(r['quantity']),
           image: rowText(r['image'])?.trim(),
           userEmail: rowText(r['user_email'])?.trim(),
-          modifiedDate: rowDate(r['modified_date']),
+          modifiedDate: parseManilaLocalDate(r['modified_date']),
         ),
     ];
   }

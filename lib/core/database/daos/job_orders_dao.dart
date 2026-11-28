@@ -40,6 +40,59 @@ class JobOrdersDao {
   Future<List<JobOrderDto>> getAllJobs() async =>
       _map(await _db.getAll('SELECT * FROM $table $_byIdDesc'));
 
+  // Gene - Nov, 28, 2026: Paginated local SQLite history query (ORDER BY modified_date DESC LIMIT ? OFFSET ?) for PowerSync v13 on-demand history streams.
+  Future<List<JobOrderDto>> getHistoryJobsPage({
+    int limit = 50,
+    int offset = 0,
+    String? technicianEmail,
+    String? statusFilter,
+    String? city,
+    String? search,
+  }) async {
+    final whereParts = <String>[
+      "(LOWER(COALESCE(status, '')) IN ('activated', 'completed', 'done', 'failed', 'resolved', 'cancelled', 'canceled') OR "
+          "LOWER(COALESCE(onsite_status, '')) IN ('failed', 'cancelled', 'canceled'))",
+    ];
+    final params = <Object?>[];
+
+    final cleanEmail = technicianEmail?.trim().toLowerCase();
+    if (cleanEmail != null && cleanEmail.isNotEmpty) {
+      whereParts.add("LOWER(COALESCE(assigned_email, '')) = ?");
+      params.add(cleanEmail);
+    }
+
+    final cleanStatus = statusFilter?.trim().toLowerCase();
+    if (cleanStatus != null && cleanStatus.isNotEmpty && cleanStatus != 'all') {
+      whereParts.add("LOWER(COALESCE(status, '')) = ?");
+      params.add(cleanStatus);
+    }
+
+    final cleanCity = city?.trim().toLowerCase();
+    if (cleanCity != null && cleanCity.isNotEmpty) {
+      whereParts.add("LOWER(COALESCE(city, '')) = ?");
+      params.add(cleanCity);
+    }
+
+    final cleanSearch = search?.trim().toLowerCase();
+    if (cleanSearch != null && cleanSearch.isNotEmpty) {
+      final pattern = '%$cleanSearch%';
+      whereParts.add(
+        "(LOWER(COALESCE(ticket_number, '')) LIKE ? OR "
+        "LOWER(COALESCE(customer_name, '')) LIKE ? OR "
+        "LOWER(COALESCE(address, '')) LIKE ? OR "
+        "LOWER(COALESCE(barangay, '')) LIKE ? OR "
+        "LOWER(COALESCE(city, '')) LIKE ?)",
+      );
+      params.addAll([pattern, pattern, pattern, pattern, pattern]);
+    }
+
+    final sql = 'SELECT * FROM $table WHERE ${whereParts.join(' AND ')} '
+        'ORDER BY COALESCE(modified_date, date_installed, updated_at) DESC, CAST(id AS INTEGER) DESC '
+        'LIMIT ? OFFSET ?';
+    params.addAll([limit, offset]);
+    return _map(await _db.getAll(sql, params));
+  }
+
   /// Get single job by id
   Future<JobOrderDto?> getJobById(int id) async {
     final row = await _db.getOptional(
@@ -227,6 +280,7 @@ class JobOrdersDao {
   */
 /*
   // Gene - Oct 13, 2026: Added planId and planName parameters to updateJobCompletion to persist on-site plan upgrades.
+  // Gene - Nov, 28, 2026: Accept editable lcp, port, vlan strings and persist v13 TEXT foreign IDs + paginated history SQLite query.
   Future<void> updateJobCompletion({
     required int id,
     String? status,
@@ -236,6 +290,9 @@ class JobOrdersDao {
     String? modemRouterSN,
     String? routerModel,
     String? nap,
+    String? lcp,
+    String? port,
+    String? vlan,
     int? vlanId,
     int? planId,
     String? planName,
@@ -305,6 +362,7 @@ class JobOrdersDao {
 */
 /*
   // Gene - Oct 13, 2026: Added connectionType parameter to updateJobCompletion to persist selected connection type in raw_json.
+  // Gene - Nov, 28, 2026: Accept editable lcp, port, vlan strings and persist v13 TEXT foreign IDs + paginated history SQLite query.
   Future<void> updateJobCompletion({
     required int id,
     String? status,
@@ -314,6 +372,9 @@ class JobOrdersDao {
     String? modemRouterSN,
     String? routerModel,
     String? nap,
+    String? lcp,
+    String? port,
+    String? vlan,
     int? vlanId,
     int? planId,
     String? planName,
@@ -391,6 +452,7 @@ class JobOrdersDao {
     }
 */
   // Gene - Oct 13, 2026: Added visitBy and visitWith parameters to updateJobCompletion to persist technician attendance.
+  // Gene - Nov, 28, 2026: Accept editable lcp, port, vlan strings and persist v13 TEXT foreign IDs + paginated history SQLite query.
   Future<void> updateJobCompletion({
     required int id,
     String? status,
@@ -400,6 +462,9 @@ class JobOrdersDao {
     String? modemRouterSN,
     String? routerModel,
     String? nap,
+    String? lcp,
+    String? port,
+    String? vlan,
     int? vlanId,
     int? planId,
     String? planName,
@@ -561,8 +626,17 @@ class JobOrdersDao {
       'modem_router_sn': modemRouterSN,
       'router_model': routerModel,
       if (nap != null) 'nap': nap,
+      /*
       if (vlanId != null) 'vlan_id': vlanId,
       if (planId != null) 'plan_id': planId,
+      */
+      // Gene - Nov, 28, 2026: Store PowerSync v13 TEXT foreign keys and editable lcp/port/vlan columns.
+      if (lcp != null) 'lcp': lcp,
+      if (port != null) 'port': port,
+      if (port != null) 'port_id': port,
+      if (vlan != null || vlanId != null) 'vlan': vlan ?? vlanId?.toString(),
+      if (vlanId != null) 'vlan_id': vlanId.toString(),
+      if (planId != null) 'plan_id': planId.toString(),
       if (planName != null) 'plan_name': planName,
       if (connectionType != null) 'connection_type': connectionType,
       if (visitBy != null) 'visit_by': visitBy,

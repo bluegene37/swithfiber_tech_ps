@@ -5,6 +5,9 @@ class ApiException implements Exception {
   final String message;
   final int? statusCode;
   final dynamic details;
+  // Gene - Nov, 28, 2026: Expose parsed backend errorCode (NOT_ASSIGNED / RATE_LIMITED) and retryAfterSeconds for PowerSync v13 gateway errors.
+  final String? errorCode;
+  final int? retryAfterSeconds;
 
   /// The call that failed, e.g. `PUT` and
   /// `https://host:8090/api/JobOrders/123`. Null when the exception was not
@@ -16,13 +19,22 @@ class ApiException implements Exception {
     required this.message,
     this.statusCode,
     this.details,
+    this.errorCode,
+    this.retryAfterSeconds,
     this.requestMethod,
     this.requestUrl,
   });
 
+  bool get isNotAssigned =>
+      statusCode == 403 && (errorCode == null || errorCode == 'NOT_ASSIGNED');
+
+  bool get isRateLimited => statusCode == 429 || errorCode == 'RATE_LIMITED';
+
   factory ApiException.fromDioException(DioException error) {
     String message = 'An unexpected network error occurred.';
     int? status = error.response?.statusCode;
+    String? errorCode;
+    int? retryAfterSeconds;
 
     switch (error.type) {
       case DioExceptionType.connectionTimeout:
@@ -34,16 +46,28 @@ class ApiException implements Exception {
         break;
       case DioExceptionType.badResponse:
         final data = error.response?.data;
-        if (data is Map<String, dynamic>) {
+        if (data is Map) {
           if (data['message'] != null) {
             message = data['message'].toString();
+          } else if (data['error'] != null) {
+            message = data['error'].toString();
           } else if (data['title'] != null) {
             message = data['title'].toString();
           }
+          final rawCode = data['code']?.toString().trim();
+          if (rawCode != null && rawCode.isNotEmpty) {
+            errorCode = rawCode.toUpperCase();
+          }
+          final rawRetry = data['retryAfterSeconds'];
+          if (rawRetry is int) {
+            retryAfterSeconds = rawRetry;
+          } else if (rawRetry != null) {
+            retryAfterSeconds = int.tryParse(rawRetry.toString());
+          }
 
           // Handle ASP.NET ModelState validation error dictionaries
-          if (data['errors'] is Map<String, dynamic>) {
-            final errMap = data['errors'] as Map<String, dynamic>;
+          if (data['errors'] is Map) {
+            final errMap = data['errors'] as Map;
             final fieldErrors = <String>[];
             errMap.forEach((key, val) {
               if (val is List) {
@@ -60,6 +84,12 @@ class ApiException implements Exception {
           message = data;
         } else {
           message = 'Server returned error ($status).';
+        }
+        if (retryAfterSeconds == null && status == 429) {
+          final headerRetry = error.response?.headers.value('retry-after');
+          if (headerRetry != null) {
+            retryAfterSeconds = int.tryParse(headerRetry.trim());
+          }
         }
         break;
       case DioExceptionType.cancel:
@@ -78,6 +108,8 @@ class ApiException implements Exception {
       message: message,
       statusCode: status,
       details: error.response?.data,
+      errorCode: errorCode,
+      retryAfterSeconds: retryAfterSeconds,
       requestMethod: error.requestOptions.method,
       requestUrl: error.requestOptions.uri.toString(),
     );

@@ -11,7 +11,6 @@ import 'package:path/path.dart' as p;
 import 'package:powersync/powersync.dart' hide Column;
 import 'package:swithfiber_tech_ps/core/constants/app_constants.dart';
 import 'package:swithfiber_tech_ps/core/database/app_database.dart';
-import 'package:swithfiber_tech_ps/core/database/models/pending_attachment.dart';
 import 'package:swithfiber_tech_ps/core/network/api_client.dart';
 import 'package:swithfiber_tech_ps/core/services/photo_storage_service.dart';
 import 'package:swithfiber_tech_ps/core/storage/secure_storage_service.dart';
@@ -345,20 +344,20 @@ void main() {
                 .any((c) => c.entityId == '202' && c.reason == 'CANCELLED'),
             isTrue);
 
-        // Attachment on conflicted entity is marked CONFLICT, not stalling pending queue.
+        // Blocked attachment on conflicted entity is cleaned up immediately, not stalling pending queue.
         expect(await appDb.pendingAttachmentsDao.countPending(), 0);
         final attRows = await appDb.pendingAttachmentsDao
             .getAllForEntity('job_orders', '101');
-        expect(attRows.single.status, PendingAttachment.statusConflict);
+        expect(attRows, isEmpty);
+        expect(File(conflictPhotoPath).existsSync(), isFalse);
 
-        // Dismiss first conflict cleanly deletes its retained temp photo.
+        // Dismiss first conflict leaves second conflict unresolved.
         final firstId = conflicts.firstWhere((c) => c.entityId == '101').id;
         await appDb.syncConflictsDao.markResolved(
           firstId,
           pendingAttachmentsDao: appDb.pendingAttachmentsDao,
         );
         expect(await appDb.syncConflictsDao.countUnresolved(), 1);
-        expect(File(conflictPhotoPath).existsSync(), isFalse);
       } finally {
         await appDb.close();
       }

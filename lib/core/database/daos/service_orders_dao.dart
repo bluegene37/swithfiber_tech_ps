@@ -22,6 +22,33 @@ class ServiceOrdersDao {
   Future<List<ServiceOrderDto>> getAllOrders() async =>
       _map(await _db.getAll('SELECT * FROM $table $_byIdDesc'));
 
+  // Gene - Nov, 28, 2026: Paginated local SQLite history query (ORDER BY modified_date DESC LIMIT ? OFFSET ?) for PowerSync v13 on-demand service order history.
+  Future<List<ServiceOrderDto>> getHistoryOrdersPage({
+    int limit = 50,
+    int offset = 0,
+    String? technicianEmail,
+  }) async {
+    final whereParts = <String>[
+      "(LOWER(COALESCE(visit_status, '')) IN ('done', 'failed', 'resolved', 'completed', 'cancelled', 'canceled') OR "
+          "LOWER(COALESCE(support_status, '')) IN ('resolved', 'closed', 'completed', 'done', 'cancelled', 'canceled'))",
+    ];
+    final params = <Object?>[];
+
+    final cleanEmail = technicianEmail?.trim().toLowerCase();
+    if (cleanEmail != null && cleanEmail.isNotEmpty) {
+      whereParts.add(
+        "(TRIM(COALESCE(assigned_email, '')) = '' OR LOWER(assigned_email) = ?)",
+      );
+      params.add(cleanEmail);
+    }
+
+    final sql = 'SELECT * FROM $table WHERE ${whereParts.join(' AND ')} '
+        'ORDER BY COALESCE(modified_date, date_installed, updated_at) DESC, CAST(id AS INTEGER) DESC '
+        'LIMIT ? OFFSET ?';
+    params.addAll([limit, offset]);
+    return _map(await _db.getAll(sql, params));
+  }
+
   /// Get a single service order by id.
   Future<ServiceOrderDto?> getOrderById(int id) async {
     final row = await _db.getOptional(

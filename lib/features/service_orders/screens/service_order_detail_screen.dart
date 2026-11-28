@@ -940,16 +940,63 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
     return SignalBuilder(
       builder: (context) {
         final order = _findOrder();
-        if (order == null) {
+        final isNotAssigned = widget.signals.isOrderNotAssigned(widget.orderId);
+        if (order == null || isNotAssigned) {
           return Scaffold(
             appBar: AppBar(title: const Text('Service Order')),
-            body: const Center(child: Text('Service order not found.')),
+            body: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isNotAssigned
+                          ? CupertinoIcons.exclamationmark_shield
+                          : CupertinoIcons.checkmark_shield,
+                      size: 40,
+                      color: isNotAssigned
+                          ? AppTheme.warningInkOf(context)
+                          : AppTheme.successInkOf(context),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      isNotAssigned
+                          ? 'Order Reassigned'
+                          : 'Order Completed or Reassigned',
+                      style: context.text.titleMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      isNotAssigned
+                          ? 'This repair ticket was reassigned to another technician.'
+                          : 'This service order was completed or removed from your active queue.',
+                      style: context.text.bodySmall!.copyWith(
+                        color: AppTheme.secondaryInkOf(context),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (Navigator.of(context).canPop()) ...[
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        key:
+                            const ValueKey('service_order_back_to_list_button'),
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                        label: const Text('Back to List'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
           );
         }
 
         // Gene - Nov, 23, 2026: Wrapped ServiceOrderDetailScreen Scaffold in PopScope unsaved-changes guard.
         return PopScope(
-          canPop: !_hasUnsavedChanges || _isSubmitting,
+          canPop: !_hasUnsavedChanges || _isSubmitting || isNotAssigned,
           onPopInvokedWithResult: (didPop, _) {
             if (didPop) return;
             unawaited(_handleBackWithUnsavedDraft());

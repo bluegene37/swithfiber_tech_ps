@@ -1,5 +1,6 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:powersync/powersync.dart' show ColumnType;
 import 'package:swithfiber_tech_ps/core/constants/app_constants.dart';
 import 'package:swithfiber_tech_ps/core/sync/powersync_backend_connector.dart';
 import 'package:swithfiber_tech_ps/core/sync/powersync_schema.dart';
@@ -20,9 +21,9 @@ void main() {
       expect(AppConstants.devSecretKey, isEmpty);
     });
 
-    test('PowerSync schema v12 defines core, lookup, and operational tables',
+    test('PowerSync schema v13 defines core, lookup, and operational tables',
         () {
-      // Gene - Nov, 28, 2026: Schema v12 includes 3 business + 2 operational/history + 11 lookup + 3 v12 operational tables (19 total).
+      // Gene - Nov, 28, 2026: Schema v13 enforces MSSQL-aligned TEXT/INTEGER column types across job_orders, service_orders, lcp_nap_locations, lookups, and operational tables.
       expect(powerSyncSchema.tables.length, 19);
 
       final tableNames = powerSyncSchema.tables.map((t) => t.name).toList();
@@ -46,11 +47,48 @@ void main() {
       expect(tableNames, contains('sync_conflicts'));
       expect(tableNames, contains('local_id_map'));
 
-      // Local-only tables while REST handles fallback transport
+      // Verify PowerSync v13 column types
       final jobOrders =
           powerSyncSchema.tables.firstWhere((t) => t.name == 'job_orders');
+      final jobColTypes = {
+        for (final c in jobOrders.columns) c.name: c.type,
+      };
+      for (final col in [
+        'plan_id',
+        'lcp_id',
+        'nap_id',
+        'port_id',
+        'vlan_id',
+        'application_id',
+        'lcp',
+        'port',
+        'vlan',
+        'speedtest_image',
+        'item_quantity_1',
+        'item_quantity_10',
+      ]) {
+        expect(jobColTypes[col], ColumnType.text,
+            reason: 'job_orders.$col must be TEXT in v13');
+      }
+
       final serviceOrders =
           powerSyncSchema.tables.firstWhere((t) => t.name == 'service_orders');
+      final soColTypes = {
+        for (final c in serviceOrders.columns) c.name: c.type,
+      };
+      expect(soColTypes['item_name'], ColumnType.text);
+      expect(soColTypes['item_quantity'], ColumnType.integer);
+      expect(soColTypes['item_quantity_1'], ColumnType.integer);
+      expect(soColTypes['item_quantity_10'], ColumnType.integer);
+      expect(soColTypes['service_charge'], ColumnType.real);
+
+      final lcpNap = powerSyncSchema.tables
+          .firstWhere((t) => t.name == 'lcp_nap_locations');
+      expect(
+        lcpNap.columns.firstWhere((c) => c.name == 'port_total').type,
+        ColumnType.integer,
+      );
+
       final timingHistory = powerSyncSchema.tables
           .firstWhere((t) => t.name == 'work_timing_history');
       expect(jobOrders.localOnly, isTrue);

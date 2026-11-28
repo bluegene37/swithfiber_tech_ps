@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,11 +28,58 @@ class _LoginScreenState extends State<LoginScreen> {
 
   final authSignals = AuthSignals.instance;
   String _baseUrl = AppConstants.defaultBaseUrl;
+  // Gene - Nov, 28, 2026: Live 1-second cooldown ticker while POST /api/Auth/login is 429 RATE_LIMITED.
+  Timer? _cooldownTimer;
+  void Function()? _disposeCooldownEffect;
+  int _cooldownRemainingSeconds = 0;
 
   @override
   void initState() {
     super.initState();
     _loadEndpoint();
+    _disposeCooldownEffect = effect(() {
+      final until = authSignals.rateLimitUntil.value;
+      _syncCooldownTimer(until);
+    });
+  }
+
+  void _syncCooldownTimer(DateTime? until) {
+    _cooldownTimer?.cancel();
+    _cooldownTimer = null;
+    if (until == null) {
+      if (mounted && _cooldownRemainingSeconds != 0) {
+        setState(() => _cooldownRemainingSeconds = 0);
+      }
+      return;
+    }
+    int computeRemaining() {
+      final diff = until.difference(DateTime.now()).inSeconds;
+      return diff > 0 ? diff : 0;
+    }
+
+    final initial = computeRemaining();
+    if (mounted) {
+      setState(() => _cooldownRemainingSeconds = initial);
+    } else {
+      _cooldownRemainingSeconds = initial;
+    }
+    if (initial <= 0) {
+      authSignals.rateLimitUntil.value = null;
+      return;
+    }
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      final rem = computeRemaining();
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _cooldownRemainingSeconds = rem);
+      if (rem <= 0) {
+        timer.cancel();
+        _cooldownTimer = null;
+        authSignals.rateLimitUntil.value = null;
+      }
+    });
   }
 
   Future<void> _loadEndpoint() async {
@@ -40,12 +89,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _cooldownTimer?.cancel();
+    _disposeCooldownEffect?.call();
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _handleLogin() async {
+    if (_cooldownRemainingSeconds > 0) return;
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
 
@@ -461,8 +513,12 @@ class _LoginScreenState extends State<LoginScreen> {
                               SignalBuilder(
                                 builder: (context) {
                                   final loading = authSignals.authLoading.value;
+                                  final coolingDown =
+                                      _cooldownRemainingSeconds > 0;
                                   return ElevatedButton(
-                                    onPressed: loading ? null : _handleLogin,
+                                    onPressed: (loading || coolingDown)
+                                        ? null
+                                        : _handleLogin,
                                     child: loading
                                         ? const SizedBox(
                                             height: 20,
@@ -472,14 +528,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                               color: Colors.white,
                                             ),
                                           )
-                                        : const Row(
+                                        : Row(
                                             mainAxisAlignment:
                                                 MainAxisAlignment.center,
                                             children: [
-                                              Icon(Icons.login_rounded,
+                                              const Icon(Icons.login_rounded,
                                                   size: 18),
-                                              SizedBox(width: 8),
-                                              Text('Sign In to Terminal'),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                coolingDown
+                                                    ? 'Wait ${_cooldownRemainingSeconds}s'
+                                                    : 'Sign In to Terminal',
+                                              ),
                                             ],
                                           ),
                                   );

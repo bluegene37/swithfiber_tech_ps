@@ -414,9 +414,14 @@ class ServiceOrderDto {
       }
     }
     */
-    // Gene - Nov, 28, 2026: Hydrate materials strictly from canonical PowerSync v12 columns item_name_1..10 and item_quantity_1..10.
+    // Gene - Nov, 28, 2026: Hydrate materials strictly from canonical PowerSync v13 columns (item_name/item_quantity + item_name_1..10 / item_quantity_1..10).
     if (materials.isEmpty) {
       final colMaterials = <String, int>{};
+      final singleName = rowText(row['item_name'])?.trim();
+      final singleQty = rowInt(row['item_quantity']);
+      if (singleName != null && singleName.isNotEmpty && singleQty > 0) {
+        colMaterials[singleName] = singleQty;
+      }
       for (int i = 1; i <= 10; i++) {
         final name = rowText(row['item_name_$i'])?.trim();
         final qtyRaw = row['item_quantity_$i'];
@@ -609,6 +614,7 @@ class ServiceOrderDto {
       }
     }
   */
+  /*
   // Gene - Nov, 28, 2026: Emit canonical v12 material columns item_name_1..10 / item_quantity_1..10 and support omitPhotoColumns when writing disk-backed pending_attachments.
   Map<String, Object?> toRow({
     bool synced = true,
@@ -632,6 +638,35 @@ class ServiceOrderDto {
       for (int i = 1; i <= 10; i++) {
         materialCols['item_name_$i'] = synced ? null : '';
         materialCols['item_quantity_$i'] = synced ? null : '';
+      }
+    }
+  */
+  // Gene - Nov, 28, 2026: Emit canonical PowerSync v13 service_orders columns (item_name/item_quantity + INTEGER item_quantity_1..10) and support omitPhotoColumns.
+  Map<String, Object?> toRow({
+    bool synced = true,
+    bool omitPhotoColumns = false,
+  }) {
+    final materialCols = <String, Object?>{
+      'item_name': null,
+      'item_quantity': null,
+    };
+    if (materialsUsed.isNotEmpty) {
+      int index = 1;
+      materialsUsed.forEach((name, qty) {
+        if (index <= 10) {
+          materialCols['item_name_$index'] = name;
+          materialCols['item_quantity_$index'] = qty;
+          index++;
+        }
+      });
+      for (int i = index; i <= 10; i++) {
+        materialCols['item_name_$i'] = '';
+        materialCols['item_quantity_$i'] = null;
+      }
+    } else {
+      for (int i = 1; i <= 10; i++) {
+        materialCols['item_name_$i'] = synced ? null : '';
+        materialCols['item_quantity_$i'] = null;
       }
     }
 

@@ -99,7 +99,17 @@ class ReportSignals {
     } else {
       routerModel.value = 'Huawei 5v5';
     }
+    /*
     if (job.portId != null && job.portId!.isNotEmpty) {
+      napPort.value = job.portId!;
+    } else {
+      napPort.value = 'PORT 001';
+    }
+    */
+    // Gene - Nov, 28, 2026: Prefer editable v13 port/lcp/vlan fields on JobOrderDto when pre-filling report form.
+    if (job.port != null && job.port!.trim().isNotEmpty) {
+      napPort.value = job.port!.trim();
+    } else if (job.portId != null && job.portId!.isNotEmpty) {
       napPort.value = job.portId!;
     } else {
       napPort.value = 'PORT 001';
@@ -121,13 +131,17 @@ class ReportSignals {
     }
 */
     // Gene - Oct 12, 2026: Pre-fill LCP from job order, defaulting to Central Cabinet (LCP 01) if unspecified.
-    if (job.lcpId != null && job.lcpId! > 0) {
+    if (job.lcp != null && job.lcp!.trim().isNotEmpty) {
+      lcp.value = job.lcp!.trim();
+    } else if (job.lcpId != null && job.lcpId! > 0) {
       lcp.value = 'LCP 0${job.lcpId}';
     } else {
       lcp.value = 'LCP 01';
     }
     // Gene - Oct 13, 2026: Set vlan from job order if present, otherwise default to '1000'.
-    if (job.vlanId != null && job.vlanId! > 0) {
+    if (job.vlan != null && job.vlan!.trim().isNotEmpty) {
+      vlan.value = job.vlan!.trim();
+    } else if (job.vlanId != null && job.vlanId! > 0) {
       vlan.value = job.vlanId.toString();
     } else {
       vlan.value = '1000';
@@ -175,6 +189,10 @@ class ReportSignals {
         modemRouterSN: routerSerial.value.trim(),
         routerModel: routerModel.value.trim(),
         nap: nap.value?.trim(),
+        // Gene - Nov, 28, 2026: Pass editable lcp, port, vlan strings alongside vlanId per PowerSync v13.
+        lcp: lcp.value?.trim(),
+        port: napPort.value.trim(),
+        vlan: vlan.value.trim(),
         // Gene - Oct 13, 2026: Pass selected VLAN ID (default 1000).
         vlanId: int.tryParse(vlan.value) ?? 1000,
         // Gene - Oct 13, 2026: Pass upgraded or changed plan to persist in database & sync to API.

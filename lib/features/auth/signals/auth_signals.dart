@@ -20,6 +20,8 @@ class AuthSignals {
   // Gene - Nov, 28, 2026: Non-destructive in-place re-authentication signals so expired tokens NEVER wipe ps_crud or pending_attachments.
   final reauthRequired = signal<bool>(false);
   final reauthReason = signal<String?>(null);
+  // Gene - Nov, 28, 2026: Cooldown timestamp when POST /api/Auth/login returns 429 RATE_LIMITED.
+  final rateLimitUntil = signal<DateTime?>(null);
 
   // Computed state
   late final ReadonlySignal<bool> isAuthenticated = computed(
@@ -57,10 +59,17 @@ class AuthSignals {
       currentUser.value = user;
       reauthRequired.value = false;
       reauthReason.value = null;
+      rateLimitUntil.value = null;
       if (PowerSyncService.instance.isInitialized) {
         unawaited(PowerSyncService.instance.reconnect());
       }
       return true;
+    } on RateLimitedAuthException catch (e) {
+      rateLimitUntil.value =
+          DateTime.now().add(Duration(seconds: e.retryAfterSeconds));
+      authError.value =
+          '${e.message} (Please wait ${e.retryAfterSeconds}s before retrying.)';
+      return false;
     } catch (e) {
       authError.value = e.toString().replaceAll('Exception: ', '');
       return false;
@@ -80,6 +89,7 @@ class AuthSignals {
   void clearReauthPrompt() {
     reauthRequired.value = false;
     reauthReason.value = null;
+    rateLimitUntil.value = null;
   }
 
   Future<bool> reauthenticate({
@@ -132,6 +142,7 @@ class AuthSignals {
     authError.value = reason;
     reauthRequired.value = false;
     reauthReason.value = null;
+    rateLimitUntil.value = null;
     if (PowerSyncService.instance.isInitialized) {
       unawaited(PowerSyncService.instance.disconnectAndClear());
     }

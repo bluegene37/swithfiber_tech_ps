@@ -290,6 +290,10 @@ class JobOrderDto {
   final String? nap;
   final String? portId;
   final int? vlanId;
+  // Gene - Nov, 28, 2026: Editable and synced PowerSync v13 lcp, port, and vlan fields on JobOrderDto.
+  final String? lcp;
+  final String? port;
+  final String? vlan;
   final DateTime? dateInstalled;
   final String? boxReadingImage;
   final String? routerReadingImage;
@@ -393,6 +397,10 @@ class JobOrderDto {
     this.nap,
     this.portId,
     this.vlanId,
+    // Gene - Nov, 28, 2026: Accept optional lcp, port, vlan fields in active JobOrderDto constructor.
+    this.lcp,
+    this.port,
+    this.vlan,
     this.dateInstalled,
     this.boxReadingImage,
     this.routerReadingImage,
@@ -1020,6 +1028,10 @@ class JobOrderDto {
       vlanId: json['vlanId'] is int
           ? json['vlanId']
           : int.tryParse(json['vlanId']?.toString() ?? ''),
+      // Gene - Nov, 28, 2026: Hydrate lcp, port, vlan strings from API JSON.
+      lcp: _cleanValue((json['lcp'] ?? json['Lcp'])?.toString()),
+      port: _cleanValue((json['port'] ?? json['Port'])?.toString()),
+      vlan: _cleanValue((json['vlan'] ?? json['Vlan'])?.toString()),
       dateInstalled: json['dateInstalled'] != null
           ? DateTime.tryParse(json['dateInstalled'].toString())
           : null,
@@ -1236,6 +1248,10 @@ class JobOrderDto {
       nap: rowText(row['nap']),
       portId: rowText(row['port_id']),
       vlanId: rowIntOrNull(row['vlan_id']),
+      // Gene - Nov, 28, 2026: Hydrate lcp, port, vlan strings from PowerSync v13 SQLite row.
+      lcp: rowText(row['lcp']),
+      port: rowText(row['port']),
+      vlan: rowText(row['vlan']),
       dateInstalled: rowDate(row['date_installed']),
       boxReadingImage: photo('box_reading_image'),
       routerReadingImage: photo('router_reading_image'),
@@ -1416,8 +1432,13 @@ class JobOrderDto {
       'address': address,
       'barangay': barangay,
       'city': city,
+      /*
       'plan_name': planName,
       'plan_id': planId,
+      */
+      // Gene - Nov, 28, 2026: Emit PowerSync v13 TEXT foreign/equipment IDs and lcp/port/vlan columns in JobOrderDto.toRow().
+      'plan_name': planName,
+      'plan_id': planId?.toString(),
       'subscriber_email': subscriberEmail,
       'applicant_email': subscriberEmail,
       'second_contact_number': secondContactNumber,
@@ -1448,11 +1469,22 @@ class JobOrderDto {
       'optical_power': opticalPower,
       'modem_router_sn': modemRouterSN,
       'router_model': routerModel,
+      /*
       'lcp_id': lcpId,
       'nap_id': napId,
       'nap': nap,
       'port_id': portId,
       'vlan_id': vlanId,
+      */
+      // Gene - Nov, 28, 2026: Emit PowerSync v13 TEXT lcp_id/nap_id/vlan_id and editable lcp/port/vlan columns.
+      'lcp_id': lcpId?.toString(),
+      'nap_id': napId?.toString(),
+      'nap': nap,
+      'port_id': portId,
+      'vlan_id': vlanId?.toString(),
+      'lcp': lcp ?? _rawText('lcp'),
+      'port': port ?? _rawText('port'),
+      'vlan': vlan ?? _rawText('vlan'),
       'date_installed': dateText(dateInstalled),
       'box_reading_image': boxReadingImage,
       'router_reading_image': routerReadingImage,
@@ -1665,6 +1697,16 @@ class JobOrderDto {
           ? server.portId
           : portId,
       vlanId: server.vlanId ?? vlanId,
+      // Gene - Nov, 28, 2026: Preserve editable lcp, port, vlan strings across server merge.
+      lcp: (server.lcp != null && server.lcp!.trim().isNotEmpty)
+          ? server.lcp
+          : lcp,
+      port: (server.port != null && server.port!.trim().isNotEmpty)
+          ? server.port
+          : port,
+      vlan: (server.vlan != null && server.vlan!.trim().isNotEmpty)
+          ? server.vlan
+          : vlan,
       dateInstalled: server.dateInstalled ?? dateInstalled,
       boxReadingImage: mergePhoto(boxReadingImage, server.boxReadingImage),
       routerReadingImage:

@@ -46,6 +46,46 @@ DateTime? rowDate(Object? v) {
   return DateTime.tryParse(s);
 }
 
+// Gene - Nov, 28, 2026: Parse Asia/Manila local ISO strings (YYYY-MM-DDTHH:mm:ss.SSS, no Z) without shifting by +8h UTC.
+final RegExp _naiveLocalIsoRegex = RegExp(
+  r'^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?$',
+);
+
+DateTime? parseManilaLocalDate(Object? v) {
+  if (v == null) return null;
+  if (v is DateTime) {
+    return v.isUtc
+        ? DateTime(v.year, v.month, v.day, v.hour, v.minute, v.second,
+            v.millisecond, v.microsecond)
+        : v;
+  }
+  final s = v.toString().trim();
+  if (s.isEmpty) return null;
+  final m = _naiveLocalIsoRegex.firstMatch(s);
+  if (m != null) {
+    final year = int.parse(m.group(1)!);
+    final month = int.parse(m.group(2)!);
+    final day = int.parse(m.group(3)!);
+    final hour = int.tryParse(m.group(4) ?? '0') ?? 0;
+    final minute = int.tryParse(m.group(5) ?? '0') ?? 0;
+    final second = int.tryParse(m.group(6) ?? '0') ?? 0;
+    final frac = m.group(7) ?? '';
+    final paddedMicro = frac.padRight(6, '0').substring(0, 6);
+    final totalMicro = int.tryParse(paddedMicro) ?? 0;
+    return DateTime(
+      year,
+      month,
+      day,
+      hour,
+      minute,
+      second,
+      totalMicro ~/ 1000,
+      totalMicro % 1000,
+    );
+  }
+  return DateTime.tryParse(s);
+}
+
 String? dateText(DateTime? d) => d?.toIso8601String();
 
 int boolInt(bool b) => b ? 1 : 0;

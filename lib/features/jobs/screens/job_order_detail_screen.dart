@@ -91,17 +91,59 @@ class JobOrderDetailScreen extends StatelessWidget {
       builder: (context) {
         final allJobs = jobsSignals.allJobs.value;
         final job = allJobs.where((j) => j.id == jobId).firstOrNull;
+        final isNotAssigned = jobsSignals.isJobNotAssigned(jobId);
 
-        if (job == null) {
+        if (job == null || isNotAssigned) {
           return Scaffold(
             appBar: AppBar(
               automaticallyImplyLeading: automaticallyImplyLeading,
               title: const Text('Work Order Details'),
             ),
             body: Center(
-              child: Text(
-                'Job Order not found or removed.',
-                style: TextStyle(color: AppTheme.secondaryInkOf(context)),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isNotAssigned
+                          ? CupertinoIcons.exclamationmark_shield
+                          : CupertinoIcons.checkmark_shield,
+                      size: 40,
+                      color: isNotAssigned
+                          ? AppTheme.warningInkOf(context)
+                          : AppTheme.successInkOf(context),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      isNotAssigned
+                          ? 'Order Reassigned'
+                          : 'Order Completed or Reassigned',
+                      style: context.text.titleMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      isNotAssigned
+                          ? 'This job order was reassigned to another technician.'
+                          : 'This job order has been completed or removed from your active queue.',
+                      style: context.text.bodySmall!.copyWith(
+                        color: AppTheme.secondaryInkOf(context),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (automaticallyImplyLeading &&
+                        Navigator.of(context).canPop()) ...[
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        key: const ValueKey('job_detail_back_to_list_button'),
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                        label: const Text('Back to List'),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           );
@@ -2675,8 +2717,7 @@ class JobOrderDetailScreen extends StatelessWidget {
       SnackBar(
         content: Text(reachedServer
             ? '${job.ticketNumber} marked as completed. It now appears in History.'
-            : '${job.ticketNumber} is saved on this phone but the office has '
-                'not accepted it yet. It will retry.'
+            : '${job.ticketNumber} is saved on this phone and queued for sync.'
                 '${detail == null ? '' : '\n$detail'}'),
         backgroundColor: reachedServer
             ? (isDark ? AppTheme.darkCard : AppTheme.darkSlate)
@@ -2685,6 +2726,10 @@ class JobOrderDetailScreen extends StatelessWidget {
         duration: Duration(seconds: reachedServer ? 4 : 10),
       ),
     );
+    // Gene - Nov, 28, 2026: Navigate back to list on completion so active stream eviction never leaves a blank detail screen.
+    if (automaticallyImplyLeading && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   void _copyJobSummary(BuildContext context, JobOrderDto job, bool isDark) {

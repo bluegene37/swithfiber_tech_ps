@@ -49,10 +49,18 @@ class JobHistoryView extends StatefulWidget {
 }
 
 class _JobHistoryViewState extends State<JobHistoryView> {
+  static const int _pageSize = 50;
+
   final TextEditingController _searchController = TextEditingController();
-  // Gene - Nov, 28, 2026: On-demand PowerSync v12 history stream subscription with 15m TTL, cleaned up when leaving history view.
+  final ScrollController _scrollController = ScrollController();
+  // Gene - Nov, 28, 2026: On-demand PowerSync v13 history stream subscription (15m TTL) + paginated LIMIT 50 OFFSET ? local SQLite queries.
   SyncStreamSubscription? _historySub;
+  VoidCallback? _disposeWatcher;
   bool _isSyncingHistory = false;
+  bool _loadingMore = false;
+  bool _hasMoreSqlPages = false;
+  int _loadedPages = 1;
+  List<JobOrderDto> _pagedSqlJobs = const [];
 
   static final _short = DateFormat('MMM d');
 
@@ -60,7 +68,93 @@ class _JobHistoryViewState extends State<JobHistoryView> {
   void initState() {
     super.initState();
     _searchController.text = widget.jobsSignals.historySearch.value;
+    _scrollController.addListener(_onScroll);
+    _disposeWatcher = effect(() {
+      widget.jobsSignals.allJobs.value;
+      widget.jobsSignals.technicianEmail.value;
+      widget.jobsSignals.historyStatus.value;
+      widget.jobsSignals.historyRange.value;
+      widget.jobsSignals.historyCity.value;
+      widget.jobsSignals.historySearch.value;
+      unawaited(_reloadFirstPage());
+    });
     _subscribeHistory();
+    unawaited(_reloadFirstPage());
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients || _loadingMore) return;
+    final pos = _scrollController.position;
+    if (pos.pixels >= pos.maxScrollExtent - 200) {
+      unawaited(_loadNextPage());
+    }
+  }
+
+  String? _statusParam() => switch (widget.jobsSignals.historyStatus.value) {
+        HistoryStatusFilter.all => null,
+        HistoryStatusFilter.activated => 'Activated',
+        HistoryStatusFilter.completed => 'Completed',
+      };
+
+  Future<void> _reloadFirstPage() async {
+    if (widget.jobsSignals.historyRange.value != HistoryRange.all) {
+      if (mounted && _pagedSqlJobs.isNotEmpty) {
+        setState(() {
+          _loadedPages = 1;
+          _pagedSqlJobs = const [];
+          _hasMoreSqlPages = false;
+        });
+      }
+      return;
+    }
+    try {
+      final rows = await widget.jobsSignals.getHistoryJobsPage(
+        limit: _pageSize,
+        offset: 0,
+        statusFilter: _statusParam(),
+        city: widget.jobsSignals.historyCity.value,
+        search: widget.jobsSignals.historySearch.value,
+      );
+      if (!mounted) return;
+      setState(() {
+        _loadedPages = 1;
+        _pagedSqlJobs = rows;
+        _hasMoreSqlPages = rows.length == _pageSize;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _loadNextPage() async {
+    if (_loadingMore) return;
+    final useSqlRows =
+        widget.jobsSignals.historyRange.value == HistoryRange.all &&
+            _pagedSqlJobs.isNotEmpty;
+    if (useSqlRows) {
+      if (!_hasMoreSqlPages) return;
+      setState(() => _loadingMore = true);
+      try {
+        final next = await widget.jobsSignals.getHistoryJobsPage(
+          limit: _pageSize,
+          offset: _pagedSqlJobs.length,
+          statusFilter: _statusParam(),
+          city: widget.jobsSignals.historyCity.value,
+          search: widget.jobsSignals.historySearch.value,
+        );
+        if (!mounted) return;
+        setState(() {
+          _pagedSqlJobs = [..._pagedSqlJobs, ...next];
+          _hasMoreSqlPages = next.length == _pageSize;
+        });
+      } finally {
+        if (mounted) setState(() => _loadingMore = false);
+      }
+      return;
+    }
+
+    final totalInMemory = widget.jobsSignals.historyJobs.value.length;
+    if (_loadedPages * _pageSize < totalInMemory) {
+      setState(() => _loadedPages += 1);
+    }
   }
 
   Future<void> _subscribeHistory() async {
@@ -80,6 +174,7 @@ class _JobHistoryViewState extends State<JobHistoryView> {
       }
       _historySub = sub;
       await sub?.waitForFirstSync();
+      await _reloadFirstPage();
     } catch (_) {
       // Offline or transient sync failure: show locally cached history rows.
     } finally {
@@ -89,6 +184,9 @@ class _JobHistoryViewState extends State<JobHistoryView> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _disposeWatcher?.call();
     _historySub?.unsubscribe();
     _searchController.dispose();
     super.dispose();
@@ -253,24 +351,55 @@ class _JobHistoryViewState extends State<JobHistoryView> {
                     return const SkeletonCardList();
                   }
 
-                  final jobs = signals.historyJobs.value;
+                  final inMemoryJobs = signals.historyJobs.value;
+                  final useSqlRows =
+                      signals.historyRange.value == HistoryRange.all &&
+                          _pagedSqlJobs.isNotEmpty;
+                  final jobs = useSqlRows
+                      ? _pagedSqlJobs
+                      : inMemoryJobs.take(_loadedPages * _pageSize).toList();
+                  final hasMore = useSqlRows
+                      ? _hasMoreSqlPages
+                      : inMemoryJobs.length > jobs.length;
+
                   if (jobs.isEmpty) {
                     final total = signals.historyTotalCount.value;
                     return _EmptyState(
                       filtered: total > 0,
-                      onRefresh: () => signals.fetchRemote(),
+                      onRefresh: () async {
+                        await signals.fetchRemote();
+                        await _reloadFirstPage();
+                      },
                       onClearFilters: _clearFilters,
                     );
                   }
 
                   return RefreshIndicator(
-                    onRefresh: signals.fetchRemote,
+                    onRefresh: () async {
+                      await signals.fetchRemote();
+                      await _reloadFirstPage();
+                    },
                     color: AppTheme.primary,
                     child: ListView.separated(
+                      controller: _scrollController,
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      itemCount: jobs.length,
+                      itemCount: jobs.length + (hasMore ? 1 : 0),
                       separatorBuilder: (_, __) => const SizedBox(height: 8),
                       itemBuilder: (context, index) {
+                        if (index >= jobs.length) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: OutlinedButton(
+                                key: const ValueKey('job_history_load_more'),
+                                onPressed: _loadingMore ? null : _loadNextPage,
+                                child: Text(
+                                  _loadingMore ? 'Loading...' : 'Load more',
+                                ),
+                              ),
+                            ),
+                          );
+                        }
                         final job = jobs[index];
                         return JobHistoryTile(
                           job: job,

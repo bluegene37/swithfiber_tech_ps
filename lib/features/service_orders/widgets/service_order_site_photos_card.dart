@@ -90,15 +90,26 @@ class _ServiceOrderSitePhotosCardState
     bool forceRefresh = false,
     bool silent = false,
   }) async {
+    // Gene - Nov, 28, 2026: Halt network retries gracefully when gateway returns 403 NOT_ASSIGNED.
+    if (widget.signals.isOrderNotAssigned(widget.order.id) && !forceRefresh) {
+      _photoAutoSyncTimer?.cancel();
+      return;
+    }
     if (!silent && mounted) setState(() => _isLoading = true);
     try {
       final res = await widget.signals.getServiceOrderImages(
         widget.order.id,
         forceRefresh: forceRefresh,
       );
+      if (widget.signals.isOrderNotAssigned(widget.order.id)) {
+        _photoAutoSyncTimer?.cancel();
+      }
       if (mounted && res != null) {
         setState(() => _sitePhotos = res);
         widget.onImagesLoaded?.call(res);
+      } else if (mounted &&
+          widget.signals.isOrderNotAssigned(widget.order.id)) {
+        setState(() => _sitePhotos = null);
       }
     } catch (_) {
       // Offline fallback
@@ -196,7 +207,37 @@ class _ServiceOrderSitePhotosCardState
               ],
             ),
             const SizedBox(height: 14),
-            if (attachedCount == 0 && !_isLoading)
+            if (widget.signals.isOrderNotAssigned(widget.order.id))
+              Container(
+                key: const ValueKey('service_order_photos_not_assigned_notice'),
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                decoration: BoxDecoration(
+                  color: isDark ? AppTheme.darkInput : AppTheme.lightBg,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isDark ? AppTheme.borderDark : AppTheme.borderLight,
+                    width: 0.5,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(CupertinoIcons.exclamationmark_shield,
+                        size: 20, color: AppTheme.warningInkOf(context)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Order reassigned — photos are no longer available for your account.',
+                        style: context.text.bodySmall!.copyWith(
+                          color: AppTheme.secondaryInkOf(context),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else if (attachedCount == 0 && !_isLoading)
               Container(
                 width: double.infinity,
                 padding:

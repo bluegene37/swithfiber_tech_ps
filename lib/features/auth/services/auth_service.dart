@@ -4,6 +4,20 @@ import '../../../core/storage/secure_storage_service.dart';
 import '../../../core/sync/powersync_gateway_client.dart';
 import '../models/user_model.dart';
 
+/// Raised when `POST /api/Auth/login` answers HTTP 429 (`RATE_LIMITED`).
+class RateLimitedAuthException implements Exception {
+  final String message;
+  final int retryAfterSeconds;
+
+  const RateLimitedAuthException({
+    required this.message,
+    required this.retryAfterSeconds,
+  });
+
+  @override
+  String toString() => message;
+}
+
 /// Authentication service for field technician login and session management.
 class AuthService {
   final ApiClient _api;
@@ -118,10 +132,21 @@ class AuthService {
           return gwUser;
         }
       } on PowerSyncUploadException catch (e) {
+        // Gene - Nov, 28, 2026: Propagate 429 RATE_LIMITED cleanly with retryAfterSeconds instead of falling back to /Users/login.
+        if (e.isRateLimited) {
+          final retry = (e.retryAfterSeconds ?? 60).clamp(1, 3600);
+          throw RateLimitedAuthException(
+            message: e.message.isNotEmpty
+                ? e.message
+                : 'Too many sign-in attempts. Please wait ${retry}s.',
+            retryAfterSeconds: retry,
+          );
+        }
         if (e.isUnauthorized || e.statusCode == 400 || e.statusCode == 403) {
           throw Exception(e.message);
         }
       } catch (e) {
+        if (e is RateLimitedAuthException) rethrow;
         if (e.toString().contains('inactive')) rethrow;
       }
     }

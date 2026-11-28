@@ -2,6 +2,7 @@
 import 'package:dio/dio.dart';
 
 import '../constants/app_constants.dart';
+import '../database/sql_values.dart';
 import '../network/api_client.dart';
 // Gene - Nov, 28, 2026: Added dio validateStatus support and PowerSync v12 lookups/refresh/conflict/timing contracts.
 
@@ -54,8 +55,8 @@ class GatewayLookupsResult {
       etag: (bodyEtag != null && bodyEtag.isNotEmpty)
           ? bodyEtag
           : headerEtag?.trim(),
-      fetchedAt:
-          rawFetched == null ? null : DateTime.tryParse(rawFetched.toString()),
+      // Gene - Nov, 28, 2026: Preserve Asia/Manila local ISO lookup timestamps without applying a UTC offset.
+      fetchedAt: parseManilaLocalDate(rawFetched),
       tableEtags: parsedEtags,
       tables: parsedTables,
     );
@@ -145,6 +146,9 @@ class GatewayLoginResult {
 class PowerSyncUploadException implements Exception {
   final int? statusCode;
   final String message;
+  // Gene - Nov, 28, 2026: Added errorCode and retryAfterSeconds to surface PowerSync v13 429 RATE_LIMITED and 403 NOT_ASSIGNED gateway errors cleanly.
+  final String? errorCode;
+  final int? retryAfterSeconds;
   final String? requestMethod;
   final String? requestUrl;
   final dynamic requestBody;
@@ -153,6 +157,8 @@ class PowerSyncUploadException implements Exception {
   const PowerSyncUploadException({
     this.statusCode,
     required this.message,
+    this.errorCode,
+    this.retryAfterSeconds,
     this.requestMethod,
     this.requestUrl,
     this.requestBody,
@@ -162,13 +168,20 @@ class PowerSyncUploadException implements Exception {
   /// True for HTTP 401 Unauthorized, triggering a PowerSync token refresh.
   bool get isUnauthorized => statusCode == 401;
 
+  bool get isRateLimited => statusCode == 429 || errorCode == 'RATE_LIMITED';
+
+  bool get isNotAssigned =>
+      statusCode == 403 && (errorCode == null || errorCode == 'NOT_ASSIGNED');
+
   // Gene - Nov, 28, 2026: Identify non-blocking 409 Conflict responses (REASSIGNED / CANCELLED) and expose parsed serverRecord metadata.
   bool get isConflict => statusCode == 409;
 
   Map<String, dynamic>? get _responseMap => _asMapStatic(responseBody);
 
-  String get conflictCode =>
-      (_responseMap?['code'] ?? 'CONFLICT').toString().trim().toUpperCase();
+  String get conflictCode => (_responseMap?['code'] ?? errorCode ?? 'CONFLICT')
+      .toString()
+      .trim()
+      .toUpperCase();
 
   Map<String, dynamic>? get serverRecord =>
       _asMapStatic(_responseMap?['serverRecord']);
@@ -533,6 +546,8 @@ class PowerSyncGatewayClient {
   }) {
     int? status = error.response?.statusCode;
     String message = 'Gateway request failed.';
+    String? errorCode;
+    int? retryAfterSeconds;
 
     switch (error.type) {
       case DioExceptionType.connectionTimeout:
@@ -550,6 +565,16 @@ class PowerSyncGatewayClient {
                   data['title'] ??
                   'Gateway returned HTTP $status.')
               .toString();
+          final rawCode = data['code']?.toString().trim();
+          if (rawCode != null && rawCode.isNotEmpty) {
+            errorCode = rawCode.toUpperCase();
+          }
+          final rawRetry = data['retryAfterSeconds'];
+          if (rawRetry is int) {
+            retryAfterSeconds = rawRetry;
+          } else if (rawRetry != null) {
+            retryAfterSeconds = int.tryParse(rawRetry.toString());
+          }
           if (data['errors'] is Map) {
             final errMap = data['errors'] as Map;
             final details = <String>[];
@@ -569,6 +594,12 @@ class PowerSyncGatewayClient {
         } else {
           message = 'Gateway returned HTTP ${status ?? "unknown"}.';
         }
+        if (retryAfterSeconds == null && status == 429) {
+          final headerRetry = error.response?.headers.value('retry-after');
+          if (headerRetry != null) {
+            retryAfterSeconds = int.tryParse(headerRetry.trim());
+          }
+        }
         break;
       case DioExceptionType.connectionError:
         message = 'Cannot reach PowerSync gateway. Device may be offline.';
@@ -587,6 +618,8 @@ class PowerSyncGatewayClient {
     return PowerSyncUploadException(
       statusCode: status,
       message: message,
+      errorCode: errorCode,
+      retryAfterSeconds: retryAfterSeconds,
       requestMethod: method,
       requestUrl: url,
       requestBody: requestBody,

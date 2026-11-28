@@ -6,6 +6,7 @@ import 'package:sqlite_async/sqlite_async.dart' show SqliteWriteContext;
 import '../../../core/database/daos/job_orders_dao.dart';
 import '../../../core/database/daos/pending_attachments_dao.dart';
 import '../../../core/database/daos/sync_error_logs_dao.dart';
+import '../../../core/network/network_exceptions.dart';
 // Gene - Nov, 26, 2026: Added WorkTimingHistoryDao and WorkTimingEntry imports for recording restartable Job Order timing sessions.
 import '../../../core/database/daos/work_timing_history_dao.dart';
 import '../../../core/database/models/pending_attachment.dart';
@@ -63,6 +64,46 @@ class JobRepository {
 
   // Gene - Nov 5, 2026: Cached Job Order site photo proofs and customer signature by job ID.
   final Map<int, JobOrderImagesDto> _imagesCache = {};
+  // Gene - Nov, 28, 2026: Track 403 NOT_ASSIGNED job IDs to stop retries cleanly when reassigned on server.
+  final Set<int> _notAssignedJobIds = <int>{};
+  void Function(int jobId)? onJobNotAssigned;
+
+  bool isJobNotAssigned(int jobId) => _notAssignedJobIds.contains(jobId);
+
+  Future<List<JobOrderDto>> getHistoryJobsPage({
+    int limit = 50,
+    int offset = 0,
+    String? technicianEmail,
+    String? statusFilter,
+    String? city,
+    String? search,
+  }) =>
+      _dao.getHistoryJobsPage(
+        limit: limit,
+        offset: offset,
+        technicianEmail: technicianEmail,
+        statusFilter: statusFilter,
+        city: city,
+        search: search,
+      );
+
+  /// Fetch a single remote job order safely, halting on `403 NOT_ASSIGNED`.
+  Future<JobOrderDto?> fetchRemoteJobById(int jobId) async {
+    if (_notAssignedJobIds.contains(jobId)) return null;
+    try {
+      final raw = await _api.fetchById(jobId);
+      if (raw == null) return null;
+      return JobOrderDto.fromJson(raw);
+    } on ApiException catch (e) {
+      if (e.isNotAssigned) {
+        _notAssignedJobIds.add(jobId);
+        clearImagesCache(jobId);
+        onJobNotAssigned?.call(jobId);
+        return null;
+      }
+      rethrow;
+    }
+  }
 
   /// Clear in-memory and disk photo caches (useful for tests, uploads, or manual refresh).
   void clearImagesCache([int? id]) {
@@ -79,29 +120,14 @@ class JobRepository {
     int jobId, {
     bool forceRefresh = false,
   }) async {
-    /*
-    if (forceRefresh) {
-      _imagesCache.remove(jobId);
-    } else if (_imagesCache.containsKey(jobId)) {
-      return _imagesCache[jobId];
+    if (_notAssignedJobIds.contains(jobId) && !forceRefresh) {
+      return null;
     }
-
-    try {
-      final data = await _api.fetchImages(jobId);
-      if (data != null) {
-        final dto = JobOrderImagesDto.fromJson(data);
-        _imagesCache[jobId] = dto;
-        return dto;
-      }
-    } catch (_) {
-      // Offline fallback or test mock
-    }
-    return _imagesCache[jobId];
-    */
     // Gene - Nov, 28, 2026: Use lazy disk cache + pending_attachments local overlay so photos work offline without polling or Base64 in ps_crud.
     JobOrderImagesDto? baseDto;
     if (forceRefresh) {
       _imagesCache.remove(jobId);
+      _notAssignedJobIds.remove(jobId);
     } else if (_imagesCache.containsKey(jobId)) {
       baseDto = _imagesCache[jobId];
     } else {
@@ -124,6 +150,20 @@ class JobRepository {
             RemotePhotoCacheService.instance
                 .writeCachedJson('job_orders', jobId, dto.toJson()),
           );
+        }
+      } on ApiException catch (e) {
+        if (e.isNotAssigned) {
+          _notAssignedJobIds.add(jobId);
+          clearImagesCache(jobId);
+          onJobNotAssigned?.call(jobId);
+          return null;
+        }
+        if (baseDto == null) {
+          final diskJson = await RemotePhotoCacheService.instance
+              .readCachedJson('job_orders', jobId);
+          if (diskJson != null) {
+            baseDto = JobOrderImagesDto.fromJson(diskJson);
+          }
         }
       } catch (_) {
         if (baseDto == null) {
@@ -831,7 +871,7 @@ class JobRepository {
     unawaited(syncWorker.syncPendingJobs());
   }
 */
-  // Gene - Oct 13, 2026: Added visitBy and visitWith parameters to saveCompletionReport to support technician attendance tracking.
+  // Gene - Nov, 28, 2026: Accept editable lcp, port, vlan strings in saveCompletionReport per PowerSync v13.
   Future<void> saveCompletionReport({
     required int id,
     String? status,
@@ -841,6 +881,9 @@ class JobRepository {
     String? modemRouterSN,
     String? routerModel,
     String? nap,
+    String? lcp,
+    String? port,
+    String? vlan,
     int? vlanId,
     int? planId,
     String? planName,
@@ -888,6 +931,9 @@ class JobRepository {
       modemRouterSN: modemRouterSN,
       routerModel: routerModel,
       nap: nap,
+      lcp: lcp,
+      port: port,
+      vlan: vlan,
       vlanId: vlanId,
       planId: planId,
       planName: planName,
@@ -967,6 +1013,9 @@ class JobRepository {
           modemRouterSN: modemRouterSN,
           routerModel: routerModel,
           nap: nap,
+          lcp: lcp,
+          port: port,
+          vlan: vlan,
           vlanId: vlanId,
           planId: planId,
           planName: planName,
@@ -1041,6 +1090,9 @@ class JobRepository {
       modemRouterSN: modemRouterSN,
       routerModel: routerModel,
       nap: nap,
+      lcp: lcp,
+      port: port,
+      vlan: vlan,
       vlanId: vlanId,
       planId: planId,
       planName: planName,
