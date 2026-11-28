@@ -1502,13 +1502,13 @@ void main() {
       expect(
           find.text('LCP LCP-10 · NAP NAP-04 · PORT Port 2'), findsOneWidget);
 
-      // Start -> shows Stop label; Stop -> shows Start Again label.
+      // Start -> shows Finish label; Finish -> shows Start Again label.
       final soStartBtn =
           find.byKey(const ValueKey('service_order_start_button_305'));
       await tester.ensureVisible(soStartBtn);
       await tester.tap(soStartBtn);
       await tester.pumpAndSettle();
-      expect(find.text('Stop'), findsOneWidget);
+      expect(find.text('Finish'), findsOneWidget);
 
       final soStopBtn =
           find.byKey(const ValueKey('service_order_finish_button_305'));

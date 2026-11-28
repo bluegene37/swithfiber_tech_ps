@@ -377,7 +377,9 @@ class _WorkTimingHistoryCard extends StatelessWidget {
     final typeBorder = isService
         ? AppTheme.serviceOrderSubtleBorderOf(context)
         : AppTheme.hairlineOf(context);
-    final endLabel = isService ? 'Stop' : 'Finish';
+    // Gene - Nov, 28, 2026: Use 'Finish' for both Job Orders and Service Orders in Work Timing History.
+    // final endLabel = isService ? 'Stop' : 'Finish';
+    const endLabel = 'Finish';
 
     return Material(
       color: AppTheme.cardOf(context),

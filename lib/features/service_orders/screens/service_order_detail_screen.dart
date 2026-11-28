@@ -1093,7 +1093,9 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
                           : WorkTimingStatus.finished,
                       startTime: order.startTimestamp,
                       endTime: order.stopTimestamp,
-                      finishLabel: 'Stop',
+                      // Gene - Nov, 28, 2026: Use 'Finish' consistently on Service Order detail banner.
+                      // finishLabel: 'Stop',
+                      finishLabel: 'Finish',
                     ),
                   // 1. Concern & Subscriber Card
                   _buildSubscriberCard(order, isDark),
@@ -1200,7 +1202,9 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
                           widget.jobsSignals?.timingHistory,
                       orderType: WorkTimingEntry.orderTypeServiceOrder,
                       orderId: order.id,
-                      finishLabel: 'Stop',
+                      // Gene - Nov, 28, 2026: Use 'Finish' consistently on Service Order timing history.
+                      // finishLabel: 'Stop',
+                      finishLabel: 'Finish',
                       orderReference: order.accountNumber,
                       customerName: order.fullName,
                       fallbackStartTime: order.startTimestamp,

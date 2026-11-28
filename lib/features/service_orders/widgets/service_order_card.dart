@@ -881,7 +881,9 @@ class _ServiceOrderCardState extends State<ServiceOrderCard> {
                 isBusy: isBusy,
                 hideStart: hasOtherActiveOrder,
                 lockedHint: lockedHint,
-                finishLabel: 'Stop',
+                // Gene - Nov, 28, 2026: Use 'Finish' consistently on Service Order cards to match Job Orders.
+                // finishLabel: 'Stop',
+                finishLabel: 'Finish',
                 restartLabel: 'Start Again',
                 accentColor: AppTheme.serviceOrderAccent,
                 startButtonKey:
