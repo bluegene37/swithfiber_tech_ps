@@ -120,6 +120,12 @@ void main() {
         find.text('No jobs matching "NonexistentSubscriber"'), findsOneWidget);
     expect(find.text('Clear Search'), findsOneWidget);
 
+    /*
+    await tester.tap(find.text('Clear Search'));
+    */
+    // Gene - Nov, 28, 2026: Scroll Clear Search button into view before tapping when ActiveWorkOrderBanner shifts the scrollable empty state below the 600px test viewport.
+    await tester.ensureVisible(find.text('Clear Search'));
+    await tester.pump();
     await tester.tap(find.text('Clear Search'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
@@ -163,6 +169,12 @@ void main() {
     */
     // Gene - Oct 13, 2026: Tapping the card expands it; tapping DETAILS selects the job on tablet master-detail view.
     await tester.tap(find.text('Juan Dela Cruz'));
+    await tester.pump();
+    /*
+    await tester.tap(find.text('DETAILS'));
+    */
+    // Gene - Nov, 28, 2026: Scroll expanded card DETAILS action into view before tapping when ActiveWorkOrderBanner shifts the left-pane list on 1024x768 tablet viewports.
+    await tester.ensureVisible(find.text('DETAILS'));
     await tester.pump();
     await tester.tap(find.text('DETAILS'));
     await tester.pump();

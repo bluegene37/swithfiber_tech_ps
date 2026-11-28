@@ -18,6 +18,8 @@ All notable changes to Switch Fiber Tech are recorded here. The format follows
 ### Fixed
 - **Fresh-Install Sync Deadlock & Work Timing Reliability.** Cleared stale keychain credentials on fresh installs so first-launch sync works without re-login, hardened single-active-order start locking across hidden/rescheduled jobs, and added synced start/end timestamp fallback in order timing history.
 - **Android AGP 9 WorkManager Build.** Upgraded `workmanager` to `^0.10.10` (`workmanager_android 0.10.9`) to fix Kotlin compilation under AGP 9 with `android.builtInKotlin=false` and improve Android 16 background isolate reliability.
+- **Terminal Ghost Start Locks & Active Order Banner.** Tightened `ServiceOrderDto.isOpen` and active Repairs filtering so completed/cancelled history rows cannot silently hide `Start` buttons, excluded site-exception Job Orders (`Rescheduled`/`Failed`) from holding active locks, and added a persistent active-order banner with one-tap *Finish* across Job Orders and Service Orders.
+- **iOS TestFlight `BGTaskScheduler` Launch Crash.** Pre-registered `dev.genexis.swithfibertech.backgroundSync` and `WorkmanagerPlugin.setPluginRegistrantCallback` during `AppDelegate.didFinishLaunchingWithOptions` (and set `initialDelay: 15m` in `BackgroundSyncService`) so `workmanager_apple` never registers a launch handler after app launch finishes.
 
 ## [1.0.3] - 2026-11-07
 
