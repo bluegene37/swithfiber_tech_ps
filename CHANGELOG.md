@@ -10,6 +10,14 @@ All notable changes to Switch Fiber Tech are recorded here. The format follows
 - **PowerSync v11 & RS256 Gateway Integration (Dual-Mode).** Connects to self-hosted PowerSync streaming and authenticated Gateway uploads when `POWERSYNC_ENDPOINT` and `POWERSYNC_GATEWAY_URL` are supplied via `--dart-define`, while remaining in local-only REST fallback mode when unset.
 - **Job & Service Order Work Timing Controls.** Start, Finish/Stop, and restartable work timing with pre-Start editing lock, single-active-order enforcement, and a local technician timing history log.
 - **Service Order Visual Parity & 4-Slot Photo Gallery.** `GetServiceOrderImage` gallery viewer, multipart photo uploads across all repair slots, and structured repair completion reporting.
+- **PowerSync v12 & v13 Schema, On-Demand History & Hardened Gateway.** Canonical `item_name_1..10` / `item_quantity_1..10` columns with v13 MSSQL-aligned types, offline SQL-joinable local lookup tables synced via `GET /api/sync/lookups` (`ETag`), on-demand history streams, coalesced multipart PATCH uploads, conflict & `403 NOT_ASSIGNED` handling, `429` login rate-limit backoff, photo compression, and periodic/one-off background sync (`workmanager`).
+
+### Changed
+- **Service Order Timing & Queue Grouping.** Standardized Service Order end-timing button label from *Stop* to *Finish* for parity with Job Orders, and grouped *Rescheduled* Job Orders and Service Orders under a bottom *Rescheduled* section.
+
+### Fixed
+- **Fresh-Install Sync Deadlock & Work Timing Reliability.** Cleared stale keychain credentials on fresh installs so first-launch sync works without re-login, hardened single-active-order start locking across hidden/rescheduled jobs, and added synced start/end timestamp fallback in order timing history.
+- **Android AGP 9 WorkManager Build.** Upgraded `workmanager` to `^0.10.10` (`workmanager_android 0.10.9`) to fix Kotlin compilation under AGP 9 with `android.builtInKotlin=false` and improve Android 16 background isolate reliability.
 
 ## [1.0.3] - 2026-11-07
 
