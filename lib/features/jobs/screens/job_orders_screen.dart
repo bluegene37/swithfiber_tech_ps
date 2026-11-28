@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
+// Gene - Nov, 28, 2026: Import PowerSyncService so _syncNow triggers live PowerSync reconnect in replicated mode.
+import '../../../core/sync/powersync_service.dart';
 import '../../../core/widgets/app_search_field.dart';
 import '../../../core/widgets/loading_states.dart';
 import '../../../core/widgets/status_rail_row.dart';
@@ -246,6 +248,7 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
     });
   }
 
+  /*
   Future<void> _syncNow(BuildContext context, JobsSignals signals) async {
     final result = await signals.repository.syncWorker.syncPendingJobs();
     await signals.fetchRemote();
@@ -263,6 +266,46 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
   /// Prioritizes active scheduled/in-progress jobs over rescheduled jobs.
   static JobOrderDto pickNext(List<JobOrderDto> jobs) {
     final active = jobs.where((j) => !j.isRescheduled).toList();
+    final candidates = active.isNotEmpty ? active : jobs;
+  */
+  // Gene - Nov, 28, 2026: Treat both Rescheduled status and onsite Reschedule exception consistently, and make _syncNow reconnect PowerSync when replicated mode is active.
+  static bool _isRescheduledJob(JobOrderDto j) =>
+      j.isRescheduled || j.siteException == SiteException.reschedule;
+
+  Future<void> _syncNow(BuildContext context, JobsSignals signals) async {
+    if (PowerSyncService.instance.isInitialized &&
+        PowerSyncService.instance.isReplicatedMode) {
+      await signals.fetchRemote();
+      if (!context.mounted) return;
+      final crudCount = await PowerSyncService.instance.countPendingCrud();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            crudCount == 0
+                ? 'Synced with the server.'
+                : '$crudCount change${crudCount == 1 ? '' : 's'} waiting to upload.',
+          ),
+        ),
+      );
+      return;
+    }
+    final result = await signals.repository.syncWorker.syncPendingJobs();
+    await signals.fetchRemote();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result.failedCount == 0 ? 'Synced with the server.' : result.message,
+        ),
+      ),
+    );
+  }
+
+  /// The nearest scheduled job when the phone has a fix, else the first.
+  /// Prioritizes active scheduled/in-progress jobs over rescheduled jobs.
+  static JobOrderDto pickNext(List<JobOrderDto> jobs) {
+    final active = jobs.where((j) => !_isRescheduledJob(j)).toList();
     final candidates = active.isNotEmpty ? active : jobs;
 
     JobOrderDto best = candidates.first;
@@ -609,6 +652,7 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
           ),
         );
         */
+        /*
         // Gene - Oct 8, 2026: Group jobs by scheduled Date instead of Next and Then kickers.
         // Orders groups chronologically and keeps nearest GPS dispatch prioritized within its date.
         final searching = _searchController.text.trim().isNotEmpty;
@@ -783,6 +827,167 @@ class _JobOrdersScreenState extends State<JobOrdersScreen> {
                   ];
                 }(),
               ],
+            ],
+          ),
+        );
+        */
+        // Gene - Nov, 28, 2026: Partition active vs Rescheduled jobs so both Date and Barangay views group all Rescheduled jobs together at the bottom.
+        final searching = _searchController.text.trim().isNotEmpty;
+        final activeJobs =
+            jobs.where((job) => !_isRescheduledJob(job)).toList();
+        final rescheduledJobs =
+            jobs.where((job) => _isRescheduledJob(job)).toList()
+              ..sort((a, b) {
+                final dA = a.scheduledDate;
+                final dB = b.scheduledDate;
+                if (dA == null && dB != null) return 1;
+                if (dA != null && dB == null) return -1;
+                if (dA != null && dB != null) {
+                  final dateCmp = dA.compareTo(dB);
+                  if (dateCmp != 0) return dateCmp;
+                }
+                final nameCmp = a.customerName.compareTo(b.customerName);
+                if (nameCmp != 0) return nameCmp;
+                return a.id.compareTo(b.id);
+              });
+
+        final next =
+            (searching || activeJobs.isEmpty) ? null : pickNext(activeJobs);
+        final prioritized = [
+          if (next != null) next,
+          for (final job in activeJobs)
+            if (job.id != next?.id) job,
+        ];
+
+        Widget buildRow(JobOrderDto job) => _JobRow(
+              key: ValueKey('job_row_${job.id}'),
+              job: job,
+              jobsSignals: signals,
+              serviceOrdersSignals: widget.serviceOrdersSignals,
+              isNew: job.jobStatus == JobStatus.scheduled &&
+                  !readJobIds.contains(job.id),
+              onMarkRead: () => signals.markJobAsRead(job.id),
+              onTap: () => _openDetails(job),
+              onOpenReport: () => _openReport(job),
+            );
+
+        List<Widget> buildRescheduledSection() {
+          if (rescheduledJobs.isEmpty) return const <Widget>[];
+          return [
+            if (prioritized.isNotEmpty) const SizedBox(height: 8),
+            _RescheduledSectionHeader(count: rescheduledJobs.length),
+            for (final job in rescheduledJobs) ...[
+              buildRow(job),
+              const SizedBox(height: 8),
+            ],
+          ];
+        }
+
+        // If grouped by Barangay, group active jobs strictly by Barangay and place Rescheduled at the bottom.
+        if (_grouping == JobGrouping.barangay) {
+          final bgyMap = <String, List<JobOrderDto>>{};
+          for (final job in prioritized) {
+            final bgy =
+                (job.barangay != null && job.barangay!.trim().isNotEmpty)
+                    ? job.barangay!.trim()
+                    : 'Other Area';
+            bgyMap.putIfAbsent(bgy, () => []).add(job);
+          }
+          final sortedBgys = bgyMap.keys.toList()
+            ..sort((a, b) {
+              if (a == 'Other Area') return 1;
+              if (b == 'Other Area') return -1;
+              return a.compareTo(b);
+            });
+
+          return RefreshIndicator(
+            onRefresh: signals.fetchRemote,
+            color: AppTheme.primary,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+              children: [
+                for (final bgy in sortedBgys) ...[
+                  _BarangayHeader(
+                    barangay: bgy,
+                    count: bgyMap[bgy]!.length,
+                  ),
+                  for (final job in bgyMap[bgy]!) ...[
+                    buildRow(job),
+                    const SizedBox(height: 8),
+                  ],
+                ],
+                ...buildRescheduledSection(),
+              ],
+            ),
+          );
+        }
+
+        // Group active jobs by scheduled calendar day, sub-clustered by Barangay, with Rescheduled at the bottom.
+        final Map<String, List<JobOrderDto>> groupedJobs = {};
+        final Map<String, DateTime?> groupDates = {};
+
+        for (final job in prioritized) {
+          final date = job.scheduledDate;
+          final key = date != null
+              ? '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}'
+              : 'unscheduled';
+          groupedJobs.putIfAbsent(key, () => []).add(job);
+          if (!groupDates.containsKey(key)) {
+            groupDates[key] =
+                date != null ? DateTime(date.year, date.month, date.day) : null;
+          }
+        }
+
+        final sortedKeys = groupedJobs.keys.toList()
+          ..sort((a, b) {
+            final dateA = groupDates[a];
+            final dateB = groupDates[b];
+            if (dateA == null && dateB == null) return 0;
+            if (dateA == null) return 1;
+            if (dateB == null) return -1;
+            return dateA.compareTo(dateB);
+          });
+
+        return RefreshIndicator(
+          onRefresh: signals.fetchRemote,
+          color: AppTheme.primary,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            children: [
+              for (final key in sortedKeys) ...[
+                _Kicker(dateGroupLabel(groupDates[key])),
+                ...() {
+                  final bgyMap = <String, List<JobOrderDto>>{};
+                  for (final job in groupedJobs[key]!) {
+                    final bgy = (job.barangay != null &&
+                            job.barangay!.trim().isNotEmpty)
+                        ? job.barangay!.trim()
+                        : 'Other Area';
+                    bgyMap.putIfAbsent(bgy, () => []).add(job);
+                  }
+                  final sortedBgys = bgyMap.keys.toList()
+                    ..sort((a, b) {
+                      if (a == 'Other Area') return 1;
+                      if (b == 'Other Area') return -1;
+                      return a.compareTo(b);
+                    });
+
+                  return [
+                    for (final bgy in sortedBgys) ...[
+                      if (sortedBgys.length > 1 || bgy != 'Other Area')
+                        _BarangayHeader(
+                          barangay: bgy,
+                          count: bgyMap[bgy]!.length,
+                        ),
+                      for (final job in bgyMap[bgy]!) ...[
+                        buildRow(job),
+                        const SizedBox(height: 8),
+                      ],
+                    ],
+                  ];
+                }(),
+              ],
+              ...buildRescheduledSection(),
             ],
           ),
         );
@@ -975,6 +1180,57 @@ class _BarangayHeader extends StatelessWidget {
   }
 }
 
+// Gene - Nov, 28, 2026: Dedicated bottom section header for Rescheduled Job Orders across Date and Barangay groupings.
+class _RescheduledSectionHeader extends StatelessWidget {
+  final int count;
+
+  const _RescheduledSectionHeader({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final warningInk = AppTheme.warningInkOf(context);
+    return Container(
+      key: const ValueKey('rescheduled_group_header'),
+      padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
+      child: Row(
+        children: [
+          Icon(
+            Icons.event_repeat_rounded,
+            size: 20,
+            color: warningInk,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Rescheduled',
+              style: context.text.labelLarge!.copyWith(
+                fontWeight: FontWeight.w700,
+                color: warningInk,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: AppTheme.fillOf(context),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '$count ${count == 1 ? 'job' : 'jobs'}',
+              style: context.text.labelSmall!.copyWith(
+                color: AppTheme.secondaryInkOf(context),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// One scheduled job as a status-rail card: distance in the lead column, the
 /// subscriber, the ticket with the record id in brackets as the mono data
 /// line, then icon-led detail lines at one size (address, plant ids, plan,
@@ -1086,7 +1342,20 @@ class _JobRow extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback? onOpenReport;
 
+  /*
   const _JobRow({
+    required this.job,
+    this.jobsSignals,
+    this.serviceOrdersSignals,
+    this.isNew = false,
+    this.onMarkRead,
+    required this.onTap,
+    this.onOpenReport,
+  });
+  */
+  // Gene - Nov, 28, 2026: Accept super.key so keyed test and list ordering assertions work across groupings.
+  const _JobRow({
+    super.key,
     required this.job,
     this.jobsSignals,
     this.serviceOrdersSignals,
@@ -1406,6 +1675,7 @@ class _JobRowState extends State<_JobRow> {
         ),
       ],
 */
+      /*
       // Gene - Nov, 20, 2026: Mark job as read when interacting with any footer action (Navigate, Call, SMS, or Details).
       // Gene - Nov, 25, 2026: Added Start/Finish WorkTimingBar for active Job Orders above card footer actions.
       // Gene - Nov, 26, 2026: Hide Start when another Job Order or Service Order is already active, and disable Navigate/Call/SMS/Details while locked.
@@ -1425,6 +1695,41 @@ class _JobRowState extends State<_JobRow> {
                 endTime: job.endTimeStamp,
                 isBusy: busy,
                 hideStart: hasOtherActiveOrder,
+                startButtonKey: ValueKey('job_start_button_${job.id}'),
+      */
+      // Gene - Nov, 28, 2026: Suppress timingBar for rescheduled onsite exceptions (unless already in progress), check in-flight busy IDs, and pass an informative lockedHint.
+      timingBar: (job.canActivate &&
+              (job.siteException != SiteException.reschedule ||
+                  job.isTimingInProgress) &&
+              widget.jobsSignals != null)
+          ? Watch((context) {
+              final busy =
+                  widget.jobsSignals!.busyTimingJobIds.value.contains(job.id);
+              final activeJob = widget.jobsSignals!.activeStartedJob.value;
+              final activeServiceOrder =
+                  widget.serviceOrdersSignals?.activeStartedOrder.value;
+              final hasOtherBusyJob = widget.jobsSignals!.busyTimingJobIds.value
+                  .any((id) => id != job.id);
+              final hasOtherBusyOrder = widget.serviceOrdersSignals
+                      ?.busyTimingOrderIds.value.isNotEmpty ??
+                  false;
+              final hasOtherActiveOrder =
+                  (activeJob != null && activeJob.id != job.id) ||
+                      activeServiceOrder != null ||
+                      hasOtherBusyJob ||
+                      hasOtherBusyOrder;
+              final lockedHint = (activeJob != null && activeJob.id != job.id)
+                  ? 'Finish JO #${activeJob.id} first'
+                  : activeServiceOrder != null
+                      ? 'Finish ${activeServiceOrder.accountNumber} first'
+                      : 'Finish active order first';
+              return WorkTimingBar(
+                status: job.workTimingStatus,
+                startTime: job.startTimeStamp,
+                endTime: job.endTimeStamp,
+                isBusy: busy,
+                hideStart: hasOtherActiveOrder,
+                lockedHint: lockedHint,
                 startButtonKey: ValueKey('job_start_button_${job.id}'),
                 finishButtonKey: ValueKey('job_finish_button_${job.id}'),
                 finishedButtonKey: ValueKey('job_finished_button_${job.id}'),

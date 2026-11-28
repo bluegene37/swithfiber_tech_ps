@@ -711,6 +711,13 @@ class ServiceOrderDto {
   // bool get isUrgent => (priorityLevel ?? '').trim().toLowerCase() == 'urgent';
   // Gene - Oct, 1, 2026: Added isOpen helper to determine whether a service order is active/actionable.
   bool get isDone => (visitStatus ?? '').trim().toLowerCase() == 'done';
+  // Gene - Nov, 28, 2026: Identify Rescheduled service orders consistently for bottom queue grouping and timing-lock checks.
+  bool get isRescheduled {
+    final visit = (visitStatus ?? '').trim().toLowerCase();
+    final support = supportStatus.trim().toLowerCase();
+    return visit.startsWith('reschedule') || support.startsWith('reschedule');
+  }
+
   bool get isUrgent => (priorityLevel ?? '').trim().toLowerCase() == 'urgent';
   bool get isOpen =>
       !isDone &&

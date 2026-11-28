@@ -308,6 +308,7 @@ class JobOrderDetailScreen extends StatelessWidget {
 
               // History and workflow notes last.
               _buildWorkflowCard(context, job, isDark),
+              /*
               if (jobsSignals.timingHistory != null) ...[
                 const SizedBox(height: 14),
                 OrderTimingHistoryCard(
@@ -315,6 +316,26 @@ class JobOrderDetailScreen extends StatelessWidget {
                   orderType: WorkTimingEntry.orderTypeJobOrder,
                   orderId: job.id,
                   finishLabel: 'Finish',
+                ),
+              ],
+              */
+              // Gene - Nov, 28, 2026: Always show OrderTimingHistoryCard when local history exists OR when server-synced startTimeStamp is present.
+              if (jobsSignals.timingHistory != null ||
+                  job.startTimeStamp != null) ...[
+                const SizedBox(height: 14),
+                OrderTimingHistoryCard(
+                  dao: jobsSignals.timingHistory,
+                  orderType: WorkTimingEntry.orderTypeJobOrder,
+                  orderId: job.id,
+                  finishLabel: 'Finish',
+                  orderReference: job.ticketNumber,
+                  customerName: job.customerName,
+                  fallbackStartTime: job.startTimeStamp,
+                  fallbackEndTime: job.endTimeStamp,
+                  fallbackUserId:
+                      (job.visitBy.trim().isNotEmpty && job.visitBy != 'None')
+                          ? job.visitBy
+                          : job.assignedEmail,
                 ),
               ],
             ],

@@ -540,6 +540,10 @@ class ServiceOrdersSignals {
       return true;
     }).toList()
       ..sort((a, b) {
+        // Gene - Nov, 28, 2026: Group Rescheduled repair tickets at the bottom of the queue in all sort modes.
+        if (a.isRescheduled != b.isRescheduled) {
+          return a.isRescheduled ? 1 : -1;
+        }
         if (mode == ServiceOrderSort.nearest && myPos != null) {
           final aPos = a.latLng;
           final bPos = b.latLng;
@@ -573,7 +577,12 @@ class ServiceOrdersSignals {
 
   /// Fetch latest service orders from the server scoped to the logged-in technician
   Future<void> fetchRemote({String? technicianEmail}) async {
+    /*
     final effectiveEmail =
+        (technicianEmail ?? this.technicianEmail.value)?.trim();
+    */
+    // Gene - Nov, 28, 2026: Retry profile refresh when technicianEmail is missing in REST mode and reconnect PowerSync when manually refreshing in replicated mode.
+    var effectiveEmail =
         (technicianEmail ?? this.technicianEmail.value)?.trim();
     /*
     if (effectiveEmail != null && effectiveEmail.isNotEmpty) {
@@ -587,7 +596,19 @@ class ServiceOrdersSignals {
     // Gene - Nov, 27, 2026: Downstream rows arrive via PowerSync streaming when replicated mode is active.
     if (_isReplicatedMode()) {
       _imagesCache.clear();
+      if (PowerSyncService.instance.isInitialized) {
+        await PowerSyncService.instance.reconnect();
+      }
       return;
+    }
+    if (effectiveEmail == null || effectiveEmail.isEmpty) {
+      await AuthSignals.instance.refreshProfile();
+      final refreshedEmail =
+          AuthSignals.instance.currentUser.value?.email.trim() ?? '';
+      if (refreshedEmail.isNotEmpty) {
+        effectiveEmail = refreshedEmail;
+        setTechnicianEmail(refreshedEmail);
+      }
     }
     isSyncing.value = true;
     syncError.value = null;
@@ -769,7 +790,13 @@ class ServiceOrdersSignals {
     final onlyMe = onlyAssignedToMe.value;
     final email = technicianEmail.value?.trim();
     for (final order in allOrders.value) {
+      /*
       if (!order.isOpen || !order.isTimingInProgress) continue;
+      */
+      // Gene - Nov, 28, 2026: Exclude Rescheduled orders from locking Start across active repairs.
+      if (!order.isOpen || order.isRescheduled || !order.isTimingInProgress) {
+        continue;
+      }
       if (onlyMe &&
           email != null &&
           email.isNotEmpty &&
@@ -912,7 +939,17 @@ class ServiceOrdersSignals {
   }) async {
     if (busyTimingOrderIds.value.contains(order.id)) return null;
     final currentActive = activeStartedOrder.value;
+    /*
     if (hasOtherActiveOrder ||
+        (currentActive != null && currentActive.id != order.id)) {
+      return 'Finish the active order before starting another.';
+    }
+    */
+    // Gene - Nov, 28, 2026: Also block concurrent Start taps on another Service Order while an in-flight startOrder write is pending.
+    final hasOtherBusyStart =
+        busyTimingOrderIds.value.any((id) => id != order.id);
+    if (hasOtherActiveOrder ||
+        hasOtherBusyStart ||
         (currentActive != null && currentActive.id != order.id)) {
       return 'Finish the active order before starting another.';
     }

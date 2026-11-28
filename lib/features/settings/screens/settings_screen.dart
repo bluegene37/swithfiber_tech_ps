@@ -510,7 +510,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       // Gene - Nov, 27, 2026: In replicated PowerSync mode, reconnect stream & refresh ps_crud queue count instead of running legacy REST sync workers.
       if (PowerSyncService.instance.isReplicatedMode) {
+        /*
         await PowerSyncService.instance.connectIfConfigured();
+        */
+        // Gene - Nov, 28, 2026: Force credential refresh & stream reconnect on manual Settings sync even if already marked connected.
+        await PowerSyncService.instance.reconnect();
         widget.jobsSignals.repository.clearImagesCache();
         widget.serviceOrdersSignals?.clearImagesCache();
         widget.lcpNapSignals?.repository.invalidateImagesCache();

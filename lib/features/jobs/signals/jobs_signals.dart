@@ -8,11 +8,15 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/database/daos/work_timing_history_dao.dart';
 import '../../../core/services/sound_service.dart';
 import '../../../core/storage/secure_storage_service.dart';
+// Gene - Nov, 28, 2026: Import PowerSyncService so manual fetchRemote can trigger a live PowerSync reconnect in replicated mode.
+import '../../../core/sync/powersync_service.dart';
 import '../../../core/widgets/loading_states.dart';
 import '../../../core/widgets/work_timing_bar.dart';
 // Gene - Nov, 25, 2026: Added AuthSignals import to resolve technician ID for Start/Finish timing calls.
 // Gene - Nov, 26, 2026: Commented out unused AuthSignals import after delegating user ID/name resolution to work_timing_bar.dart.
 // import '../../auth/signals/auth_signals.dart';
+// Gene - Nov, 28, 2026: Re-enabled AuthSignals import so REST-mode refresh retries fetchProfile when technicianEmail is missing.
+import '../../auth/signals/auth_signals.dart';
 import '../models/job_order_images_model.dart';
 import '../models/job_order_model.dart';
 import '../repositories/job_repository.dart';
@@ -106,11 +110,32 @@ class JobsSignals {
   // Gene - Nov, 25, 2026: Track in-flight Start/Finish timing requests per Job Order ID.
   final busyTimingJobIds = signal<Set<int>>(<int>{});
 
+  /*
   // Gene - Nov, 26, 2026: Expose currently started (in-progress) Job Order so other Job Orders and Service Orders hide Start.
   late final ReadonlySignal<JobOrderDto?> activeStartedJob = computed(() {
     final email = technicianEmail.value?.trim() ?? '';
     for (final job in allJobs.value) {
       if (!job.canActivate || !job.isTimingInProgress) continue;
+      if (email.isNotEmpty &&
+          (job.assignedEmail?.trim().isNotEmpty ?? false) &&
+          !job.isAssignedTo(email)) {
+        continue;
+      }
+      return job;
+    }
+    return null;
+  });
+  */
+  // Gene - Nov, 28, 2026: Restrict activeStartedJob to visible open non-rescheduled Today jobs so hidden Inprogress rows cannot lock Start across other orders.
+  late final ReadonlySignal<JobOrderDto?> activeStartedJob = computed(() {
+    final email = technicianEmail.value?.trim() ?? '';
+    for (final job in allJobs.value) {
+      if (!job.isOpen ||
+          !job.canActivate ||
+          job.siteException == SiteException.reschedule ||
+          !job.isTimingInProgress) {
+        continue;
+      }
       if (email.isNotEmpty &&
           (job.assignedEmail?.trim().isNotEmpty ?? false) &&
           !job.isAssignedTo(email)) {
@@ -477,8 +502,22 @@ class JobsSignals {
     if (showPhases) loadPhase.value = DataLoadPhase.downloading;
     isRefreshing.value = true;
     try {
-      if (repository.syncWorker.pendingCount.value > 0) {
-        await repository.syncWorker.syncPendingJobs();
+      // Gene - Nov, 28, 2026: In replicated mode, manual refresh reconnects PowerSync to force an immediate credential & stream pull; in REST mode, retry profile lookup if email is missing.
+      if (PowerSyncService.instance.isInitialized &&
+          PowerSyncService.instance.isReplicatedMode) {
+        await PowerSyncService.instance.reconnect();
+      } else {
+        if ((technicianEmail.value?.trim().isEmpty ?? true)) {
+          await AuthSignals.instance.refreshProfile();
+          final refreshedEmail =
+              AuthSignals.instance.currentUser.value?.email.trim() ?? '';
+          if (refreshedEmail.isNotEmpty) {
+            setTechnicianEmail(refreshedEmail);
+          }
+        }
+        if (repository.syncWorker.pendingCount.value > 0) {
+          await repository.syncWorker.syncPendingJobs();
+        }
       }
       await repository.fetchRemoteJobs(technicianEmail: technicianEmail.value);
     } finally {
@@ -555,7 +594,16 @@ class JobsSignals {
   }) async {
     if (busyTimingJobIds.value.contains(job.id)) return null;
     final currentActive = activeStartedJob.value;
+    /*
     if (hasOtherActiveOrder ||
+        (currentActive != null && currentActive.id != job.id)) {
+      return 'Finish the active order before starting another.';
+    }
+    */
+    // Gene - Nov, 28, 2026: Also block rapid concurrent Start taps on another Job Order while an in-flight startJob DAO write is still pending.
+    final hasOtherBusyStart = busyTimingJobIds.value.any((id) => id != job.id);
+    if (hasOtherActiveOrder ||
+        hasOtherBusyStart ||
         (currentActive != null && currentActive.id != job.id)) {
       return 'Finish the active order before starting another.';
     }

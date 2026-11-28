@@ -521,7 +521,14 @@ class OrderTimingHistoryCard extends StatelessWidget {
   final String orderType;
   final int orderId;
   final String finishLabel;
+  // Gene - Nov, 28, 2026: Optional server-synced fallback timestamps when local work_timing_history is empty (e.g. fresh install or session started on another device).
+  final String? orderReference;
+  final String? customerName;
+  final DateTime? fallbackStartTime;
+  final DateTime? fallbackEndTime;
+  final String? fallbackUserId;
 
+  /*
   const OrderTimingHistoryCard({
     super.key,
     required this.dao,
@@ -529,9 +536,107 @@ class OrderTimingHistoryCard extends StatelessWidget {
     required this.orderId,
     this.finishLabel = 'Finish',
   });
+  */
+  const OrderTimingHistoryCard({
+    super.key,
+    required this.dao,
+    required this.orderType,
+    required this.orderId,
+    this.finishLabel = 'Finish',
+    this.orderReference,
+    this.customerName,
+    this.fallbackStartTime,
+    this.fallbackEndTime,
+    this.fallbackUserId,
+  });
+
+  WorkTimingEntry? _buildFallbackEntry() {
+    final start = fallbackStartTime;
+    if (start == null) return null;
+    final normalizedStart = normalizeTimingTimestamp(start) ?? start;
+    final normalizedEnd = normalizeTimingTimestamp(fallbackEndTime);
+    final userId = (fallbackUserId?.trim().isNotEmpty ?? false)
+        ? fallbackUserId!.trim()
+        : 'Server record';
+    final durationMinutes =
+        normalizedEnd?.difference(normalizedStart).inMinutes.clamp(0, 1440);
+    return WorkTimingEntry(
+      id: 'server_fallback_${orderType}_$orderId',
+      orderType: orderType,
+      orderId: orderId,
+      orderReference: orderReference ?? '$orderId',
+      customerName: customerName ?? '',
+      userId: userId,
+      workDate: formatTimingDateKey(normalizedStart),
+      startTime: normalizedStart,
+      endTime: normalizedEnd,
+      durationMinutes: durationMinutes,
+      isSynced: true,
+      createdAt: normalizedStart,
+    );
+  }
+
+  Widget _buildCard(
+    BuildContext context,
+    List<WorkTimingEntry> entries, {
+    bool isServerFallback = false,
+  }) {
+    if (entries.isEmpty) return const SizedBox.shrink();
+
+    return Card(
+      key: ValueKey('order_timing_history_card_${orderType}_$orderId'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.history_rounded,
+                  size: 20,
+                  color: orderType == WorkTimingEntry.orderTypeServiceOrder
+                      ? AppTheme.serviceOrderInkOf(context)
+                      : AppTheme.infoInkOf(context),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Work Timing Sessions (${entries.length})',
+                    style: context.text.titleSmall,
+                  ),
+                ),
+              ],
+            ),
+            if (isServerFallback) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Latest synced session from server (prior multi-session logs stay on the device where they were started).',
+                style: context.text.bodySmall,
+              ),
+            ],
+            const SizedBox(height: 10),
+            for (var i = 0; i < entries.length; i++) ...[
+              if (i > 0)
+                Divider(
+                  height: 14,
+                  color: AppTheme.hairlineOf(context),
+                ),
+              _OrderSessionRow(
+                entry: entries[i],
+                sessionNumber: entries.length - i,
+                finishLabel: finishLabel,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    /*
     if (dao == null) return const SizedBox.shrink();
     return StreamBuilder<List<WorkTimingEntry>>(
       stream: dao!.watchByOrder(orderType: orderType, orderId: orderId),
@@ -581,6 +686,25 @@ class OrderTimingHistoryCard extends StatelessWidget {
             ),
           ),
         );
+      },
+    );
+    */
+    final fallback = _buildFallbackEntry();
+    if (dao == null) {
+      if (fallback == null) return const SizedBox.shrink();
+      return _buildCard(context, [fallback], isServerFallback: true);
+    }
+    return StreamBuilder<List<WorkTimingEntry>>(
+      stream: dao!.watchByOrder(orderType: orderType, orderId: orderId),
+      builder: (context, snapshot) {
+        final entries = snapshot.data ?? const <WorkTimingEntry>[];
+        if (entries.isNotEmpty) {
+          return _buildCard(context, entries);
+        }
+        if (fallback != null) {
+          return _buildCard(context, [fallback], isServerFallback: true);
+        }
+        return const SizedBox.shrink();
       },
     );
   }

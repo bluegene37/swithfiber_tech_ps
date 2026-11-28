@@ -1128,6 +1128,7 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
                       child: _buildSignatureCard(isDark),
                     ),
                   ),
+                  /*
                   if ((widget.signals.timingHistory ??
                           widget.jobsSignals?.timingHistory) !=
                       null) ...[
@@ -1138,6 +1139,28 @@ class _ServiceOrderDetailScreenState extends State<ServiceOrderDetailScreen> {
                       orderType: WorkTimingEntry.orderTypeServiceOrder,
                       orderId: order.id,
                       finishLabel: 'Stop',
+                    ),
+                  ],
+                  */
+                  // Gene - Nov, 28, 2026: Fall back to synced start/stop timestamps when local timing history is empty (e.g. after reinstall).
+                  if ((widget.signals.timingHistory ??
+                              widget.jobsSignals?.timingHistory) !=
+                          null ||
+                      order.startTimestamp != null) ...[
+                    const SizedBox(height: 16),
+                    OrderTimingHistoryCard(
+                      dao: widget.signals.timingHistory ??
+                          widget.jobsSignals?.timingHistory,
+                      orderType: WorkTimingEntry.orderTypeServiceOrder,
+                      orderId: order.id,
+                      finishLabel: 'Stop',
+                      orderReference: order.accountNumber,
+                      customerName: order.fullName,
+                      fallbackStartTime: order.startTimestamp,
+                      fallbackEndTime: order.stopTimestamp,
+                      fallbackUserId: (order.visitBy?.trim().isNotEmpty == true)
+                          ? order.visitBy!.trim()
+                          : order.assignedEmail,
                     ),
                   ],
                 ],

@@ -831,6 +831,7 @@ class _ServiceOrderCardState extends State<ServiceOrderCard> {
               ],
             )
           : null,
+      /*
       timingBar: (order.isOpen || order.isTimingStarted)
           ? Watch((context) {
               final isBusy =
@@ -846,6 +847,40 @@ class _ServiceOrderCardState extends State<ServiceOrderCard> {
                 endTime: order.stopTimestamp,
                 isBusy: isBusy,
                 hideStart: hasOtherActiveOrder,
+                finishLabel: 'Stop',
+                restartLabel: 'Start Again',
+                accentColor: AppTheme.serviceOrderAccent,
+      */
+      // Gene - Nov, 28, 2026: Also check concurrent in-flight busyTiming IDs and display which active order is locking Start.
+      timingBar: ((!order.isRescheduled || order.isTimingInProgress) &&
+              (order.isOpen || order.isTimingStarted))
+          ? Watch((context) {
+              final isBusy =
+                  signals.busyTimingOrderIds.value.contains(order.id);
+              final activeOrder = signals.activeStartedOrder.value;
+              final activeJob = widget.jobsSignals?.activeStartedJob.value;
+              final hasOtherBusyJob =
+                  widget.jobsSignals?.busyTimingJobIds.value.isNotEmpty ??
+                      false;
+              final hasOtherBusyOrder =
+                  signals.busyTimingOrderIds.value.any((id) => id != order.id);
+              final hasOtherActiveOrder =
+                  (activeOrder != null && activeOrder.id != order.id) ||
+                      activeJob != null ||
+                      hasOtherBusyJob ||
+                      hasOtherBusyOrder;
+              final lockedHint = activeJob != null
+                  ? 'Finish JO #${activeJob.id} first'
+                  : (activeOrder != null && activeOrder.id != order.id)
+                      ? 'Finish ${activeOrder.accountNumber} first'
+                      : 'Finish active order first';
+              return WorkTimingBar(
+                status: order.workTimingStatus,
+                startTime: order.startTimestamp,
+                endTime: order.stopTimestamp,
+                isBusy: isBusy,
+                hideStart: hasOtherActiveOrder,
+                lockedHint: lockedHint,
                 finishLabel: 'Stop',
                 restartLabel: 'Start Again',
                 accentColor: AppTheme.serviceOrderAccent,

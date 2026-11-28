@@ -1,3 +1,7 @@
+// Gene - Nov, 28, 2026: Added dart:async and dart:io for fresh-install marker detection and serialized PowerSync connection transitions.
+import 'dart:async';
+import 'dart:io';
+
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart';
@@ -18,6 +22,38 @@ class PowerSyncService {
   SwitchFiberBackendConnector? _connector;
   // Gene - Nov, 27, 2026: Track replicated mode, statusStream, upload hooks, and ps_crud counts for live PowerSync sync.
   bool _replicatedMode = false;
+  // Gene - Nov, 28, 2026: Serialize connect/reconnect/disconnect transitions and detect fresh installs whose OS Keychain/backup survived uninstall.
+  Future<void>? _pendingConnectionOp;
+  static const String installMarkerFilename = '.switchfiber_install_marker';
+
+  /// Clears orphaned iOS Keychain / Android backup credentials on a genuinely fresh install,
+  /// while preserving sessions for existing upgrades that already have a local DB file.
+  static Future<void> clearStaleCredentialsOnFreshInstall({
+    Directory? supportDir,
+    SecureStorageService? storage,
+  }) async {
+    try {
+      final dir = supportDir ?? await getApplicationSupportDirectory();
+      final marker = File(join(dir.path, installMarkerFilename));
+      if (marker.existsSync()) return;
+
+      final hasLegacyDb =
+          File(join(dir.path, 'switchfiber_powersync.db')).existsSync() ||
+              File(join(dir.path, 'switchfiber_powersync_v11.db')).existsSync();
+
+      if (!hasLegacyDb) {
+        final secureStorage = storage ?? SecureStorageService.instance;
+        await secureStorage.clearCredentials();
+      }
+
+      if (!dir.existsSync()) {
+        await dir.create(recursive: true);
+      }
+      await marker.writeAsString(DateTime.now().toUtc().toIso8601String());
+    } catch (_) {
+      // Never block startup on file/keychain housekeeping.
+    }
+  }
 
   PowerSyncDatabase get db {
     final database = _db;
@@ -66,12 +102,23 @@ class PowerSyncService {
     _db = database;
   }
   */
+  /*
   Future<void> initialize({
     String? dbFilename,
     SwitchFiberBackendConnector? connector,
     bool? replicated,
     SyncErrorLogsDao? errorLog,
     void Function(String table, int entityId)? onEntityUploaded,
+  }) async {
+  */
+  // Gene - Nov, 28, 2026: Support registering onUnauthorized callback during initialize and setUploadHooks.
+  Future<void> initialize({
+    String? dbFilename,
+    SwitchFiberBackendConnector? connector,
+    bool? replicated,
+    SyncErrorLogsDao? errorLog,
+    void Function(String table, int entityId)? onEntityUploaded,
+    void Function()? onUnauthorized,
   }) async {
     if (_db != null) return;
 
@@ -105,6 +152,9 @@ class PowerSyncService {
       if (onEntityUploaded != null) {
         connector.onEntityUploaded = onEntityUploaded;
       }
+      if (onUnauthorized != null) {
+        connector.onUnauthorized = onUnauthorized;
+      }
       _connector = connector;
       /*
     } else if (useReplicated &&
@@ -114,6 +164,7 @@ class PowerSyncService {
       _connector = SwitchFiberBackendConnector(
         errorLog: errorLog,
         onEntityUploaded: onEntityUploaded,
+        onUnauthorized: onUnauthorized,
       );
     } else {
       _connector = SwitchFiberBackendConnector(
@@ -126,7 +177,8 @@ class PowerSyncService {
     _db = database;
   }
 
-  /// Registers error logging and cache-invalidation callbacks on the active connector.
+  /// Registers error logging, cache-invalidation, and unauthorized callbacks on the active connector.
+  /*
   void setUploadHooks({
     SyncErrorLogsDao? errorLog,
     void Function(String table, int entityId)? onEntityUploaded,
@@ -136,6 +188,23 @@ class PowerSyncService {
     if (errorLog != null) connector.errorLog = errorLog;
     if (onEntityUploaded != null) {
       connector.onEntityUploaded = onEntityUploaded;
+    }
+  }
+  */
+  // Gene - Nov, 28, 2026: Accept onUnauthorized callback alongside upload/error hooks.
+  void setUploadHooks({
+    SyncErrorLogsDao? errorLog,
+    void Function(String table, int entityId)? onEntityUploaded,
+    void Function()? onUnauthorized,
+  }) {
+    final connector = _connector;
+    if (connector == null) return;
+    if (errorLog != null) connector.errorLog = errorLog;
+    if (onEntityUploaded != null) {
+      connector.onEntityUploaded = onEntityUploaded;
+    }
+    if (onUnauthorized != null) {
+      connector.onUnauthorized = onUnauthorized;
     }
   }
 
@@ -155,7 +224,32 @@ class PowerSyncService {
     }
   }
 
+  Future<void> _serializeConnectionOp(Future<void> Function() action) {
+    final previous = _pendingConnectionOp;
+    final completer = Completer<void>();
+    _pendingConnectionOp = completer.future;
+
+    () async {
+      if (previous != null) {
+        try {
+          await previous;
+        } catch (_) {}
+      }
+      try {
+        await action();
+      } finally {
+        completer.complete();
+        if (identical(_pendingConnectionOp, completer.future)) {
+          _pendingConnectionOp = null;
+        }
+      }
+    }();
+
+    return completer.future;
+  }
+
   /// Connects to the PowerSync service using the configured connector.
+  /*
   Future<void> connectIfConfigured({SecureStorageService? storage}) async {
     final database = _db;
     final connector = _connector;
@@ -187,6 +281,45 @@ class PowerSyncService {
       // Offline or initial network failure: PowerSync retries automatically.
     }
   }
+  */
+  // Gene - Nov, 28, 2026: Serialize PowerSync connect/reconnect transitions so concurrent startup/login/refresh calls do not race.
+  Future<void> connectIfConfigured({SecureStorageService? storage}) {
+    return _serializeConnectionOp(() async {
+      final database = _db;
+      final connector = _connector;
+      // Gene - Nov, 23, 2026: Stay cleanly in local-only mode when POWERSYNC_ENDPOINT is not configured.
+      if (database == null ||
+          connector == null ||
+          !connector.hasEndpoint ||
+          database.connected) {
+        return;
+      }
+      try {
+        await database.connect(connector: connector);
+      } catch (_) {
+        // Offline or initial network failure: PowerSync client retries automatically.
+      }
+    });
+  }
+
+  /// Forces a fresh credentials fetch and reconnects to PowerSync with the current user.
+  Future<void> reconnect() {
+    return _serializeConnectionOp(() async {
+      final database = _db;
+      final connector = _connector;
+      if (database == null || connector == null || !connector.hasEndpoint) {
+        return;
+      }
+      try {
+        if (database.connected) {
+          await database.disconnect();
+        }
+        await database.connect(connector: connector);
+      } catch (_) {
+        // Offline or initial network failure: PowerSync retries automatically.
+      }
+    });
+  }
 
   /// Disconnects from PowerSync and clears local database storage (e.g. on logout).
   /*
@@ -199,11 +332,21 @@ class PowerSyncService {
     _replicatedMode = false;
   }
   */
+  /*
   // Gene - Nov, 27, 2026: Keep _db and _connector open across logout->login transitions so AppDatabase and reconnect() remain valid without app restart.
   Future<void> disconnectAndClear() async {
     if (_db != null) {
       await _db!.disconnectAndClear();
     }
+  }
+  */
+  // Gene - Nov, 28, 2026: Serialize disconnectAndClear and preserve local-only timing history in replicated mode while clearing synced rows.
+  Future<void> disconnectAndClear() {
+    return _serializeConnectionOp(() async {
+      if (_db != null) {
+        await _db!.disconnectAndClear(clearLocal: !_replicatedMode);
+      }
+    });
   }
 
   /// Disconnects sync connection without clearing cached records.

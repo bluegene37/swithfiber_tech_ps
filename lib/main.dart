@@ -1,4 +1,7 @@
+/*
 import 'dart:async';
+*/
+// Gene - Nov, 28, 2026: Commented out unused dart:async import after removing redundant startup connectIfConfigured call.
 
 import 'package:flutter/material.dart';
 import 'package:signals_flutter/signals_flutter.dart';
@@ -25,6 +28,8 @@ void main() async {
   //    DAOs over it. Cloud sync is joined later, only when a PowerSync token
   //    has been configured; the REST API remains the sync transport until
   //    then (see powersync_schema.dart).
+  // Gene - Nov, 28, 2026: Wipe orphaned Keychain/backup credentials on genuine fresh install before initializing PowerSync and session restore.
+  await PowerSyncService.clearStaleCredentialsOnFreshInstall();
   final powerSync = PowerSyncService.instance;
   await powerSync.initialize();
   final database = AppDatabase(powerSync.db);
@@ -55,6 +60,7 @@ void main() async {
     errorLog: database.syncErrorLogsDao,
     timingHistory: database.workTimingHistoryDao,
   );
+  /*
   // Gene - Nov, 27, 2026: Wire SyncErrorLogsDao and post-upload image cache invalidation into PowerSyncService connector.
   powerSync.setUploadHooks(
     errorLog: database.syncErrorLogsDao,
@@ -72,6 +78,29 @@ void main() async {
       }
     },
   );
+  */
+  // Gene - Nov, 28, 2026: Also wire 401 unauthorized recovery from PowerSync Gateway credentials into AuthSignals.
+  powerSync.setUploadHooks(
+    errorLog: database.syncErrorLogsDao,
+    onEntityUploaded: (table, entityId) {
+      switch (table) {
+        case 'job_orders':
+          jobRepository.clearImagesCache(entityId);
+          break;
+        case 'service_orders':
+          serviceOrdersSignals.clearImagesCache(entityId);
+          break;
+        case 'lcp_nap_locations':
+          lcpNapRepository.invalidateImagesCache(entityId);
+          break;
+      }
+    },
+    onUnauthorized: () {
+      AuthSignals.instance.logout(
+        reason: 'Your sync session expired. Please sign in again.',
+      );
+    },
+  );
 
   // 2. Initialize Signals State Layer
   final authSignals = AuthSignals.instance;
@@ -86,15 +115,24 @@ void main() async {
 
   // 4. Connect API client 401 callback to auth signals
   ApiClient.instance.onUnauthorized = () {
+    /*
     authSignals.logout();
+    */
+    // Gene - Nov, 28, 2026: Surface session-expired message on 401 logout.
+    authSignals.logout(
+      reason: 'Your session expired. Please sign in again.',
+    );
   };
 
   // 5. Restore display preferences and the active technician session
   await SettingsSignals.instance.restore();
   await authSignals.restoreSession();
 
+  /*
   // 6. Connect PowerSync cloud sync with active technician session
   unawaited(powerSync.connectIfConfigured());
+  */
+  // Gene - Nov, 28, 2026: AuthSignals.restoreSession() and AuthSignals.login() handle serialized PowerSync connect/reconnect when an authenticated user exists.
 
   runApp(
     SwitchFiberTechApp(

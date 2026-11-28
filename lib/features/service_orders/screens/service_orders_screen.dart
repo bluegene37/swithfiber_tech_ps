@@ -727,6 +727,7 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                     },
                   ),
                   */
+                    /*
                     // Gene - Nov, 26, 2026: Match JobOrdersScreen list padding and 8dp item spacing.
                     child: ListView.separated(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
@@ -742,12 +743,98 @@ class _ServiceOrdersScreenState extends State<ServiceOrdersScreen> {
                         );
                       },
                     ),
+                    */
+                    // Gene - Nov, 28, 2026: Group Rescheduled repair tickets under a dedicated bottom section while keeping active orders first.
+                    child: () {
+                      final activeOrders =
+                          orders.where((o) => !o.isRescheduled).toList();
+                      final rescheduledOrders =
+                          orders.where((o) => o.isRescheduled).toList();
+                      return ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                        children: [
+                          for (var i = 0; i < activeOrders.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 8),
+                            ServiceOrderCard(
+                              order: activeOrders[i],
+                              signals: signals,
+                              lcpNapSignals: widget.lcpNapSignals,
+                              jobsSignals: widget.jobsSignals,
+                            ),
+                          ],
+                          if (rescheduledOrders.isNotEmpty) ...[
+                            if (activeOrders.isNotEmpty)
+                              const SizedBox(height: 12),
+                            _ServiceRescheduledSectionHeader(
+                              count: rescheduledOrders.length,
+                            ),
+                            for (var i = 0;
+                                i < rescheduledOrders.length;
+                                i++) ...[
+                              if (i > 0) const SizedBox(height: 8),
+                              ServiceOrderCard(
+                                order: rescheduledOrders[i],
+                                signals: signals,
+                                lcpNapSignals: widget.lcpNapSignals,
+                                jobsSignals: widget.jobsSignals,
+                              ),
+                            ],
+                          ],
+                        ],
+                      );
+                    }(),
                   );
                 },
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ServiceRescheduledSectionHeader extends StatelessWidget {
+  final int count;
+
+  const _ServiceRescheduledSectionHeader({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final warningInk = AppTheme.warningInkOf(context);
+    return Container(
+      key: const ValueKey('service_orders_rescheduled_group_header'),
+      padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+      child: Row(
+        children: [
+          Icon(Icons.event_repeat_rounded, size: 20, color: warningInk),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Rescheduled',
+              style: context.text.labelLarge!.copyWith(
+                fontWeight: FontWeight.w700,
+                color: warningInk,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: AppTheme.fillOf(context),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '$count ${count == 1 ? 'ticket' : 'tickets'}',
+              style: context.text.labelSmall!.copyWith(
+                color: AppTheme.secondaryInkOf(context),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

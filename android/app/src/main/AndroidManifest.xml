@@ -21,11 +21,21 @@
     <application
         android:label="SwitchFiber Tech"
     -->
+    <!--
     <application
         android:label="SF Tech"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
+        android:usesCleartextTraffic="true">
+    -->
+    <!-- Gene - Nov, 28, 2026: Prevent Android Auto Backup from restoring stale Keystore/prefs on fresh installs. -->
+    <application
+        android:label="SF Tech"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:allowBackup="false"
         android:usesCleartextTraffic="true">
         <!-- Gene - Oct 09, 2026: Explicitly set MainActivity launcher label to SF Tech -->
         <!--

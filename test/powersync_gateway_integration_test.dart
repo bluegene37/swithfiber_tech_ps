@@ -16,6 +16,8 @@ import 'package:swithfiber_tech_ps/core/storage/secure_storage_service.dart';
 import 'package:swithfiber_tech_ps/core/sync/powersync_backend_connector.dart';
 import 'package:swithfiber_tech_ps/core/sync/powersync_gateway_client.dart';
 import 'package:swithfiber_tech_ps/core/sync/powersync_schema.dart';
+// Gene - Nov, 28, 2026: Added PowerSyncService import for fresh-install credential cleanup tests.
+import 'package:swithfiber_tech_ps/core/sync/powersync_service.dart';
 import 'package:swithfiber_tech_ps/features/auth/services/auth_service.dart';
 import 'package:swithfiber_tech_ps/features/jobs/models/job_order_model.dart';
 import 'package:swithfiber_tech_ps/features/jobs/repositories/job_repository.dart';
@@ -1116,6 +1118,165 @@ void main() {
       } finally {
         await appDb.close();
       }
+    });
+
+    // Gene - Nov, 28, 2026: Regression tests for first-open empty queue/session deadlock and 401 credential fallback.
+    test(
+        'clearStaleCredentialsOnFreshInstall clears orphaned keychain on fresh install but preserves upgrades',
+        () async {
+      final freshDir =
+          await Directory.systemTemp.createTemp('sf_fresh_install_test_');
+      final upgradeDir =
+          await Directory.systemTemp.createTemp('sf_upgrade_install_test_');
+      try {
+        FlutterSecureStorage.setMockInitialValues({
+          AppConstants.keyUserSession:
+              '{"id":2,"username":"tech","email":"tech@example.com"}',
+          AppConstants.keyJwtToken: 'orphaned-jwt',
+          AppConstants.keyPowerSyncGatewayToken: 'orphaned-gw',
+        });
+
+        await PowerSyncService.clearStaleCredentialsOnFreshInstall(
+          supportDir: freshDir,
+          storage: SecureStorageService.instance,
+        );
+
+        expect(await SecureStorageService.instance.getUserSession(), isNull);
+        expect(await SecureStorageService.instance.getToken(), isNull);
+        expect(
+          File(p.join(freshDir.path, PowerSyncService.installMarkerFilename))
+              .existsSync(),
+          isTrue,
+        );
+
+        // Repeat launch preserves newly logged-in session because install marker exists.
+        await SecureStorageService.instance.saveUserSession(
+            '{"id":2,"username":"tech","email":"tech@example.com"}');
+        await SecureStorageService.instance.saveToken('fresh-jwt');
+        await PowerSyncService.clearStaleCredentialsOnFreshInstall(
+          supportDir: freshDir,
+          storage: SecureStorageService.instance,
+        );
+        expect(await SecureStorageService.instance.getToken(), 'fresh-jwt');
+
+        // Existing install upgrading from switchfiber_powersync.db preserves credentials.
+        await File(p.join(upgradeDir.path, 'switchfiber_powersync.db'))
+            .writeAsString('existing-db');
+        FlutterSecureStorage.setMockInitialValues({
+          AppConstants.keyUserSession:
+              '{"id":5,"username":"upgrader","email":"upgrader@example.com"}',
+          AppConstants.keyJwtToken: 'upgrade-jwt',
+        });
+        await PowerSyncService.clearStaleCredentialsOnFreshInstall(
+          supportDir: upgradeDir,
+          storage: SecureStorageService.instance,
+        );
+        expect(await SecureStorageService.instance.getUserSession(), isNotNull);
+        expect(await SecureStorageService.instance.getToken(), 'upgrade-jwt');
+        expect(
+          File(p.join(upgradeDir.path, PowerSyncService.installMarkerFilename))
+              .existsSync(),
+          isTrue,
+        );
+      } finally {
+        await freshDir.delete(recursive: true);
+        await upgradeDir.delete(recursive: true);
+      }
+    });
+
+    test(
+        'AuthService.restoreSession rejects tokenless user_session and preserves email fallback when token exists',
+        () async {
+      FlutterSecureStorage.setMockInitialValues({
+        AppConstants.keyUserSession:
+            '{"id":7,"username":"tech7","fname":"T","lname":"7","email":"tech7@example.com","accessLevelId":2,"active":true}',
+      });
+      final authService = AuthService();
+      final orphanedUser = await authService.restoreSession();
+      expect(orphanedUser, isNull);
+      expect(await SecureStorageService.instance.getUserSession(), isNull);
+
+      FlutterSecureStorage.setMockInitialValues({
+        AppConstants.keyUserSession:
+            '{"id":7,"username":"tech7","fname":"T","lname":"7","email":"","accessLevelId":2,"active":true}',
+        AppConstants.keyJwtToken: 'valid-jwt',
+        AppConstants.keyPowerSyncUserId: 'tech7@example.com',
+      });
+      final validUser = await authService.restoreSession();
+      expect(validUser, isNotNull);
+      expect(validUser!.email, 'tech7@example.com');
+    });
+
+    test(
+        'fetchCredentials falls back when gateway token returns 401 and invokes onUnauthorized if all tokens fail',
+        () async {
+      final exp = DateTime.now()
+          .toUtc()
+          .add(const Duration(hours: 6))
+          .toIso8601String();
+      var rejectAll = false;
+      var unauthorizedCalls = 0;
+
+      final adapter = _MockGatewayAdapter((req) async {
+        if (req.uri.path == '/api/Auth/powersync-token') {
+          if (rejectAll) {
+            return _jsonResponse({'message': 'Expired'}, statusCode: 401);
+          }
+          final auth = req.headers['Authorization']?.toString() ?? '';
+          if (auth == 'Bearer gw-expired') {
+            return _jsonResponse({'message': 'Expired'}, statusCode: 401);
+          }
+          if (auth == 'Bearer legacy-valid') {
+            return _jsonResponse({
+              'token': 'minted-from-fallback',
+              'expiresAt': exp,
+              'userId': 'tech@example.com',
+              'endpoint': 'https://sync.example.com',
+            });
+          }
+        }
+        return _jsonResponse({'ok': true});
+      });
+
+      FlutterSecureStorage.setMockInitialValues({
+        AppConstants.keyPowerSyncGatewayToken: 'gw-expired',
+        AppConstants.keyJwtToken: 'legacy-valid',
+        AppConstants.keyUserSession:
+            '{"id":2,"username":"tech","email":"tech@example.com"}',
+      });
+
+      final connector = SwitchFiberBackendConnector(
+        endpoint: 'https://sync.example.com',
+        gatewayClient: PowerSyncGatewayClient(
+          baseUrl: 'https://gateway.example.com',
+          dio: Dio()..httpClientAdapter = adapter,
+        ),
+        onUnauthorized: () => unauthorizedCalls++,
+      );
+
+      final recovered = await connector.fetchCredentials();
+      expect(recovered, isNotNull);
+      expect(recovered!.token, 'minted-from-fallback');
+      expect(
+        await SecureStorageService.instance
+            .read(AppConstants.keyPowerSyncGatewayToken),
+        isNull,
+      );
+      expect(unauthorizedCalls, 0);
+
+      // Now expire cached token and fail all remaining bearers -> onUnauthorized fires.
+      await SecureStorageService.instance.write(
+        AppConstants.keyPowerSyncTokenExpiresAt,
+        DateTime.now()
+            .toUtc()
+            .subtract(const Duration(minutes: 1))
+            .toIso8601String(),
+      );
+      rejectAll = true;
+      final failed = await connector.fetchCredentials();
+      expect(failed, isNull);
+      expect(unauthorizedCalls, 1);
+      expect(await SecureStorageService.instance.getToken(), isNull);
     });
   });
 }

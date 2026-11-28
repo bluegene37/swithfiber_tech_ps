@@ -124,12 +124,64 @@ class AuthService {
   }
 
   /// Restore active technician session from local storage on app start
+  /*
   Future<UserModel?> restoreSession() async {
     try {
       final userJson = await _storage.getUserSession();
       if (userJson != null && userJson.isNotEmpty) {
         return UserModel.fromRawJson(userJson);
       }
+    } catch (_) {
+      await _storage.clearCredentials();
+    }
+    return null;
+  }
+  */
+  // Gene - Nov, 28, 2026: Require at least one valid stored bearer token when restoring a session so orphaned iOS/Android backups cannot leave the app stuck on an empty authenticated shell.
+  Future<UserModel?> restoreSession() async {
+    try {
+      final userJson = await _storage.getUserSession();
+      if (userJson == null || userJson.isEmpty) {
+        return null;
+      }
+
+      /*
+      final jwt = (await _storage.getJwtToken())?.trim() ?? '';
+      */
+      // Gene - Nov, 28, 2026: Use SecureStorageService.getToken() for reading stored JWT bearer token.
+      final jwt = (await _storage.getToken())?.trim() ?? '';
+      final gwToken =
+          (await _storage.read(AppConstants.keyPowerSyncGatewayToken))
+                  ?.trim() ??
+              '';
+      final psToken =
+          (await _storage.read(AppConstants.keyPowerSyncToken))?.trim() ?? '';
+      if (jwt.isEmpty && gwToken.isEmpty && psToken.isEmpty) {
+        await _storage.clearCredentials();
+        return null;
+      }
+
+      var user = UserModel.fromRawJson(userJson);
+      if (user.email.trim().isEmpty) {
+        final storedUserId =
+            (await _storage.read(AppConstants.keyPowerSyncUserId))?.trim() ??
+                '';
+        if (storedUserId.isNotEmpty) {
+          user = UserModel(
+            id: user.id,
+            username: user.username,
+            fname: user.fname,
+            lname: user.lname,
+            email: storedUserId,
+            accessLevelId: user.accessLevelId,
+            active: user.active,
+            menus: user.menus,
+            contactNumber: user.contactNumber,
+            address: user.address,
+          );
+        }
+      }
+      return user;
     } catch (_) {
       await _storage.clearCredentials();
     }
@@ -149,7 +201,40 @@ class AuthService {
     if (data is! Map<String, dynamic>) {
       throw Exception('Unexpected profile response from server.');
     }
+    /*
     final user = UserModel.fromJson(data);
+    await _storage.saveUserSession(user.toRawJson());
+    return user;
+    */
+    // Gene - Nov, 28, 2026: Preserve canonical email from cached session / gateway login when /Users/{id} omits an email field.
+    var user = UserModel.fromJson(data);
+    if (user.email.trim().isEmpty) {
+      String? fallbackEmail;
+      final existingJson = await _storage.getUserSession();
+      if (existingJson != null && existingJson.isNotEmpty) {
+        try {
+          fallbackEmail = UserModel.fromRawJson(existingJson).email.trim();
+        } catch (_) {}
+      }
+      if (fallbackEmail == null || fallbackEmail.isEmpty) {
+        fallbackEmail =
+            (await _storage.read(AppConstants.keyPowerSyncUserId))?.trim();
+      }
+      if (fallbackEmail != null && fallbackEmail.isNotEmpty) {
+        user = UserModel(
+          id: user.id,
+          username: user.username,
+          fname: user.fname,
+          lname: user.lname,
+          email: fallbackEmail,
+          accessLevelId: user.accessLevelId,
+          active: user.active,
+          menus: user.menus,
+          contactNumber: user.contactNumber,
+          address: user.address,
+        );
+      }
+    }
     await _storage.saveUserSession(user.toRawJson());
     return user;
   }

@@ -408,4 +408,96 @@ void main() {
     final todayLabel = JobOrdersScreen.dateGroupLabel(today).toUpperCase();
     expect(find.text(todayLabel), findsOneWidget);
   });
+
+  // Gene - Nov, 28, 2026: Verifies all Rescheduled jobs (both status=Rescheduled and onsite=Reschedule) group at the bottom in both Date and Barangay views without overflow at 200% text scale.
+  testWidgets(
+      'Rescheduled jobs group together at the bottom in Date and Barangay views',
+      (tester) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day, 9);
+    final tomorrow = today.add(const Duration(days: 1));
+
+    final jobs = [
+      job(1, 'Active Today', installed: today, barangay: 'Batingan'),
+      job(
+        2,
+        'Resched Status',
+        status: 'Rescheduled',
+        onsite: 'Rescheduled',
+        installed: today,
+        barangay: 'Batingan',
+      ),
+      job(3, 'Active Tomorrow', installed: tomorrow, barangay: 'Tayuman'),
+      job(
+        4,
+        'Resched Onsite',
+        status: 'Scheduled',
+        onsite: 'Reschedule',
+        installed: today,
+        barangay: 'Tayuman',
+      ),
+    ];
+
+    await seed(tester, jobs);
+
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(402, 4200);
+    addTearDown(tester.view.reset);
+
+    final overflows = <String>[];
+    final origOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      final msg = details.exceptionAsString();
+      if (msg.contains('overflowed')) {
+        overflows.add(msg);
+      } else {
+        origOnError?.call(details);
+      }
+    };
+    addTearDown(() => FlutterError.onError = origOnError);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(2.0)),
+        child: JobOrdersScreen(jobsSignals: signals),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    void assertRescheduledAtBottom() {
+      final headerFinder =
+          find.byKey(const ValueKey('rescheduled_group_header'));
+      expect(headerFinder, findsOneWidget);
+      final headerY = tester.getTopLeft(headerFinder).dy;
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('job_row_1'))).dy,
+        lessThan(headerY),
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('job_row_3'))).dy,
+        lessThan(headerY),
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('job_row_2'))).dy,
+        greaterThan(headerY),
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('job_row_4'))).dy,
+        greaterThan(headerY),
+      );
+    }
+
+    // 1. Date view
+    assertRescheduledAtBottom();
+
+    // 2. Switch to Barangay view
+    await tester.tap(find.text('Barangay'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    assertRescheduledAtBottom();
+
+    expect(overflows, isEmpty, reason: overflows.join('\n'));
+  });
 }

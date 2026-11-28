@@ -24,6 +24,8 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
   final PowerSyncGatewayClient? _gatewayClient;
   SyncErrorLogsDao? errorLog;
   void Function(String table, int entityId)? onEntityUploaded;
+  // Gene - Nov, 28, 2026: Notify auth layer when gateway credentials are permanently rejected (401) so stale sessions recover cleanly to Login.
+  void Function()? onUnauthorized;
 
   /// Optional upload handler callback for intercepting or forwarding CRUD transactions.
   Future<void> Function(CrudTransaction transaction)? onUpload;
@@ -51,6 +53,7 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
         _endpoint = endpoint ?? AppConstants.defaultPowerSyncEndpoint,
         _devSecretKey = devSecretKey ?? AppConstants.devSecretKey;
   */
+  /*
   SwitchFiberBackendConnector({
     SecureStorageService? storage,
     String? endpoint,
@@ -59,6 +62,23 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
     String? devSecretKey,
     this.errorLog,
     this.onEntityUploaded,
+    this.onUpload,
+    this.onEntryUpload,
+  })  : _storage = storage ?? SecureStorageService(),
+        _endpoint = endpoint ?? AppConstants.defaultPowerSyncEndpoint,
+        _devSecretKey = devSecretKey ?? AppConstants.devSecretKey,
+        _gatewayClient = _resolveGatewayClient(gatewayClient, gatewayUrl);
+  */
+  // Gene - Nov, 28, 2026: Accept onUnauthorized callback for 401 credential recovery.
+  SwitchFiberBackendConnector({
+    SecureStorageService? storage,
+    String? endpoint,
+    String? gatewayUrl,
+    PowerSyncGatewayClient? gatewayClient,
+    String? devSecretKey,
+    this.errorLog,
+    this.onEntityUploaded,
+    this.onUnauthorized,
     this.onUpload,
     this.onEntryUpload,
   })  : _storage = storage ?? SecureStorageService(),
@@ -172,6 +192,7 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
         );
       }
 
+      /*
       final bearer =
           await _storage.read(AppConstants.keyPowerSyncGatewayToken) ??
               cachedToken ??
@@ -220,6 +241,88 @@ class SwitchFiberBackendConnector extends PowerSyncBackendConnector {
         }
         rethrow;
       }
+      */
+      // Gene - Nov, 28, 2026: Try deduplicated bearer candidates (gateway, legacy JWT, cached PS token) in order, purge any 401-rejected token, and notify onUnauthorized if all fail.
+      final gatewayToken =
+          (await _storage.read(AppConstants.keyPowerSyncGatewayToken))?.trim();
+      final jwtToken = (await _storage.read(AppConstants.keyJwtToken))?.trim();
+      final cachedBearer = cachedToken?.trim();
+      final uniqueCandidates = <String>[];
+      for (final candidate in [gatewayToken, jwtToken, cachedBearer]) {
+        if (candidate != null &&
+            candidate.isNotEmpty &&
+            !uniqueCandidates.contains(candidate)) {
+          uniqueCandidates.add(candidate);
+        }
+      }
+      if (uniqueCandidates.isEmpty) {
+        if (hasKnownUser) {
+          onUnauthorized?.call();
+        }
+        return null;
+      }
+
+      var sawUnauthorized = false;
+      for (final bearer in uniqueCandidates) {
+        try {
+          final minted = await _gatewayClient!.fetchPowerSyncToken(
+            bearerToken: bearer,
+          );
+          await _persistPowerSyncToken(minted);
+          final targetEndpoint = _endpoint.trim().isNotEmpty
+              ? _endpoint.trim()
+              : (minted.endpoint.isNotEmpty
+                  ? minted.endpoint
+                  : effectiveEndpoint);
+          final targetUserId =
+              minted.userId.isNotEmpty ? minted.userId : currentUserId;
+          return PowerSyncCredentials(
+            endpoint: targetEndpoint,
+            token: minted.token,
+            userId: targetUserId,
+            expiresAt: minted.expiresAt,
+          );
+        } on PowerSyncUploadException catch (e) {
+          if (e.isUnauthorized) {
+            sawUnauthorized = true;
+            if (bearer == gatewayToken) {
+              await _storage.delete(AppConstants.keyPowerSyncGatewayToken);
+            }
+            if (bearer == cachedBearer) {
+              await _storage.delete(AppConstants.keyPowerSyncToken);
+              await _storage.delete(AppConstants.keyPowerSyncTokenExpiresAt);
+            }
+            if (bearer == jwtToken) {
+              await _storage.delete(AppConstants.keyJwtToken);
+            }
+            continue;
+          }
+          if (cachedToken != null &&
+              cachedToken.isNotEmpty &&
+              cachedExp != null &&
+              cachedExp.isAfter(nowUtc) &&
+              matchesUser) {
+            return PowerSyncCredentials(
+              endpoint: effectiveEndpoint,
+              token: cachedToken,
+              userId: (cachedUser != null && cachedUser.isNotEmpty)
+                  ? cachedUser
+                  : currentUserId,
+              expiresAt: cachedExp,
+            );
+          }
+          rethrow;
+        }
+      }
+
+      if (sawUnauthorized) {
+        await _storage.delete(AppConstants.keyPowerSyncGatewayToken);
+        await _storage.delete(AppConstants.keyPowerSyncToken);
+        await _storage.delete(AppConstants.keyPowerSyncTokenExpiresAt);
+        await _storage.delete(AppConstants.keyJwtToken);
+        onUnauthorized?.call();
+      }
+      return null;
     }
 
     // 2. Legacy / Non-Gateway Mode: Check for a dedicated PowerSync token or user session JWT

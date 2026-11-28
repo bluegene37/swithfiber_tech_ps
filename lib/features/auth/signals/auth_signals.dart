@@ -70,9 +70,19 @@ class AuthSignals {
     final current = currentUser.value;
     if (current == null) return;
     try {
+      final previousEmail = current.email.trim().toLowerCase();
       final updated = await _authService.fetchProfile(current.id);
       currentUser.value = updated;
+      /*
       if (PowerSyncService.instance.isInitialized) {
+        unawaited(PowerSyncService.instance.reconnect());
+      }
+      */
+      // Gene - Nov, 28, 2026: Only reconnect PowerSync on profile refresh if the email changed or sync is disconnected, avoiding needless stream restarts.
+      final nextEmail = updated.email.trim().toLowerCase();
+      if (PowerSyncService.instance.isInitialized &&
+          (previousEmail != nextEmail ||
+              !PowerSyncService.instance.isConnected)) {
         unawaited(PowerSyncService.instance.reconnect());
       }
     } catch (_) {
@@ -81,10 +91,21 @@ class AuthSignals {
   }
 
   /// Perform technician logout
+  /*
   Future<void> logout() async {
     await _authService.logout();
     currentUser.value = null;
     authError.value = null;
+    if (PowerSyncService.instance.isInitialized) {
+      unawaited(PowerSyncService.instance.disconnectAndClear());
+    }
+  }
+  */
+  // Gene - Nov, 28, 2026: Preserve optional reason banner message when 401 session expiry triggers automatic logout.
+  Future<void> logout({String? reason}) async {
+    await _authService.logout();
+    currentUser.value = null;
+    authError.value = reason;
     if (PowerSyncService.instance.isInitialized) {
       unawaited(PowerSyncService.instance.disconnectAndClear());
     }

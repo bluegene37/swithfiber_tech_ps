@@ -1514,5 +1514,137 @@ void main() {
       expect(find.text('Start Again'), findsOneWidget);
       expect(overflows, isEmpty, reason: overflows.join('\n'));
     });
+
+    // Gene - Nov, 28, 2026: Verify activeStartedJob ignores hidden Inprogress rows, OrderTimingHistoryCard shows server fallback, and ServiceOrdersScreen groups Rescheduled at the bottom.
+    test(
+        'activeStartedJob ignores hidden Inprogress and Reschedule jobs so Start stays unlocked for visible Today jobs',
+        () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final db = AppDatabase.forTesting();
+      addTearDown(db.close);
+
+      final repo = JobRepository(
+        db.jobOrdersDao,
+        timingHistory: db.workTimingHistoryDao,
+        isReplicatedMode: () => false,
+      );
+      final signals = JobsSignals(repo);
+      signals.setTechnicianEmail('tech@example.com');
+      addTearDown(signals.dispose);
+
+      await db.jobOrdersDao.insertAllJobs([
+        JobOrderDto(
+          id: 701,
+          ticketNumber: 'SF-701',
+          customerName: 'Hidden Inprogress',
+          address: '10 Hidden St',
+          status: 'Inprogress',
+          assignedEmail: 'tech@example.com',
+          startTimeStamp: DateTime.utc(2026, 11, 28, 7, 0),
+        ),
+        JobOrderDto(
+          id: 702,
+          ticketNumber: 'SF-702',
+          customerName: 'Resched Onsite',
+          address: '20 Resched St',
+          status: 'Scheduled',
+          onsiteStatus: 'Reschedule',
+          assignedEmail: 'tech@example.com',
+          startTimeStamp: DateTime.utc(2026, 11, 28, 7, 30),
+        ),
+        JobOrderDto(
+          id: 703,
+          ticketNumber: 'SF-703',
+          customerName: 'Visible Scheduled',
+          address: '30 Open St',
+          status: 'Scheduled',
+          assignedEmail: 'tech@example.com',
+        ),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(signals.activeStartedJob.value, isNull);
+    });
+
+    testWidgets(
+        'OrderTimingHistoryCard falls back to synced server start/end timestamps when local history is empty',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Scaffold(
+          body: OrderTimingHistoryCard(
+            dao: null,
+            orderType: WorkTimingEntry.orderTypeJobOrder,
+            orderId: 88,
+            orderReference: 'SF-88',
+            customerName: 'Fallback Subscriber',
+            fallbackStartTime: DateTime.utc(2026, 11, 28, 1, 0),
+            fallbackEndTime: DateTime.utc(2026, 11, 28, 2, 15),
+            fallbackUserId: 'tech88@example.com',
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.text('Work Timing Sessions (1)'), findsOneWidget);
+      expect(find.text('User ID: tech88@example.com'), findsOneWidget);
+      expect(find.text('1h 15m'), findsOneWidget);
+    });
+
+    testWidgets(
+        'ServiceOrdersScreen groups Rescheduled repair tickets under bottom Rescheduled header',
+        (tester) async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final signals = ServiceOrdersSignals(
+        api: _TimingRecordingServiceOrdersApi(),
+        isReplicatedMode: () => false,
+      );
+      addTearDown(signals.dispose);
+
+      signals.allOrders.value = const [
+        ServiceOrderDto(
+          id: 901,
+          accountNumber: 'ACC-901',
+          fullName: 'Rescheduled Ticket',
+          contactNumber: '09170000901',
+          emailAddress: 'r901@example.com',
+          address: '1 Resched Ave',
+          visitStatus: 'Rescheduled',
+          supportStatus: 'Open',
+          priorityLevel: 'Urgent',
+        ),
+        ServiceOrderDto(
+          id: 902,
+          accountNumber: 'ACC-902',
+          fullName: 'Active Ticket',
+          contactNumber: '09170000902',
+          emailAddress: 'a902@example.com',
+          address: '2 Active Ave',
+          visitStatus: 'Pending',
+          supportStatus: 'Open',
+          priorityLevel: 'Normal',
+        ),
+      ];
+
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(402, 1400);
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: ServiceOrdersScreen(signals: signals),
+      ));
+      await tester.pump();
+
+      final activeY = tester.getTopLeft(find.text('Active Ticket')).dy;
+      final headerY = tester
+          .getTopLeft(find
+              .byKey(const ValueKey('service_orders_rescheduled_group_header')))
+          .dy;
+      final reschedY = tester.getTopLeft(find.text('Rescheduled Ticket')).dy;
+
+      expect(activeY, lessThan(headerY));
+      expect(headerY, lessThan(reschedY));
+    });
   });
 }

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:signals_flutter/signals_flutter.dart';
+// Gene - Nov, 28, 2026: Import PowerSyncService so manual plant refresh triggers live reconnect in replicated mode.
+import '../../../core/sync/powersync_service.dart';
 import '../../../core/widgets/loading_states.dart';
 import '../models/lcp_nap_model.dart';
 import '../repositories/lcp_nap_repository.dart';
@@ -212,6 +214,11 @@ class LcpNapSignals {
     try {
       isLoading.value = true;
       errorMessage.value = null;
+      // Gene - Nov, 28, 2026: Reconnect PowerSync stream on manual plant refresh in replicated mode.
+      if (PowerSyncService.instance.isInitialized &&
+          PowerSyncService.instance.isReplicatedMode) {
+        await PowerSyncService.instance.reconnect();
+      }
       await repository.fetchRemoteLocations();
       photoSyncRevision.value++;
     } catch (e) {
